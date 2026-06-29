@@ -1,12 +1,25 @@
-# Track all your AI coding subscriptions in one place
+# UsagePal — track all your AI coding subscriptions in one place
 
 See your usage at a glance from your menu bar. No digging through dashboards.
 
 ![UsagePal Screenshot](screenshot.png)
 
+> **UsagePal is an independent, open-source fork of [OpenUsage](https://github.com/robinebers/openusage) by Robin Ebers.**
+> It is not affiliated with, endorsed by, or an official part of OpenUsage. "OpenUsage" is Robin Ebers' trademark; this fork uses its own name and branding.
+
+## About this fork
+
+UsagePal continues the project on the **Rust + Tauri** version, with the **same stack and the same UI**:
+
+- **Frontend:** TypeScript + React, Tailwind, Vite
+- **Backend:** Rust + Tauri v2
+- **Plugins:** sandboxed JavaScript run in an embedded QuickJS engine
+
+It stays **open source (MIT)** and is actively maintained. The goal is a fast, native menu-bar tracker that keeps the architecture and look of the original while moving independently.
+
 ## Download
 
-[**Download the latest release**](https://github.com/robinebers/openusage/releases/latest) (macOS, Apple Silicon & Intel)
+[**Download the latest release**](https://github.com/Halloweedev/usagepal/releases/latest) (macOS, Apple Silicon & Intel)
 
 The app auto-updates. Install once and you're set.
 
@@ -40,23 +53,19 @@ UsagePal lives in your menu bar and shows you how much of your AI coding subscri
 - [**Devin**](docs/providers/devin.md) / weekly quota, extra usage
 - [**Z.ai**](docs/providers/zai.md) / session, weekly, web searches
 
-Community contributions welcome.
-
-Want a provider that's not listed? [Open an issue.](https://github.com/robinebers/openusage/issues/new)
+Community contributions welcome. Want a provider that's not listed? [Open an issue.](https://github.com/Halloweedev/usagepal/issues/new)
 
 ## Open Source, Community Driven
 
-UsagePal is built by its users. Hundreds of people use it daily, and the project grows through community contributions: new providers, bug fixes, and ideas.
+UsagePal is open source and grows through community contributions: new providers, bug fixes, and ideas. If something is missing or broken, the best way to get it fixed is to [open an issue](https://github.com/Halloweedev/usagepal/issues/new) or submit a PR.
 
-I maintain the project as a guide and quality gatekeeper, but this is your app as much as mine. If something is missing or broken, the best way to get it fixed is to contribute by opening an issue, or submitting a PR.
+Plugins are currently bundled; making them loadable so you can build and run your own is on the roadmap.
 
-Plugins are currently bundled as we build our the API, but soon will be made flexible so you can build and load their own.
-
-<a href="https://www.star-history.com/?repos=robinebers%2Fopenusage&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=Halloweedev%2Fusagepal&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=robinebers/openusage&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=robinebers/openusage&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=robinebers/openusage&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Halloweedev/usagepal&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Halloweedev/usagepal&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Halloweedev/usagepal&type=date&legend=top-left" />
  </picture>
 </a>
 
@@ -64,39 +73,38 @@ Plugins are currently bundled as we build our the API, but soon will be made fle
 
 - **Add a provider.** Each one is just a plugin. See the [Plugin API](docs/plugins/api.md).
 - **Fix a bug.** PRs welcome. Provide before/after screenshots.
-- **Request a feature.** [Open an issue](https://github.com/robinebers/openusage/issues/new) and make your case.
+- **Request a feature.** [Open an issue](https://github.com/Halloweedev/usagepal/issues/new) and make your case.
 
-Keep it simple. No feature creep, no AI-generated commit messages, test your changes.
-
-## Built Entirely with AI
-
-Not a single line of code in this project was read or written by hand. 100% AI-generated, AI-reviewed, AI-shipped — using [Cursor](https://cursor.com), [Claude Code](https://docs.anthropic.com/en/docs/claude-code), and [Codex CLI](https://github.com/openai/codex).
-
-UsagePal is a real-world example of what I teach in the [AI Builder's Blueprint](https://itsbyrob.in/EBDqgJ6) — a proven process for building and shipping software with AI, no coding background required.
-
-## Sponsors
-
-UsagePal is supported by our sponsors. Become a sponsor to get your logo here and on [openusage.ai](https://openusage.ai).
-
-[Become a Sponsor](https://github.com/sponsors/robinebers)
-
-<!-- Add sponsor logos here -->
+Keep it simple. No feature creep, test your changes.
 
 ## Credits
 
-Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](https://github.com/steipete). Same idea, very different approach.
+- Forked from [**OpenUsage**](https://github.com/robinebers/openusage) by [Robin Ebers](https://github.com/robinebers) — the original project this is built on (MIT).
+- Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](https://github.com/steipete).
+
+Maintained by [Nicolas Demanez](https://github.com/Halloweedev).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — the fork preserves the original OpenUsage copyright and adds its own. See [NOTICE](NOTICE).
 
 ---
 
 <details>
 <summary><strong>Build from source</strong></summary>
 
-> **Warning**: The `main` branch may not be stable. It is merged directly without staging, so users are advised to use tagged versions for stable builds. Tagged versions are fully tested while `main` may contain unreleased features.
+> **Warning**: The `main` branch may not be stable. Use tagged versions for stable builds.
 
 ### Stack
 
-...
+- TypeScript + React + Vite + Tailwind (frontend)
+- Rust + Tauri v2 (backend)
+- QuickJS (`rquickjs`) for the plugin engine
+
+```bash
+bun install
+bun run tauri dev      # run in development
+bun run tauri build    # production build
+```
+
+</details>

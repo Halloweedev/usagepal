@@ -1,8 +1,8 @@
 [package]
 name = "usagepal"
 version = "0.6.28"
-description = "UsagePal is an open source AI subscription limit tracker"
-authors = ["Robin Ebers"]
+description = "UsagePal is an open source AI subscription limit tracker (a fork of OpenUsage)"
+authors = ["Nicolas Demanez"]
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
