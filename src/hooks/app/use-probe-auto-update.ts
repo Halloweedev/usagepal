@@ -8,98 +8,37 @@ import {
 type UseProbeAutoUpdateArgs = {
   pluginSettings: PluginSettings | null
   autoUpdateInterval: AutoUpdateIntervalMinutes
-  setLoadingForPlugins: (ids: string[]) => void
-  setErrorForPlugins: (ids: string[], error: string) => void
-  isPluginLoading: (id: string) => boolean
-  startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
 }
 
+/**
+ * Tracks the *display-only* countdown for the next auto-update.
+ *
+ * The actual refresh loop now runs natively in Rust
+ * (`start_auto_update_scheduler`), so this hook no longer schedules or triggers
+ * probes — removing that timer is what lets the hidden panel's WebView throttle
+ * its JS. The countdown is seeded from the interval and re-synced whenever the
+ * native scheduler emits `usage:updated` (via `useUsageSync`, which calls
+ * `resetAutoUpdateSchedule`) or the interval changes.
+ */
 export function useProbeAutoUpdate({
   pluginSettings,
   autoUpdateInterval,
-  setLoadingForPlugins,
-  setErrorForPlugins,
-  isPluginLoading,
-  startBatch,
 }: UseProbeAutoUpdateArgs) {
   const [autoUpdateNextAt, setAutoUpdateNextAt] = useState<number | null>(null)
-  const [autoUpdateResetToken, setAutoUpdateResetToken] = useState(0)
+
+  const computeNextAt = useCallback((): number | null => {
+    if (!pluginSettings) return null
+    if (getEnabledPluginIds(pluginSettings).length === 0) return null
+    return Date.now() + autoUpdateInterval * 60_000
+  }, [autoUpdateInterval, pluginSettings])
 
   useEffect(() => {
-    if (!pluginSettings) {
-      setAutoUpdateNextAt(null)
-      return
-    }
-
-    const enabledIds = getEnabledPluginIds(pluginSettings)
-    if (enabledIds.length === 0) {
-      setAutoUpdateNextAt(null)
-      return
-    }
-
-    const intervalMs = autoUpdateInterval * 60_000
-    const scheduleNext = () => setAutoUpdateNextAt(Date.now() + intervalMs)
-    scheduleNext()
-
-    // Use recursive setTimeout instead of setInterval to avoid drift:
-    // each tick is scheduled intervalMs after the previous one completes,
-    // so the gap between batch completions is always accurate.
-    let cancelled = false
-    let timeout: ReturnType<typeof setTimeout>
-
-    const tick = () => {
-      const idleIds = enabledIds.filter((id) => !isPluginLoading(id))
-      if (idleIds.length === 0) {
-        if (!cancelled) {
-          scheduleNext()
-          timeout = setTimeout(tick, intervalMs)
-        }
-        return
-      }
-
-      setLoadingForPlugins(idleIds)
-      startBatch(idleIds)
-        .catch((error) => {
-          console.error("Failed to start auto-update batch:", error)
-          setErrorForPlugins(idleIds, "Failed to start probe")
-        })
-        .finally(() => {
-          if (!cancelled) {
-            scheduleNext()
-            timeout = setTimeout(tick, intervalMs)
-          }
-        })
-    }
-
-    timeout = setTimeout(tick, intervalMs)
-
-    return () => {
-      cancelled = true
-      clearTimeout(timeout)
-    }
-  }, [
-    autoUpdateInterval,
-    autoUpdateResetToken,
-    pluginSettings,
-    isPluginLoading,
-    setLoadingForPlugins,
-    setErrorForPlugins,
-    startBatch,
-  ])
+    setAutoUpdateNextAt(computeNextAt())
+  }, [computeNextAt])
 
   const resetAutoUpdateSchedule = useCallback(() => {
-    if (!pluginSettings) return
-    const enabledIds = getEnabledPluginIds(pluginSettings)
-    /* v8 ignore start */
-    if (enabledIds.length === 0) {
-      setAutoUpdateNextAt(null)
-      return
-    }
-    /* v8 ignore stop */
-
-    setAutoUpdateNextAt(Date.now() + autoUpdateInterval * 60_000)
-    setAutoUpdateResetToken((value) => value + 1)
-  }, [autoUpdateInterval, pluginSettings])
+    setAutoUpdateNextAt(computeNextAt())
+  }, [computeNextAt])
 
   return {
     autoUpdateNextAt,

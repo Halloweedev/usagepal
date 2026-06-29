@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
@@ -351,6 +351,9 @@ describe("App", () => {
           { id: "a", name: "Alpha", iconUrl: "icon-a", primaryProgressLabel: null, lines: [{ type: "text", label: "Now", scope: "overview" }] },
           { id: "b", name: "Beta", iconUrl: "icon-b", primaryProgressLabel: null, lines: [] },
         ]
+      }
+      if (cmd === "get_cached_usage") {
+        return []
       }
       return null
     })
@@ -1487,18 +1490,16 @@ describe("App", () => {
     expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(60)
   })
 
-  it("fires auto-update interval and schedules next", async () => {
+  it("does not fire probes on a timer — the native scheduler owns auto-update", async () => {
     vi.useFakeTimers()
-    // Set a very short interval for testing (5 min = 300000ms)
     state.loadAutoUpdateIntervalMock.mockResolvedValueOnce(5)
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
 
     render(<App />)
 
-    // Wait for initial setup
+    // The bootstrap probe still runs once on launch.
     await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
 
-    // Clear the initial batch call count
     state.probeHandlers?.onResult({
       providerId: "a",
       displayName: "Alpha",
@@ -1506,51 +1507,62 @@ describe("App", () => {
       lines: [{ type: "text", label: "Now", value: "OK" }],
     })
     state.probeHandlers?.onBatchComplete()
-    const initialCalls = state.startBatchMock.mock.calls.length
+    const callsAfterBootstrap = state.startBatchMock.mock.calls.length
 
-    // Advance time by 5 minutes to trigger the interval
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    // Advancing well past several intervals must NOT trigger another batch:
+    // periodic refresh now happens natively in Rust, not via a frontend timer.
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 * 4)
 
-    // The interval should have fired, calling startBatch again
-    await vi.waitFor(() =>
-      expect(state.startBatchMock.mock.calls.length).toBeGreaterThan(initialCalls)
-    )
+    expect(state.startBatchMock.mock.calls.length).toBe(callsAfterBootstrap)
 
     vi.useRealTimers()
   })
 
-  it("logs error when auto-update batch fails", async () => {
-    vi.useFakeTimers()
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-
-    state.loadAutoUpdateIntervalMock.mockResolvedValueOnce(5)
+  it("hydrates cached usage when the native scheduler emits usage:updated", async () => {
+    state.isTauriMock.mockReturnValue(true)
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
-    // First call succeeds (initial batch), subsequent calls fail
-    state.startBatchMock
-      .mockResolvedValueOnce(["a"])
-      .mockRejectedValue(new Error("auto-update failed"))
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          { id: "a", name: "Alpha", iconUrl: "icon-a", primaryProgressLabel: null, lines: [{ type: "text", label: "Now", scope: "overview" }] },
+        ]
+      }
+      if (cmd === "get_cached_usage") {
+        return [
+          {
+            providerId: "a",
+            displayName: "Alpha",
+            plan: "Pro",
+            lines: [{ type: "text", label: "Now", value: "Cached" }],
+            fetchedAt: "2026-06-29T08:00:00Z",
+          },
+        ]
+      }
+      return null
+    })
 
     render(<App />)
 
-    // Wait for initial batch
-    await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
-    state.probeHandlers?.onResult({
-      providerId: "a",
-      displayName: "Alpha",
-      iconUrl: "icon-a",
-      lines: [{ type: "text", label: "Now", value: "OK" }],
-    })
-    state.probeHandlers?.onBatchComplete()
-
-    // Advance time to trigger the interval (which will fail)
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
-
-    await vi.waitFor(() =>
-      expect(errorSpy).toHaveBeenCalledWith("Failed to start auto-update batch:", expect.any(Error))
+    // get_cached_usage is invoked on mount (instant data on open).
+    await waitFor(() =>
+      expect(state.invokeMock).toHaveBeenCalledWith("get_cached_usage")
     )
 
-    errorSpy.mockRestore()
-    vi.useRealTimers()
+    const callsOnMount = state.invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === "get_cached_usage"
+    ).length
+
+    // A scheduler-driven usage:updated event re-hydrates from the cache.
+    await act(async () => {
+      eventState.handlers.get("usage:updated")?.({})
+    })
+
+    await waitFor(() => {
+      const callsAfter = state.invokeMock.mock.calls.filter(
+        ([cmd]) => cmd === "get_cached_usage"
+      ).length
+      expect(callsAfter).toBeGreaterThan(callsOnMount)
+    })
   })
 
   it("logs error when loading auto-update interval fails", async () => {

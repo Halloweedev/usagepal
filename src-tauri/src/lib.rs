@@ -6,13 +6,18 @@ mod log_path;
 mod panel;
 mod plugin_engine;
 mod tray;
+// Kept for reference but no longer wired up: the native auto-update scheduler
+// removed the need to keep the hidden WebView's JS running, so its suspension
+// is left at the OS default. See the macOS setup block in `run`.
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 mod webkit_config;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use serde::Serialize;
 use tauri::Emitter;
@@ -247,6 +252,38 @@ async fn start_probe_batch(
         response_plugin_ids
     );
 
+    run_probe_batch(
+        app_handle,
+        selected_plugins,
+        app_data_dir,
+        app_version,
+        batch_id.clone(),
+        false,
+    );
+
+    Ok(ProbeBatchStarted {
+        batch_id,
+        plugin_ids: response_plugin_ids,
+    })
+}
+
+/// Run a probe batch across a bounded worker pool, emitting `probe:result` per
+/// plugin and `probe:batch-complete` when the batch finishes. Shared by the
+/// `start_probe_batch` command (frontend-initiated) and the native auto-update
+/// scheduler. Returns immediately; the workers run on the async runtime.
+///
+/// When `emit_usage_updated` is true (scheduler-initiated batches), a single
+/// `usage:updated` event is emitted on completion so an open panel can refresh
+/// from the cache. Frontend-initiated batches already stream their results via
+/// `probe:result` (matched by batch id), so they pass false.
+fn run_probe_batch(
+    app_handle: tauri::AppHandle,
+    selected_plugins: Vec<Arc<plugin_engine::manifest::LoadedPlugin>>,
+    app_data_dir: PathBuf,
+    app_version: String,
+    batch_id: String,
+    emit_usage_updated: bool,
+) {
     let selected_count = selected_plugins.len();
     let worker_count = probe_worker_count(selected_count);
     if worker_count < selected_count {
@@ -327,15 +364,72 @@ async fn start_probe_batch(
                             batch_id: completion_bid.clone(),
                         },
                     );
+                    if emit_usage_updated {
+                        let _ = completion_handle.emit("usage:updated", ());
+                    }
                 }
             }
         });
     }
+}
 
-    Ok(ProbeBatchStarted {
-        batch_id,
-        plugin_ids: response_plugin_ids,
-    })
+/// Native auto-update scheduler. Replaces the previous frontend `setTimeout`
+/// loop so the panel's WebView no longer has to run JS while hidden. Each cycle
+/// re-reads the interval and the enabled-plugin set from settings.json (so
+/// changes are picked up on the next tick), probes the enabled plugins, and
+/// emits `usage:updated`. App Nap stays disabled (see `run`) so this thread
+/// keeps firing in the background.
+fn start_auto_update_scheduler(
+    app_handle: tauri::AppHandle,
+    plugins: Vec<Arc<plugin_engine::manifest::LoadedPlugin>>,
+    app_data_dir: PathBuf,
+    app_version: String,
+) {
+    let known_plugin_ids: Vec<String> = plugins.iter().map(|p| p.manifest.id.clone()).collect();
+
+    std::thread::spawn(move || {
+        loop {
+            let interval_minutes = local_http_api::read_auto_update_interval_minutes(&app_data_dir);
+            std::thread::sleep(Duration::from_secs(interval_minutes.saturating_mul(60)));
+
+            let enabled = local_http_api::read_enabled_plugin_ids(&app_data_dir, &known_plugin_ids);
+            if enabled.is_empty() {
+                continue;
+            }
+            let enabled_set: HashSet<String> = enabled.into_iter().collect();
+            let selected: Vec<Arc<plugin_engine::manifest::LoadedPlugin>> = plugins
+                .iter()
+                .filter(|plugin| enabled_set.contains(&plugin.manifest.id))
+                .cloned()
+                .collect();
+            if selected.is_empty() {
+                continue;
+            }
+
+            let batch_id = Uuid::new_v4().to_string();
+            log::info!(
+                "auto-update batch {} starting ({} plugins)",
+                batch_id,
+                selected.len()
+            );
+            run_probe_batch(
+                app_handle.clone(),
+                selected,
+                app_data_dir.clone(),
+                app_version.clone(),
+                batch_id,
+                true,
+            );
+        }
+    });
+}
+
+/// Return the currently enabled, cached usage snapshots so the frontend can
+/// hydrate immediately on open (or after the WebView was throttled while
+/// hidden) without waiting for a fresh probe.
+#[tauri::command]
+fn get_cached_usage() -> Vec<local_http_api::CachedPluginSnapshot> {
+    local_http_api::enabled_usage_snapshots()
 }
 
 #[tauri::command]
@@ -500,6 +594,7 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
+            get_cached_usage,
             update_global_shortcut
         ])
         .setup(|app| {
@@ -508,8 +603,15 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             {
+                // App Nap stays disabled so the native auto-update scheduler
+                // (start_auto_update_scheduler) keeps firing in the background.
+                //
+                // WebView suspension is intentionally NOT disabled anymore: the
+                // refresh loop now lives in Rust, so the hidden panel's WebView
+                // can throttle its JS instead of running React + a timer 24/7.
+                // (webkit_config::disable_webview_suspension is kept available
+                // should the old behavior ever be needed.)
                 app_nap::disable_app_nap();
-                webkit_config::disable_webview_suspension(app.handle());
             }
 
             use tauri::Manager;
@@ -539,6 +641,7 @@ pub fn run() {
                 plugins.iter().map(|p| p.manifest.id.clone()).collect();
             let plugin_arcs: Vec<Arc<plugin_engine::manifest::LoadedPlugin>> =
                 plugins.into_iter().map(Arc::new).collect();
+            let scheduler_plugins = plugin_arcs.clone();
             app.manage(Mutex::new(AppState {
                 plugins: plugin_arcs,
                 app_data_dir: app_data_dir.clone(),
@@ -547,6 +650,15 @@ pub fn run() {
 
             local_http_api::init(&app_data_dir, known_plugin_ids);
             local_http_api::start_server();
+
+            // Native auto-update scheduler. Runs probes on a background thread so
+            // the panel's WebView no longer needs to stay awake to refresh.
+            start_auto_update_scheduler(
+                app.handle().clone(),
+                scheduler_plugins,
+                app_data_dir.clone(),
+                version.clone(),
+            );
 
             tray::create(app.handle())?;
 
