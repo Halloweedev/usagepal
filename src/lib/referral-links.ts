@@ -8,7 +8,7 @@
 export const REFERRAL_LINKS: Record<string, string> = {
   amp: "",
   antigravity: "",
-  claude: "",
+  claude: "https://claude.ai/referral/lceRsFUQhg",
   codex: "",
   copilot: "",
   cursor: "",
@@ -19,10 +19,10 @@ export const REFERRAL_LINKS: Record<string, string> = {
   kimi: "",
   kiro: "",
   minimax: "",
-  "opencode-go": "",
+  "opencode-go": "https://opencode.ai/go?ref=5CNTT87Y9R",
   perplexity: "",
   synthetic: "",
-  zai: "",
+  zai: "https://z.ai/subscribe?ic=PIO8EDMYVJ",
 }
 
 /**
