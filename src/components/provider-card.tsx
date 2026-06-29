@@ -21,7 +21,6 @@ import { formatResetAbsoluteLabel, formatResetRelativeLabel, formatResetTooltipT
 interface ProviderCardProps {
   name: string
   plan?: string
-  referralUrl?: string
   links?: PluginLink[]
   showSeparator?: boolean
   loading?: boolean
@@ -97,7 +96,6 @@ function formatRelativeTime(diffMs: number): string {
 export function ProviderCard({
   name,
   plan,
-  referralUrl,
   links = [],
   showSeparator = true,
   loading = false,
@@ -252,28 +250,14 @@ export function ProviderCard({
               )
             )}
           </div>
-          {(plan || referralUrl) && (
-            <div className="flex items-center gap-1.5 min-w-0 max-w-[55%]">
-              {plan && (
-                <Badge variant="outline" className="truncate min-w-0" title={plan}>
-                  {plan}
-                </Badge>
-              )}
-              {referralUrl && (
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={`Open ${name} referral link`}
-                  className="flex-shrink-0"
-                  onClick={(e) => {
-                    e.currentTarget.blur()
-                    openUrl(referralUrl).catch(console.error)
-                  }}
-                >
-                  <ExternalLink className="h-3 w-3 opacity-70" />
-                </Button>
-              )}
-            </div>
+          {plan && (
+            <Badge
+              variant="outline"
+              className="truncate min-w-0 max-w-[50%]"
+              title={plan}
+            >
+              {plan}
+            </Badge>
           )}
         </div>
         {visibleLinks.length > 0 && (

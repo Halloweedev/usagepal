@@ -963,22 +963,6 @@ describe("ProviderCard", () => {
     )
     expect(screen.queryByText(/Updated/)).toBeNull()
   })
-
-  it("renders a referral pill that opens the referral URL when referralUrl is set", async () => {
-    render(
-      <ProviderCard name="Cursor" referralUrl="https://cursor.com/?ref=abc" displayMode="used" />
-    )
-    const pill = screen.getByRole("button", { name: "Open Cursor referral link" })
-    await userEvent.click(pill)
-    expect(openUrl).toHaveBeenCalledWith("https://cursor.com/?ref=abc")
-  })
-
-  it("does not render a referral pill when referralUrl is absent", () => {
-    render(<ProviderCard name="Cursor" displayMode="used" />)
-    expect(
-      screen.queryByRole("button", { name: /referral link/i })
-    ).not.toBeInTheDocument()
-  })
 })
 
 describe("groupLinesByType", () => {
