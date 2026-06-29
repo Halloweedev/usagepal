@@ -24,6 +24,10 @@ export default defineConfig(async () => ({
     clearMocks: true,
     mockReset: true,
     restoreMocks: true,
+    // Node v22+ exposes a native `localStorage` (via --experimental-webstorage) that
+    // lacks `.clear()`, which shadows jsdom's complete implementation. Opt out so
+    // jsdom's own Web Storage is used in tests.
+    execArgv: ["--no-experimental-webstorage"],
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}", "plugins/**/*.js"],
