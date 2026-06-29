@@ -15,7 +15,10 @@ const PUBKEY_KID: &str = match option_env!("KEYLIGHT_PUBKEY_KID") { Some(v) => v
 const PUBKEY_B64: &str = match option_env!("KEYLIGHT_PUBKEY") { Some(v) => v, None => "" };
 
 /// Entitlement a donor key must carry to unlock supporter features. Must match
-/// the feature configured on the Keylight product.
+/// the feature configured on the Keylight product and the `SUPPORTER_ENTITLEMENT`
+/// constant in the TypeScript license store. Not read on the Rust side yet —
+/// reserved for future Rust-side entitlement checks.
+#[allow(dead_code)]
 pub const SUPPORTER_ENTITLEMENT: &str = "supporter";
 
 /// Build the plugin config, pinning the trusted public key so license
