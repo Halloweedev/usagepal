@@ -21,6 +21,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { SettingsAppMenu } from "@/components/settings-app-menu";
+import { SupporterSection } from "@/components/supporter-section";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
   AUTO_UPDATE_OPTIONS,
@@ -615,6 +616,7 @@ export function SettingsPage({
           </DndContext>
         </div>
       </section>
+      <SupporterSection />
       <SettingsAppMenu onShowStats={onShowStats} onShowAbout={onShowAbout} />
     </div>
   );
