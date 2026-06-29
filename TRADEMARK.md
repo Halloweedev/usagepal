@@ -1,30 +1,25 @@
-# Trademark Policy
+# Trademark & Attribution
 
-## The OpenUsage Brand
+## UsagePal is a fork of OpenUsage
 
-The "OpenUsage" name, logo, and associated visual identity are trademarks of Robin Ebers. The MIT license covers the source code, not the brand.
+UsagePal is an independent, open-source fork of [OpenUsage](https://github.com/robinebers/openusage)
+by Robin Ebers. It is **not** affiliated with, endorsed by, or an official part of OpenUsage.
 
-## What You Can Do
+## The OpenUsage brand belongs to Robin Ebers
 
-- Use "OpenUsage" to refer to this project in articles, blog posts, and discussions
-- Say your project is "compatible with OpenUsage" or "built for OpenUsage"
-- Use the name in community contexts when referring to the official project
+The "OpenUsage" name, logo, and associated visual identity are trademarks of Robin Ebers. The
+MIT license covers the source code, not the brand. Per the upstream project's trademark policy,
+this fork:
 
-## What You Cannot Do
+1. Uses a different name — **UsagePal**.
+2. Does not use the OpenUsage logo or branding.
+3. Clearly states (here and in the README) that it is a fork and not the official OpenUsage.
 
-- Use "OpenUsage" as the name of a fork or derivative work
-- Use the OpenUsage logo in your own project, product, or service
-- Imply that your project is endorsed by, affiliated with, or an official part of OpenUsage
-- Register domain names or social media accounts using "OpenUsage"
+If you have questions about the OpenUsage brand, contact the upstream project at
+[rob@robinebers.com](mailto:rob@robinebers.com).
 
-## Forks
+## UsagePal
 
-If you fork OpenUsage, you must:
-
-1. Choose a different name for your fork
-2. Remove the OpenUsage logo and branding
-3. Clearly state that your project is a fork and not the official OpenUsage
-
-## Questions
-
-If you are unsure whether your use of the OpenUsage brand is allowed, contact [rob@robinebers.com](mailto:rob@robinebers.com).
+The "UsagePal" name and branding belong to the UsagePal maintainers. If you fork UsagePal,
+please choose a different name, drop the UsagePal branding, and clearly state that your project
+is a fork — the same courtesy this project extends to OpenUsage.

@@ -60,6 +60,9 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
           <p>
             Built by Nicolas Demanez
           </p>
+          <p className="text-xs">
+            An open-source fork of OpenUsage
+          </p>
         </div>
       </div>
     </div>
