@@ -1,4 +1,5 @@
 import { ProviderCard } from "@/components/provider-card"
+import { getReferralUrl } from "@/lib/referral-links"
 import type { PluginDisplayState } from "@/lib/plugin-types"
 import type { DisplayMode, ResetTimerDisplayMode, TimeFormatMode } from "@/lib/settings"
 
@@ -31,6 +32,7 @@ export function OverviewPage({
             key={plugin.meta.id}
             name={plugin.meta.name}
             plan={plugin.data?.plan}
+            referralUrl={getReferralUrl(plugin.meta.id)}
             showSeparator={index < plugins.length - 1}
             loading={plugin.loading}
             error={plugin.error}
