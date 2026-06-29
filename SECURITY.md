@@ -43,6 +43,10 @@ The following are out of scope:
 - Social engineering attacks
 - Denial of service attacks
 
+## License Verification
+
+Supporter license keys are verified offline on-device using Keylight (Ed25519-signed leases); no personal data is collected.
+
 ## Supported Versions
 
 Only the latest release is supported with security updates.

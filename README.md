@@ -1,5 +1,7 @@
 # UsagePal — track all your AI coding subscriptions in one place
 
+[![Secured by Keylight.dev](https://img.shields.io/badge/Secured%20by-Keylight.dev-6E56CF)](https://keylight.dev)
+
 See your usage at a glance from your menu bar. No digging through dashboards.
 
 ![UsagePal Screenshot](screenshot.png)
@@ -87,6 +89,14 @@ Maintained by [Nicolas Demanez](https://github.com/Halloweedev).
 ## License
 
 [MIT](LICENSE) — the fork preserves the original OpenUsage copyright and adds its own. See [NOTICE](NOTICE).
+
+## Privacy
+
+UsagePal sends an anonymous usage signal to [Keylight](https://keylight.dev) at
+most once per day to count active installs. It contains no personal data and is
+not tied to your identity — only a randomly generated install id, the app and
+SDK versions, and your platform (e.g. macOS). Licensing for supporters is also
+handled by Keylight, with license keys verified offline on your device.
 
 ---
 
