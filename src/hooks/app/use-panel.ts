@@ -36,8 +36,6 @@ export function usePanel({
   displayPlugins,
 }: UsePanelArgs) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const [canScrollDown, setCanScrollDown] = useState(false)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const focusContainer = useCallback(() => {
@@ -210,34 +208,8 @@ export function usePanel({
     return () => observer.disconnect()
   }, [activeView, displayPlugins])
 
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-
-    const check = () => {
-      setCanScrollDown(el.scrollHeight - el.scrollTop - el.clientHeight > 1)
-    }
-
-    check()
-    el.addEventListener("scroll", check, { passive: true })
-
-    const ro = new ResizeObserver(check)
-    ro.observe(el)
-
-    const mo = new MutationObserver(check)
-    mo.observe(el, { childList: true, subtree: true })
-
-    return () => {
-      el.removeEventListener("scroll", check)
-      ro.disconnect()
-      mo.disconnect()
-    }
-  }, [activeView])
-
   return {
     containerRef,
-    scrollRef,
-    canScrollDown,
     maxPanelHeightPx,
   }
 }

@@ -52,8 +52,6 @@ export function AppShell({
 
   const {
     containerRef,
-    scrollRef,
-    canScrollDown,
     maxPanelHeightPx,
   } = usePanel({
     activeView,
@@ -87,17 +85,12 @@ export function AppShell({
             onReorder={onNavReorder}
           />
           <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
-            <div className="relative flex-1 min-h-0">
-              <div ref={scrollRef} className="h-full overflow-y-auto scrollbar-none">
-                <AppContent
-                  {...appContentProps}
-                  displayPlugins={displayPlugins}
-                  settingsPlugins={settingsPlugins}
-                  selectedPlugin={selectedPlugin}
-                />
-              </div>
-              <div
-                className={`pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-card dark:from-muted/50 to-transparent transition-opacity duration-200 ${canScrollDown ? "opacity-100" : "opacity-0"}`}
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none">
+              <AppContent
+                {...appContentProps}
+                displayPlugins={displayPlugins}
+                settingsPlugins={settingsPlugins}
+                selectedPlugin={selectedPlugin}
               />
             </div>
             <PanelFooter
