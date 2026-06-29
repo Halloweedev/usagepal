@@ -5,7 +5,12 @@ import type { CachedUsageSnapshot } from "@/hooks/app/use-probe-state"
 
 type UseUsageSyncArgs = {
   applyCachedSnapshots: (snapshots: CachedUsageSnapshot[]) => void
-  onSynced: () => void
+  /**
+   * Called with the native scheduler's next-run time (unix ms), or null if it
+   * hasn't scheduled yet. Lets the countdown track the real schedule rather
+   * than resetting to a full interval on every hydrate.
+   */
+  onNextUpdateAt: (nextUpdateAt: number | null) => void
 }
 
 /**
@@ -15,20 +20,23 @@ type UseUsageSyncArgs = {
  * `usage:updated`. While the panel is hidden its WebView may be throttled and
  * miss those events, so we re-hydrate on three triggers: once on mount (instant
  * data on launch), on every `usage:updated`, and whenever the document becomes
- * visible again (panel re-opened). Each successful hydrate calls `onSynced` to
- * re-seed the display countdown.
+ * visible again (panel re-opened). Each hydrate also reads the scheduler's
+ * authoritative next-run time so the countdown stays accurate.
  */
-export function useUsageSync({ applyCachedSnapshots, onSynced }: UseUsageSyncArgs) {
+export function useUsageSync({ applyCachedSnapshots, onNextUpdateAt }: UseUsageSyncArgs) {
   const hydrate = useCallback(async () => {
     if (!isTauri()) return
     try {
-      const snapshots = await invoke<CachedUsageSnapshot[]>("get_cached_usage")
+      const [snapshots, nextUpdateAt] = await Promise.all([
+        invoke<CachedUsageSnapshot[]>("get_cached_usage"),
+        invoke<number | null>("get_next_update_at"),
+      ])
       applyCachedSnapshots(snapshots)
-      onSynced()
+      onNextUpdateAt(typeof nextUpdateAt === "number" ? nextUpdateAt : null)
     } catch (error) {
       console.error("Failed to hydrate cached usage:", error)
     }
-  }, [applyCachedSnapshots, onSynced])
+  }, [applyCachedSnapshots, onNextUpdateAt])
 
   useEffect(() => {
     void hydrate()

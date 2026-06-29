@@ -15,9 +15,21 @@ mod webkit_config;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
+
+/// Unix-ms timestamp of the next scheduled auto-update, published by the native
+/// scheduler so the UI countdown reflects the real schedule instead of resetting
+/// to a full interval every time the panel opens. 0 = not yet scheduled.
+static NEXT_UPDATE_AT_MS: AtomicU64 = AtomicU64::new(0);
+
+fn unix_now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 use serde::Serialize;
 use tauri::Emitter;
@@ -390,7 +402,15 @@ fn start_auto_update_scheduler(
     std::thread::spawn(move || {
         loop {
             let interval_minutes = local_http_api::read_auto_update_interval_minutes(&app_data_dir);
-            std::thread::sleep(Duration::from_secs(interval_minutes.saturating_mul(60)));
+            let interval = Duration::from_secs(interval_minutes.saturating_mul(60));
+            // Publish the next-run time before sleeping so the UI can show an
+            // accurate countdown even if it queries mid-cycle or after the
+            // WebView was throttled while hidden.
+            NEXT_UPDATE_AT_MS.store(
+                unix_now_ms().saturating_add(interval.as_millis() as u64),
+                Ordering::Relaxed,
+            );
+            std::thread::sleep(interval);
 
             let enabled = local_http_api::read_enabled_plugin_ids(&app_data_dir, &known_plugin_ids);
             if enabled.is_empty() {
@@ -430,6 +450,17 @@ fn start_auto_update_scheduler(
 #[tauri::command]
 fn get_cached_usage() -> Vec<local_http_api::CachedPluginSnapshot> {
     local_http_api::enabled_usage_snapshots()
+}
+
+/// Unix-ms timestamp of the next scheduled auto-update, or `None` if the
+/// scheduler hasn't set it yet. Lets the UI countdown track the real native
+/// schedule instead of resetting on every panel open.
+#[tauri::command]
+fn get_next_update_at() -> Option<u64> {
+    match NEXT_UPDATE_AT_MS.load(Ordering::Relaxed) {
+        0 => None,
+        ms => Some(ms),
+    }
 }
 
 #[tauri::command]
@@ -595,6 +626,7 @@ pub fn run() {
             list_plugins,
             get_log_path,
             get_cached_usage,
+            get_next_update_at,
             update_global_shortcut
         ])
         .setup(|app| {

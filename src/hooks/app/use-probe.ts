@@ -47,11 +47,23 @@ export function useProbe({
   })
 
   // The native scheduler owns the refresh loop; hydrate the UI from its cache
-  // on mount, on `usage:updated`, and when the panel becomes visible. Each sync
-  // re-seeds the display countdown via resetAutoUpdateSchedule.
+  // on mount, on `usage:updated`, and when the panel becomes visible. Anchor the
+  // countdown to the scheduler's real next-run time so opening the panel doesn't
+  // reset it; fall back to a local estimate if the scheduler hasn't reported yet.
+  const handleNextUpdateAt = useCallback(
+    (nextUpdateAt: number | null) => {
+      if (typeof nextUpdateAt === "number" && nextUpdateAt > 0) {
+        setAutoUpdateNextAt(nextUpdateAt)
+      } else {
+        resetAutoUpdateSchedule()
+      }
+    },
+    [resetAutoUpdateSchedule, setAutoUpdateNextAt]
+  )
+
   useUsageSync({
     applyCachedSnapshots,
-    onSynced: resetAutoUpdateSchedule,
+    onNextUpdateAt: handleNextUpdateAt,
   })
 
   const { handleRetryPlugin, handleRefreshAll } = useProbeRefreshActions({
