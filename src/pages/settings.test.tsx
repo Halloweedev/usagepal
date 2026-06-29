@@ -49,6 +49,19 @@ vi.mock("@dnd-kit/utilities", () => ({
   CSS: { Transform: { toString: () => "" } },
 }))
 
+const { openUrlMock, getReferralUrlMock } = vi.hoisted(() => ({
+  openUrlMock: vi.fn(() => Promise.resolve()),
+  getReferralUrlMock: vi.fn<(id: string) => string | undefined>(),
+}))
+
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: openUrlMock,
+}))
+
+vi.mock("@/lib/referral-links", () => ({
+  getReferralUrl: getReferralUrlMock,
+}))
+
 import { SettingsPage } from "@/pages/settings"
 
 const defaultProps = {
@@ -90,10 +103,51 @@ afterEach(() => {
 describe("SettingsPage", () => {
   beforeEach(() => {
     invokeMock.mockResolvedValue(undefined)
+    openUrlMock.mockClear()
+    getReferralUrlMock.mockReset()
+    getReferralUrlMock.mockReturnValue(undefined)
   })
 
   afterEach(() => {
     invokeMock.mockReset()
+  })
+
+  it("renders a referral pill that opens the referral URL for plugins that have one", async () => {
+    getReferralUrlMock.mockImplementation((id) =>
+      id === "claude" ? "https://claude.ai/referral/x" : undefined
+    )
+    render(
+      <SettingsPage
+        {...defaultProps}
+        plugins={[
+          { id: "claude", name: "Claude", enabled: true },
+          { id: "amp", name: "Amp", enabled: false },
+        ]}
+      />
+    )
+
+    const pill = screen.getByRole("button", { name: "Open Claude referral link" })
+    await userEvent.click(pill)
+    expect(openUrlMock).toHaveBeenCalledWith("https://claude.ai/referral/x")
+    expect(
+      screen.queryByRole("button", { name: "Open Amp referral link" })
+    ).not.toBeInTheDocument()
+  })
+
+  it("clicking a referral pill does not toggle the plugin", async () => {
+    getReferralUrlMock.mockReturnValue("https://example.com/ref")
+    const onToggle = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        plugins={[{ id: "claude", name: "Claude", enabled: true }]}
+        onToggle={onToggle}
+      />
+    )
+
+    await userEvent.click(screen.getByRole("button", { name: "Open Claude referral link" }))
+    expect(openUrlMock).toHaveBeenCalledWith("https://example.com/ref")
+    expect(onToggle).not.toHaveBeenCalled()
   })
 
   it("toggles plugins", async () => {

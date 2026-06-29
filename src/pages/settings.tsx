@@ -15,6 +15,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { ExternalLink } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
@@ -38,6 +40,7 @@ import {
   type TimeFormatMode,
 } from "@/lib/settings";
 import { getTimeFormatter } from "@/lib/reset-tooltip";
+import { getReferralUrl } from "@/lib/referral-links";
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
 import { cn } from "@/lib/utils";
 
@@ -219,6 +222,8 @@ function SortablePluginItem({
     transition,
   };
 
+  const referralUrl = getReferralUrl(plugin.id);
+
   return (
     <div
       ref={setNodeRef}
@@ -253,6 +258,22 @@ function SortablePluginItem({
       >
         {plugin.name}
       </span>
+
+      {referralUrl && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Open ${plugin.name} referral link`}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.currentTarget.blur();
+            openUrl(referralUrl).catch(console.error);
+          }}
+        >
+          <ExternalLink className="h-3 w-3 opacity-70" />
+        </Button>
+      )}
 
       {/* Wrap to stop Base UI's internal input.click() from bubbling to the row div */}
       <span onClick={(e) => e.stopPropagation()}>
