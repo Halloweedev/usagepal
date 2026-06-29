@@ -7,6 +7,7 @@ import {
 import { useProbeAutoUpdate } from "@/hooks/app/use-probe-auto-update"
 import { useProbeRefreshActions } from "@/hooks/app/use-probe-refresh-actions"
 import { useProbeState } from "@/hooks/app/use-probe-state"
+import { useUsageSync } from "@/hooks/app/use-usage-sync"
 
 type UseProbeArgs = {
   pluginSettings: PluginSettings | null
@@ -26,6 +27,7 @@ export function useProbe({
     setLoadingForPlugins,
     setErrorForPlugins,
     handleProbeResult,
+    applyCachedSnapshots,
   } = useProbeState({ onProbeResult })
 
   const handleBatchComplete = useCallback(() => {}, [])
@@ -35,11 +37,6 @@ export function useProbe({
     onBatchComplete: handleBatchComplete,
   })
 
-  const isPluginLoading = useCallback(
-    (id: string) => Boolean(pluginStatesRef.current[id]?.loading),
-    [pluginStatesRef]
-  )
-
   const {
     autoUpdateNextAt,
     setAutoUpdateNextAt,
@@ -47,10 +44,14 @@ export function useProbe({
   } = useProbeAutoUpdate({
     pluginSettings,
     autoUpdateInterval,
-    setLoadingForPlugins,
-    setErrorForPlugins,
-    isPluginLoading,
-    startBatch,
+  })
+
+  // The native scheduler owns the refresh loop; hydrate the UI from its cache
+  // on mount, on `usage:updated`, and when the panel becomes visible. Each sync
+  // re-seeds the display countdown via resetAutoUpdateSchedule.
+  useUsageSync({
+    applyCachedSnapshots,
+    onSynced: resetAutoUpdateSchedule,
   })
 
   const { handleRetryPlugin, handleRefreshAll } = useProbeRefreshActions({

@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { PluginOutput } from "@/lib/plugin-types"
+import type { MetricLine, PluginOutput } from "@/lib/plugin-types"
 import type { PluginState } from "@/hooks/app/types"
+
+/** Shape returned by the `get_cached_usage` command (camelCase via serde). */
+export type CachedUsageSnapshot = {
+  providerId: string
+  displayName: string
+  plan?: string
+  lines: MetricLine[]
+  fetchedAt: string
+}
 
 type UseProbeStateArgs = {
   onProbeResult?: () => void
@@ -102,6 +111,44 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
     [getErrorMessage, onProbeResult, updatePluginStates]
   )
 
+  /**
+   * Populate plugin state from cached snapshots (native scheduler / hydrate on
+   * open). The cache only holds successful outputs, so this clears stale errors
+   * and shows last-known-good data. Plugins mid manual-refresh are skipped so
+   * an in-flight refresh isn't clobbered, and `lastUpdatedAt` reflects the real
+   * fetch time from the cache rather than "now".
+   */
+  const applyCachedSnapshots = useCallback(
+    (snapshots: CachedUsageSnapshot[]) => {
+      if (!Array.isArray(snapshots) || snapshots.length === 0) return
+      updatePluginStates((prev) => {
+        const next = { ...prev }
+        for (const snapshot of snapshots) {
+          const existing = prev[snapshot.providerId]
+          if (existing?.loading) continue
+          const fetchedMs = Date.parse(snapshot.fetchedAt)
+          next[snapshot.providerId] = {
+            data: {
+              providerId: snapshot.providerId,
+              displayName: snapshot.displayName,
+              plan: snapshot.plan,
+              lines: snapshot.lines,
+              iconUrl: existing?.data?.iconUrl ?? "",
+            },
+            loading: false,
+            error: null,
+            lastManualRefreshAt: existing?.lastManualRefreshAt ?? null,
+            lastUpdatedAt: Number.isFinite(fetchedMs)
+              ? fetchedMs
+              : existing?.lastUpdatedAt ?? Date.now(),
+          }
+        }
+        return next
+      })
+    },
+    [updatePluginStates]
+  )
+
   return {
     pluginStates,
     pluginStatesRef,
@@ -109,5 +156,6 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
     setLoadingForPlugins,
     setErrorForPlugins,
     handleProbeResult,
+    applyCachedSnapshots,
   }
 }

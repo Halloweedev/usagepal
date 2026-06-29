@@ -8,6 +8,10 @@ use std::time::Duration;
 const CACHE_FILE_NAME: &str = "usage-api-cache.json";
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const DEFAULT_ENABLED_PLUGINS: &[&str] = &["claude", "codex", "cursor"];
+/// Mirror of the frontend default (`DEFAULT_AUTO_UPDATE_INTERVAL` in
+/// src/lib/settings.ts). Used by the native auto-update scheduler when the
+/// stored setting is missing or unreadable.
+pub const DEFAULT_AUTO_UPDATE_INTERVAL_MINUTES: u64 = 15;
 
 #[cfg(not(test))]
 const CACHE_WRITE_DEBOUNCE: Duration = Duration::from_millis(500);
@@ -297,9 +301,39 @@ fn read_plugin_settings(app_data_dir: &Path) -> (Vec<String>, HashSet<String>, b
     }
 }
 
-/// Build the ordered list of enabled cached snapshots for GET /v1/usage.
-pub(super) fn enabled_snapshots_ordered(state: &CacheState) -> Vec<CachedPluginSnapshot> {
-    let (settings_order, disabled, has_settings) = read_plugin_settings(&state.app_data_dir);
+/// Minimal struct for reading just the auto-update interval, isolated from
+/// plugin-settings parsing so a type mismatch in one field can't wipe the other.
+#[derive(Deserialize)]
+struct IntervalSettingsFile {
+    #[serde(rename = "autoUpdateInterval")]
+    auto_update_interval: Option<f64>,
+}
+
+/// Read the stored auto-update interval (minutes) from settings.json. Falls
+/// back to [`DEFAULT_AUTO_UPDATE_INTERVAL_MINUTES`] when missing/invalid. The
+/// native scheduler calls this each cycle, so a changed setting is picked up
+/// on the following tick.
+pub fn read_auto_update_interval_minutes(app_data_dir: &Path) -> u64 {
+    let path = app_data_dir.join(SETTINGS_FILE_NAME);
+    let Ok(data) = std::fs::read_to_string(&path) else {
+        return DEFAULT_AUTO_UPDATE_INTERVAL_MINUTES;
+    };
+    match serde_json::from_str::<IntervalSettingsFile>(&data) {
+        Ok(file) => file
+            .auto_update_interval
+            .filter(|minutes| minutes.is_finite() && *minutes >= 1.0)
+            .map(|minutes| minutes as u64)
+            .unwrap_or(DEFAULT_AUTO_UPDATE_INTERVAL_MINUTES),
+        Err(_) => DEFAULT_AUTO_UPDATE_INTERVAL_MINUTES,
+    }
+}
+
+/// Ordered list of enabled plugin ids, shared by the HTTP API and the native
+/// scheduler. Settings order first, then remaining known ids; an id is enabled
+/// unless explicitly disabled (or, with no stored settings, only the defaults
+/// are enabled).
+fn enabled_ids_for(app_data_dir: &Path, known_plugin_ids: &[String]) -> Vec<String> {
+    let (settings_order, disabled, has_settings) = read_plugin_settings(app_data_dir);
 
     let default_enabled: HashSet<&str> = DEFAULT_ENABLED_PLUGINS.iter().copied().collect();
 
@@ -319,15 +353,31 @@ pub(super) fn enabled_snapshots_ordered(state: &CacheState) -> Vec<CachedPluginS
             ordered.push(id.clone());
         }
     }
-    for id in &state.known_plugin_ids {
+    for id in known_plugin_ids {
         if seen.insert(id.clone()) {
             ordered.push(id.clone());
         }
     }
 
-    ordered
+    ordered.into_iter().filter(|id| is_enabled(id)).collect()
+}
+
+/// Public wrapper for the native scheduler to learn which plugins to probe.
+pub fn read_enabled_plugin_ids(app_data_dir: &Path, known_plugin_ids: &[String]) -> Vec<String> {
+    enabled_ids_for(app_data_dir, known_plugin_ids)
+}
+
+/// Snapshot of the currently enabled, cached usage outputs — used by the
+/// `get_cached_usage` command to hydrate the UI on open without re-probing.
+pub fn enabled_usage_snapshots() -> Vec<CachedPluginSnapshot> {
+    let state = cache_state().lock().expect("cache state poisoned");
+    enabled_snapshots_ordered(&state)
+}
+
+/// Build the ordered list of enabled cached snapshots for GET /v1/usage.
+pub(super) fn enabled_snapshots_ordered(state: &CacheState) -> Vec<CachedPluginSnapshot> {
+    enabled_ids_for(&state.app_data_dir, &state.known_plugin_ids)
         .into_iter()
-        .filter(|id| is_enabled(id))
         .filter_map(|id| state.snapshots.get(&id).cloned())
         .collect()
 }
@@ -599,5 +649,72 @@ mod tests {
         let deserialized: CachedPluginSnapshot = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.provider_id, "claude");
         assert_eq!(deserialized.lines.len(), 1);
+    }
+
+    #[test]
+    fn read_auto_update_interval_defaults_when_missing() {
+        let dir = temp_dir("interval-missing");
+        assert_eq!(
+            read_auto_update_interval_minutes(&dir),
+            DEFAULT_AUTO_UPDATE_INTERVAL_MINUTES
+        );
+    }
+
+    #[test]
+    fn read_auto_update_interval_reads_stored_value() {
+        let dir = temp_dir("interval-stored");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(SETTINGS_FILE_NAME), r#"{"autoUpdateInterval": 30}"#).unwrap();
+        assert_eq!(read_auto_update_interval_minutes(&dir), 30);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_auto_update_interval_rejects_invalid_values() {
+        let dir = temp_dir("interval-invalid");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(SETTINGS_FILE_NAME), r#"{"autoUpdateInterval": 0}"#).unwrap();
+        assert_eq!(
+            read_auto_update_interval_minutes(&dir),
+            DEFAULT_AUTO_UPDATE_INTERVAL_MINUTES
+        );
+        std::fs::write(dir.join(SETTINGS_FILE_NAME), r#"{"other": true}"#).unwrap();
+        assert_eq!(
+            read_auto_update_interval_minutes(&dir),
+            DEFAULT_AUTO_UPDATE_INTERVAL_MINUTES
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_enabled_plugin_ids_defaults_without_settings() {
+        let dir = temp_dir("enabled-default");
+        let known = vec![
+            "claude".to_string(),
+            "codex".to_string(),
+            "cursor".to_string(),
+            "amp".to_string(),
+        ];
+        let enabled = read_enabled_plugin_ids(&dir, &known);
+        assert_eq!(enabled, vec!["claude", "codex", "cursor"]);
+    }
+
+    #[test]
+    fn read_enabled_plugin_ids_respects_disabled_and_order() {
+        let dir = temp_dir("enabled-settings");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(SETTINGS_FILE_NAME),
+            r#"{"plugins":{"order":["amp","claude","codex"],"disabled":["codex"]}}"#,
+        )
+        .unwrap();
+        let known = vec![
+            "claude".to_string(),
+            "codex".to_string(),
+            "amp".to_string(),
+        ];
+        let enabled = read_enabled_plugin_ids(&dir, &known);
+        assert_eq!(enabled, vec!["amp", "claude"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
