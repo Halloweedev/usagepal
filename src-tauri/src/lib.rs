@@ -4,6 +4,7 @@ mod config;
 mod local_http_api;
 mod log_path;
 mod panel;
+mod keylight;
 mod plugin_engine;
 mod tray;
 // Kept for reference but no longer wired up: the native auto-update scheduler
@@ -615,6 +616,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(tauri_plugin_keylight::init(crate::keylight::config()))
         .invoke_handler(tauri::generate_handler![
             init_panel,
             hide_panel,
@@ -630,6 +632,8 @@ pub fn run() {
             update_global_shortcut
         ])
         .setup(|app| {
+            std::thread::spawn(crate::keylight::report_on_launch);
+
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 

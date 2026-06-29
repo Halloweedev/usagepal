@@ -40,6 +40,8 @@ tauri-plugin-autostart = "2.5.1"
 regex-lite = "0.1.9"
 aes-gcm = "0.10.3"
 sha2 = "0.11"
+keylight = "0.3.0"
+tauri-plugin-keylight = "0.3.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
