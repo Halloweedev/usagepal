@@ -144,7 +144,7 @@ jobs:
           )
           text = text.replace(
               "dmgName: UsagePal-${version}.dmg",
-              f"dmgName: UsagePal-${{version}}-{arch}.dmg",
+              "dmgName: UsagePal-$" + "{version}-" + arch + ".dmg",
           )
           config.write_text(text)
           PY
