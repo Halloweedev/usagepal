@@ -47,3 +47,8 @@ src-tauri/resources/bundled_plugins/*
 
 # Agent scratch (subagent-driven-development ledger)
 .superpowers/
+
+# Local signing keys (never commit)
+.minisign-keys
+*.sec
+*.pub
