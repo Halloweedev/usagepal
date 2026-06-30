@@ -27,6 +27,7 @@
 ## Security Rails
 - Proxy config is opt-in and parsed once at startup before request use.
 - Plugin execution stays behind the Rust host API surface and bundled plugin manifest/runtime checks.
+- Tauri CSP permits `blob:` images so release builds can rasterize dynamic menu bar status icons.
 - Copilot keychain cache now uses the `UsagePal-copilot` service name in this fork.
 ## Phase Status
 - Imported from OpenUsage `v0.6.28` source archive into this repo.
@@ -41,8 +42,8 @@
 - Tray/menu-bar behavior — `src/lib/tray-tooltip.ts`, `src/hooks/app/use-tray-icon.ts`, `src-tauri/src/tray.rs`.
 - Settings bootstrap/tests — `src/hooks/app/use-settings-bootstrap.ts`, `src/lib/settings.ts`, `src/App.test.tsx`.
 ## Update Log (Last 5)
+- 2026-06-30 — Allowed Tauri CSP blob images for release menu bar status icon rendering.
 - 2026-06-30 — Prepared v0.7.0 release packaging with Tauri updater artifacts and Lutin DMGs.
 - 2026-06-28 — Split Settings App Menu into a component with a modal Debug Level picker.
 - 2026-06-28 — Added Settings bottom App Menu for Show Stats, Debug Level, Copy Log Path, About, and Quit.
 - 2026-06-28 — Removed native tray context menu so menu bar left-click opens Home and updated About attribution.
-- 2026-06-28 — Stripped changelog, Help button, GitHub links, aptabase analytics, and updater plugin (dead OpenUsage holdovers).
