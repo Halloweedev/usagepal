@@ -45,7 +45,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "RWTTWPopyR0Ik7bsAxq5BVjbEkzqnTMGOjgTjRjoznmEr002h9Dj6ROy",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkzMDgxREM5MjlGQTU4RDMKUldUVFdQb3B5UjBJazdic0F4cTVCVmpiRWt6cW5UTUdPamdUalJqb3pubUVyMDAyaDlEajZST3kK",
       "endpoints": [
         "https://github.com/Halloweedev/usagepal/releases/latest/download/latest.json"
       ]
