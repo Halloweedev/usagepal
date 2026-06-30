@@ -43,6 +43,7 @@ jobs:
       - name: Install Lutin
         run: |
           brew tap halloweedev/lutin
+          brew trust halloweedev/lutin
           brew install lutin
       - name: Bundle plugins
         run: bun run bundle:plugins
