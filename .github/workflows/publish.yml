@@ -130,15 +130,16 @@ jobs:
 
           target = os.environ["TARGET"]
           arch = os.environ["ARCH"]
+          workspace = os.environ["GITHUB_WORKSPACE"]
           config = Path(os.environ["RUNNER_TEMP"]) / "lutin.yml"
           text = config.read_text()
           text = text.replace(
               "path: ./src-tauri/target/release/bundle/macos/UsagePal.app",
-              f"path: ./src-tauri/target/{target}/release/bundle/macos/UsagePal.app",
+              f"path: {workspace}/src-tauri/target/{target}/release/bundle/macos/UsagePal.app",
           )
           text = text.replace(
               "directory: ./src-tauri/target/release/bundle/lutin",
-              f"directory: ./src-tauri/target/{target}/release/bundle/lutin",
+              f"directory: {workspace}/src-tauri/target/{target}/release/bundle/lutin",
           )
           text = text.replace(
               "dmgName: UsagePal-${version}.dmg",
