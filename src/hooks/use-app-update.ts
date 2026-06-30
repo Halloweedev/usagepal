@@ -9,7 +9,7 @@ declare global {
 }
 
 function areAppUpdatesEnabled() {
-  return globalThis.__USAGEPAL_ENABLE_UPDATES__ ?? false
+  return globalThis.__USAGEPAL_ENABLE_UPDATES__ ?? true
 }
 
 export type UpdateStatus =

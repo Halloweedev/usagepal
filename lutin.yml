@@ -1,0 +1,39 @@
+# lutin.yml — DMG packaging config for UsagePal.
+project:
+  name: UsagePal
+  bundleId: com.halloweed.usagepal
+app:
+  path: ./src-tauri/target/release/bundle/macos/UsagePal.app
+output:
+  directory: ./src-tauri/target/release/bundle/lutin
+  dmgName: UsagePal-${version}.dmg
+  volumeName: UsagePal
+window:
+  width: 680
+  height: 420
+  iconSize: 96
+background:
+  type: solid
+  colorA: '#FFFFFF'
+  scale: 2
+items:
+  - type: app
+    id: app
+    x: 226
+    y: 210
+    label: UsagePal
+  - type: applications
+    id: applications
+    x: 453
+    y: 210
+    label: Applications
+decorations: []
+signing:
+  enabled: true
+  identity: 'Developer ID Application: Nicolas Demanez (GJFYJDKWX9)'
+  hardenedRuntime: true
+  signDmg: true
+notarization:
+  enabled: true
+  profile: lutin-notary
+  staple: true

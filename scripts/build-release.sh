@@ -18,9 +18,12 @@ fi
 # Clean previous bundle
 rm -rf src-tauri/target/release/bundle
 
-# Build
-bun tauri build "$@"
+# Build the signed .app and updater artifacts with Tauri, then build the DMG
+# with Lutin for the cleaner installer layout.
+bun tauri build --bundles app "$@"
+lutin release --config lutin.yml
 
 echo ""
 echo "✓ Build complete! Output:"
-ls -la src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null || ls -la src-tauri/target/release/bundle/macos/*.app
+ls -la src-tauri/target/release/bundle/lutin/*.dmg 2>/dev/null || true
+ls -la src-tauri/target/release/bundle/macos/*.app

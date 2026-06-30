@@ -16,9 +16,11 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
+            target: aarch64-apple-darwin
+            arch: aarch64
           - platform: macos-latest
-            args: "--target x86_64-apple-darwin"
+            target: x86_64-apple-darwin
+            arch: x86_64
     runs-on: ${{ matrix.platform }}
     env:
       RELEASE_TAG: ${{ github.ref_name }}
@@ -38,6 +40,10 @@ jobs:
         with:
           bun-version: "latest"
       - run: bun install
+      - name: Install Lutin
+        run: |
+          brew tap halloweedev/lutin
+          brew install lutin
       - name: Bundle plugins
         run: bun run bundle:plugins
       - name: Verify bundled plugins
@@ -115,7 +121,57 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
-          args: ${{ matrix.args }}
+          args: --target ${{ matrix.target }} --bundles app
+
+      - name: Configure Lutin for target
+        run: |
+          cp lutin.yml "$RUNNER_TEMP/lutin.yml"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          target = os.environ["TARGET"]
+          arch = os.environ["ARCH"]
+          config = Path(os.environ["RUNNER_TEMP"]) / "lutin.yml"
+          text = config.read_text()
+          text = text.replace(
+              "path: ./src-tauri/target/release/bundle/macos/UsagePal.app",
+              f"path: ./src-tauri/target/{target}/release/bundle/macos/UsagePal.app",
+          )
+          text = text.replace(
+              "directory: ./src-tauri/target/release/bundle/lutin",
+              f"directory: ./src-tauri/target/{target}/release/bundle/lutin",
+          )
+          text = text.replace(
+              "dmgName: UsagePal-${version}.dmg",
+              f"dmgName: UsagePal-${{version}}-{arch}.dmg",
+          )
+          config.write_text(text)
+          PY
+        env:
+          TARGET: ${{ matrix.target }}
+          ARCH: ${{ matrix.arch }}
+
+      - name: Build signed notarized DMG with Lutin
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          lutin notary setup \
+            --profile lutin-notary \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_PASSWORD"
+          lutin release --config "$RUNNER_TEMP/lutin.yml" --verbose
+
+      - name: Upload Lutin DMG
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DMG="src-tauri/target/${{ matrix.target }}/release/bundle/lutin/UsagePal-${RELEASE_TAG#v}-${{ matrix.arch }}.dmg"
+          test -f "$DMG"
+          gh release upload "$RELEASE_TAG" "$DMG" --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Verify updater assets uploaded
         env:
@@ -125,3 +181,4 @@ jobs:
 
           printf '%s\n' "$ASSETS" | grep -Fxq 'latest.json' || { echo "Missing updater manifest: latest.json"; exit 1; }
           printf '%s\n' "$ASSETS" | grep -Eq '\.sig$' || { echo "Missing updater signatures (.sig)"; exit 1; }
+          printf '%s\n' "$ASSETS" | grep -Eq '^UsagePal-[0-9]+\.[0-9]+\.[0-9]+-${{ matrix.arch }}\.dmg$' || { echo "Missing Lutin DMG for ${{ matrix.arch }}"; exit 1; }

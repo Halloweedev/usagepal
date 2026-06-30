@@ -55,6 +55,16 @@ describe("useAppUpdate", () => {
     expect(result.current.updateStatus).toEqual({ status: "checking" })
   })
 
+  it("checks for updates by default when no fork override is set", async () => {
+    delete globalThis.__USAGEPAL_ENABLE_UPDATES__
+    checkMock.mockResolvedValue(null)
+
+    renderHook(() => useAppUpdate())
+    await act(() => Promise.resolve())
+
+    expect(checkMock).toHaveBeenCalledTimes(1)
+  })
+
   it("stays idle when not running in Tauri", async () => {
     globalThis.isTauri = false
 

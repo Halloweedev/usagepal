@@ -1,5 +1,3 @@
-#[cfg(target_os = "macos")]
-mod app_nap;
 mod config;
 mod local_http_api;
 mod log_path;
@@ -7,12 +5,6 @@ mod panel;
 mod keylight;
 mod plugin_engine;
 mod tray;
-// Kept for reference but no longer wired up: the native auto-update scheduler
-// removed the need to keep the hidden WebView's JS running, so its suspension
-// is left at the OS default. See the macOS setup block in `run`.
-#[cfg(target_os = "macos")]
-#[allow(dead_code)]
-mod webkit_config;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -614,6 +606,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_keylight::init(crate::keylight::config()))
@@ -636,19 +629,6 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-
-            #[cfg(target_os = "macos")]
-            {
-                // App Nap stays disabled so the native auto-update scheduler
-                // (start_auto_update_scheduler) keeps firing in the background.
-                //
-                // WebView suspension is intentionally NOT disabled anymore: the
-                // refresh loop now lives in Rust, so the hidden panel's WebView
-                // can throttle its JS instead of running React + a timer 24/7.
-                // (webkit_config::disable_webview_suspension is kept available
-                // should the old behavior ever be needed.)
-                app_nap::disable_app_nap();
-            }
 
             use tauri::Manager;
 

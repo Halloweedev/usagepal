@@ -17,7 +17,9 @@
 - `src/lib/settings.ts` — persisted frontend settings and migration helpers.
 - `src-tauri/src/plugin_engine/` — manifest loading, runtime sandboxing, and host capabilities for plugins.
 ## Infrastructure / Cross-Cutting
-- `src-tauri/tauri.conf.json` — app metadata now branded as `UsagePal` with identifier `com.halloweed.usagepal`.
+- `src-tauri/tauri.conf.json` — app metadata, updater endpoint/public key, app-only Tauri bundle target, and embedded resources.
+- `lutin.yml` plus `scripts/build-release.sh` — local DMG layout/release packaging around the Tauri-built `.app`.
+- `.github/workflows/publish.yml` — tag-triggered macOS release pipeline building updater artifacts via Tauri and DMGs via Lutin.
 - `src-tauri/src/config.rs` — optional proxy config loaded from `~/.usagepal/config.json`.
 - `src-tauri/src/log_path.rs` — log file naming for UsagePal app logs.
 - `src-tauri/src/tray.rs` — menu bar icon opens the panel directly; no native tray context menu is attached.
@@ -30,17 +32,17 @@
 - Imported from OpenUsage `v0.6.28` source archive into this repo.
 - Core app/product branding renamed to UsagePal across desktop metadata, UI copy, docs, and selected plugin identity strings.
 - Upstream retirement banner removed from the overview UI for this fork.
-- Removed changelog, GitHub links, Help button, aptabase analytics, and updater plugin — all OpenUsage holdovers unused in this fork.
+- Removed changelog, GitHub links, Help button, and aptabase analytics while enabling UsagePal updater releases.
 - Menu bar icon left-click opens the app panel on Home; Settings bottom App Menu holds old tray actions.
 - Frontend and Rust dependency bundles trimmed (aptabase, updater config, permissions).
 ## Fast Locate Cheats
-- Rename-sensitive metadata — `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`.
+- Rename/version-sensitive metadata — `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `lutin.yml`.
 - Provider plugin behavior — `plugins/<provider>/plugin.js` and matching `plugin.test.js`.
 - Tray/menu-bar behavior — `src/lib/tray-tooltip.ts`, `src/hooks/app/use-tray-icon.ts`, `src-tauri/src/tray.rs`.
 - Settings bootstrap/tests — `src/hooks/app/use-settings-bootstrap.ts`, `src/lib/settings.ts`, `src/App.test.tsx`.
 ## Update Log (Last 5)
+- 2026-06-30 — Prepared v0.7.0 release packaging with Tauri updater artifacts and Lutin DMGs.
 - 2026-06-28 — Split Settings App Menu into a component with a modal Debug Level picker.
 - 2026-06-28 — Added Settings bottom App Menu for Show Stats, Debug Level, Copy Log Path, About, and Quit.
 - 2026-06-28 — Removed native tray context menu so menu bar left-click opens Home and updated About attribution.
 - 2026-06-28 — Stripped changelog, Help button, GitHub links, aptabase analytics, and updater plugin (dead OpenUsage holdovers).
-- 2026-06-28 — Bootstrapped overview after importing OpenUsage `v0.6.28` into this repo as UsagePal and removing the retirement banner.
