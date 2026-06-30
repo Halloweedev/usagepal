@@ -142,12 +142,11 @@ export function SettingsAppMenu({ onShowStats, onShowAbout }: SettingsAppMenuPro
           variant="outline"
           size="sm"
           aria-label={`Debug Level ${selectedDebugLevelLabel}`}
-          className="w-full justify-between"
+          className="w-full justify-center"
           ref={debugLevelButtonRef}
           onClick={() => setShowDebugLevelDialog(true)}
         >
           <span>Debug Level</span>
-          <span className="text-muted-foreground">{selectedDebugLevelLabel}</span>
         </Button>
         <Button type="button" variant="outline" size="sm" className="w-full" onClick={handleCopyLogPath}>
           Copy Log Path

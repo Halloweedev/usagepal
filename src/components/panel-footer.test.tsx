@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { PanelFooter } from "@/components/panel-footer"
 import type { UpdateStatus } from "@/hooks/use-app-update"
 
@@ -14,6 +14,10 @@ const noop = () => {}
 const footerProps = { showAbout: false, onShowAbout: noop, onCloseAbout: noop, onUpdateCheck: noop }
 
 describe("PanelFooter", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it("shows countdown in minutes when >= 60 seconds", () => {
     const futureTime = Date.now() + 5 * 60 * 1000 // 5 minutes from now
     render(
@@ -57,6 +61,39 @@ describe("PanelFooter", () => {
     )
     const button = screen.getByRole("button", { name: /Next update in/i })
     await userEvent.click(button)
+    expect(onRefreshAll).toHaveBeenCalledTimes(1)
+  })
+
+  it("automatically refreshes once when the countdown becomes overdue", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(10_000)
+    const onRefreshAll = vi.fn()
+
+    render(
+      <PanelFooter
+        version="0.0.0"
+        autoUpdateNextAt={11_000}
+        updateStatus={idle}
+        onUpdateInstall={noop}
+        onRefreshAll={onRefreshAll}
+        {...footerProps}
+      />
+    )
+
+    expect(onRefreshAll).not.toHaveBeenCalled()
+
+    act(() => {
+      vi.setSystemTime(11_000)
+      vi.advanceTimersByTime(1000)
+    })
+
+    expect(onRefreshAll).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      vi.setSystemTime(12_000)
+      vi.advanceTimersByTime(1000)
+    })
+
     expect(onRefreshAll).toHaveBeenCalledTimes(1)
   })
 

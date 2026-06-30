@@ -1490,7 +1490,7 @@ describe("App", () => {
     expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(60)
   })
 
-  it("does not fire probes on a timer — the native scheduler owns auto-update", async () => {
+  it("only fires one frontend fallback refresh when the native countdown becomes overdue", async () => {
     vi.useFakeTimers()
     state.loadAutoUpdateIntervalMock.mockResolvedValueOnce(5)
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
@@ -1509,11 +1509,11 @@ describe("App", () => {
     state.probeHandlers?.onBatchComplete()
     const callsAfterBootstrap = state.startBatchMock.mock.calls.length
 
-    // Advancing well past several intervals must NOT trigger another batch:
-    // periodic refresh now happens natively in Rust, not via a frontend timer.
+    // Advancing well past several intervals may trigger one overdue recovery
+    // refresh, but must not restore the old repeating frontend timer loop.
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000 * 4)
 
-    expect(state.startBatchMock.mock.calls.length).toBe(callsAfterBootstrap)
+    expect(state.startBatchMock.mock.calls.length).toBe(callsAfterBootstrap + 1)
 
     vi.useRealTimers()
   })

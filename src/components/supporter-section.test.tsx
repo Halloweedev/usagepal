@@ -23,15 +23,25 @@ beforeEach(() => {
 describe("SupporterSection", () => {
   it("shows the key input and a Secured by Keylight link when unlicensed", () => {
     render(<SupporterSection />)
-    expect(screen.getByPlaceholderText("Enter Your License Key")).toBeInTheDocument()
+    expect(screen.getByPlaceholderText("License Key")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Secured by Keylight.dev" })).toBeInTheDocument()
+  })
+
+  it("uses a compact title-only layout that does not force horizontal scrolling", () => {
+    const { container } = render(<SupporterSection />)
+
+    expect(screen.getByRole("heading", { level: 3, name: "Supporter" })).toBeInTheDocument()
+    expect(screen.queryByText("Support UsagePal — activate your supporter license key.")).toBeNull()
+    expect(container.querySelector("form")).toHaveClass("min-w-0")
+    expect(screen.getByPlaceholderText("License Key")).toHaveClass("min-w-0")
+    expect(screen.getByRole("button", { name: "Activate" })).toHaveClass("shrink-0")
   })
 
   it("calls activate with the entered key", async () => {
     const activate = vi.fn(async () => {})
     useAppLicenseStore.setState({ activate })
     render(<SupporterSection />)
-    await userEvent.type(screen.getByPlaceholderText("Enter Your License Key"), "KEY-9")
+    await userEvent.type(screen.getByPlaceholderText("License Key"), "KEY-9")
     await userEvent.click(screen.getByRole("button", { name: "Activate" }))
     expect(activate).toHaveBeenCalledWith("KEY-9")
   })
@@ -40,7 +50,7 @@ describe("SupporterSection", () => {
     useAppLicenseStore.setState({ status: "active" })
     render(<SupporterSection />)
     expect(screen.getByText("Supporter — Active")).toBeInTheDocument()
-    expect(screen.queryByPlaceholderText("Enter Your License Key")).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText("License Key")).not.toBeInTheDocument()
   })
 
   it("surfaces the error message", () => {

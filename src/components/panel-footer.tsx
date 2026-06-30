@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { AboutDialog } from "@/components/about-dialog";
 import type { UpdateStatus } from "@/hooks/use-app-update";
@@ -95,10 +95,25 @@ export function PanelFooter({
   onShowAbout,
   onCloseAbout,
 }: PanelFooterProps) {
+  const autoRefreshTriggeredForRef = useRef<number | null>(null);
   const now = useNowTicker({
     enabled: Boolean(autoUpdateNextAt),
     resetKey: autoUpdateNextAt,
   });
+
+  useEffect(() => {
+    if (autoUpdateNextAt === null) {
+      autoRefreshTriggeredForRef.current = null;
+      return;
+    }
+
+    if (autoUpdateNextAt > now) return;
+    if (!onRefreshAll) return;
+    if (autoRefreshTriggeredForRef.current === autoUpdateNextAt) return;
+
+    autoRefreshTriggeredForRef.current = autoUpdateNextAt;
+    onRefreshAll();
+  }, [autoUpdateNextAt, now, onRefreshAll]);
 
   const countdownLabel = useMemo(() => {
     if (!autoUpdateNextAt) return "Paused";

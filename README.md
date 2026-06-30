@@ -110,6 +110,7 @@ handled by Keylight, with license keys verified offline on your device.
 - TypeScript + React + Vite + Tailwind (frontend)
 - Rust + Tauri v2 (backend)
 - QuickJS (`rquickjs`) for the plugin engine
+- [lutin](https://github.com/Halloweedev/lutin) for macOS DMG packaging, signing, and notarization
 
 ```bash
 bun install

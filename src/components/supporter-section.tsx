@@ -22,31 +22,34 @@ export function SupporterSection() {
   const isActive = status === "active"
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold">Supporter</h2>
+    <section className="flex min-w-0 flex-col gap-3">
+      <h3 className="text-lg font-semibold mb-0">Supporter</h3>
 
       {isActive ? (
         <p className="text-sm text-muted-foreground">Supporter — Active</p>
       ) : (
         <>
-          <p className="text-sm text-muted-foreground">
-            Support UsagePal — activate your supporter license key.
-          </p>
-          <div className="flex gap-2">
+          <form
+            className="flex min-w-0 gap-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void activate(key)
+            }}
+          >
             <input
               type="text"
               value={key}
               onChange={(e) => setKey(e.target.value)}
-              placeholder="Enter Your License Key"
+              placeholder="License Key"
               className={cn(
-                "flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm",
+                "min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm",
                 "outline-none focus-visible:ring-2 focus-visible:ring-ring",
               )}
             />
-            <Button onClick={() => void activate(key)} disabled={checking || key.trim() === ""}>
+            <Button type="submit" className="shrink-0 px-3" disabled={checking || key.trim() === ""}>
               {checking ? "Checking…" : "Activate"}
             </Button>
-          </div>
+          </form>
           {lastError ? <p className="text-sm text-destructive">{lastError}</p> : null}
         </>
       )}
