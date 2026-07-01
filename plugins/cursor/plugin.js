@@ -14,6 +14,107 @@
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
   const LOGIN_HINT = "Sign in via Cursor app or run `agent login`."
 
+  const MAX_MODE_UPLIFT = 1.2
+
+  // Per-million USD token rates, synced from https://cursor.com/docs/models-and-pricing.md.
+  // cache_write === null means Cursor lists no separate cache-write rate ("—");
+  // cache-write tokens are then priced at the input rate.
+  const CURSOR_PRICING = {
+    retrieved_at: "2026-07-01",
+    models: {
+      "claude-4-sonnet":      { input: 3.0,  cache_write: 3.75,  cache_read: 0.3,   output: 15.0,  apply_max_mode_uplift: true },
+      "claude-4-sonnet-1m":   { input: 6.0,  cache_write: 7.5,   cache_read: 0.6,   output: 22.5,  apply_max_mode_uplift: true },
+      "claude-4.5-haiku":     { input: 1.0,  cache_write: 1.25,  cache_read: 0.1,   output: 5.0,   apply_max_mode_uplift: true },
+      "claude-4.5-opus":      { input: 5.0,  cache_write: 6.25,  cache_read: 0.5,   output: 25.0,  apply_max_mode_uplift: true },
+      "claude-4.5-sonnet":    { input: 3.0,  cache_write: 3.75,  cache_read: 0.3,   output: 15.0,  apply_max_mode_uplift: true },
+      "claude-4.6-opus":      { input: 5.0,  cache_write: 6.25,  cache_read: 0.5,   output: 25.0,  apply_max_mode_uplift: true },
+      "claude-4.6-sonnet":    { input: 3.0,  cache_write: 3.75,  cache_read: 0.3,   output: 15.0,  apply_max_mode_uplift: true },
+      "claude-4.7-opus":      { input: 5.0,  cache_write: 6.25,  cache_read: 0.5,   output: 25.0,  apply_max_mode_uplift: true },
+      "claude-fable-5":       { input: 10.0, cache_write: 12.5,  cache_read: 1.0,   output: 50.0,  apply_max_mode_uplift: true },
+      "claude-opus-4.7-fast": { input: 30.0, cache_write: 37.5,  cache_read: 3.0,   output: 150.0, apply_max_mode_uplift: true },
+      "claude-opus-4.8":      { input: 5.0,  cache_write: 6.25,  cache_read: 0.5,   output: 25.0,  apply_max_mode_uplift: true },
+      "claude-sonnet-5":      { input: 3.0,  cache_write: 3.75,  cache_read: 0.3,   output: 15.0,  apply_max_mode_uplift: true },
+      "composer-1":           { input: 1.25, cache_write: null,  cache_read: 0.125, output: 10.0,  apply_max_mode_uplift: true },
+      "composer-1.5":         { input: 3.5,  cache_write: null,  cache_read: 0.35,  output: 17.5,  apply_max_mode_uplift: true },
+      "composer-2":           { input: 0.5,  cache_write: null,  cache_read: 0.2,   output: 2.5,   apply_max_mode_uplift: true },
+      "composer-2.5":         { input: 0.5,  cache_write: null,  cache_read: 0.2,   output: 2.5,   apply_max_mode_uplift: true },
+      "gemini-2.5-flash":     { input: 0.3,  cache_write: null,  cache_read: 0.03,  output: 2.5,   apply_max_mode_uplift: true },
+      "gemini-3-flash":       { input: 0.5,  cache_write: null,  cache_read: 0.05,  output: 3.0,   apply_max_mode_uplift: true },
+      "gemini-3-pro":         { input: 2.0,  cache_write: null,  cache_read: 0.2,   output: 12.0,  apply_max_mode_uplift: true },
+      "gemini-3.1-pro":       { input: 2.0,  cache_write: null,  cache_read: 0.2,   output: 12.0,  apply_max_mode_uplift: true },
+      "gemini-3.5-flash":     { input: 1.5,  cache_write: null,  cache_read: 0.15,  output: 9.0,   apply_max_mode_uplift: true },
+      "gpt-5":                { input: 1.25, cache_write: null,  cache_read: 0.125, output: 10.0,  apply_max_mode_uplift: true },
+      "gpt-5-fast":           { input: 2.5,  cache_write: null,  cache_read: 0.25,  output: 20.0,  apply_max_mode_uplift: true },
+      "gpt-5-mini":           { input: 0.25, cache_write: null,  cache_read: 0.025, output: 2.0,   apply_max_mode_uplift: true },
+      "gpt-5-codex":          { input: 1.25, cache_write: null,  cache_read: 0.125, output: 10.0,  apply_max_mode_uplift: true },
+      "gpt-5.1-codex":        { input: 1.25, cache_write: null,  cache_read: 0.125, output: 10.0,  apply_max_mode_uplift: true },
+      "gpt-5.4":              { input: 2.5,  cache_write: null,  cache_read: 0.25,  output: 15.0,  apply_max_mode_uplift: true },
+      "gpt-5.4-mini":         { input: 0.75, cache_write: null,  cache_read: 0.075, output: 4.5,   apply_max_mode_uplift: true },
+      "gpt-5.4-nano":         { input: 0.2,  cache_write: null,  cache_read: 0.02,  output: 1.25,  apply_max_mode_uplift: true },
+      "gpt-5.5":              { input: 5.0,  cache_write: null,  cache_read: 0.5,   output: 30.0,  apply_max_mode_uplift: true },
+      "grok-4.20":            { input: 2.0,  cache_write: null,  cache_read: 0.2,   output: 6.0,   apply_max_mode_uplift: true },
+      "grok-4.3":             { input: 1.25, cache_write: null,  cache_read: 0.2,   output: 2.5,   apply_max_mode_uplift: true },
+      "grok-build-0.1":       { input: 1.0,  cache_write: null,  cache_read: 0.2,   output: 2.0,   apply_max_mode_uplift: true },
+      "kimi-k2.5":            { input: 0.6,  cache_write: null,  cache_read: 0.1,   output: 3.0,   apply_max_mode_uplift: true },
+    },
+    // Ordered regex rules mapping CSV model slugs -> canonical id. First match wins;
+    // put more specific patterns first. Extend as new slugs are observed in the CSV.
+    alias_rules: [
+      { pattern: "^composer-2\\.5", canonical: "composer-2.5" },
+      { pattern: "^composer-2\\b", canonical: "composer-2" },
+      { pattern: "^composer-1\\.5", canonical: "composer-1.5" },
+      { pattern: "^composer-1\\b", canonical: "composer-1" },
+      { pattern: "^claude-sonnet-5", canonical: "claude-sonnet-5" },
+      { pattern: "^claude-opus-4\\.8", canonical: "claude-opus-4.8" },
+      { pattern: "^claude-opus-4\\.7.*fast", canonical: "claude-opus-4.7-fast" },
+      { pattern: "^claude-4\\.7-opus", canonical: "claude-4.7-opus" },
+      { pattern: "^claude-4\\.6-opus", canonical: "claude-4.6-opus" },
+      { pattern: "^claude-4\\.6-sonnet", canonical: "claude-4.6-sonnet" },
+      { pattern: "^claude-4\\.5-opus", canonical: "claude-4.5-opus" },
+      { pattern: "^claude-4\\.5-haiku", canonical: "claude-4.5-haiku" },
+      { pattern: "^claude-4\\.5-sonnet", canonical: "claude-4.5-sonnet" },
+      { pattern: "^claude-4-sonnet-1m", canonical: "claude-4-sonnet-1m" },
+      { pattern: "^claude-4-sonnet", canonical: "claude-4-sonnet" },
+      { pattern: "^claude-fable-5", canonical: "claude-fable-5" },
+      { pattern: "^gpt-5\\.5", canonical: "gpt-5.5" },
+      { pattern: "^gpt-5\\.4-nano", canonical: "gpt-5.4-nano" },
+      { pattern: "^gpt-5\\.4-mini", canonical: "gpt-5.4-mini" },
+      { pattern: "^gpt-5\\.4", canonical: "gpt-5.4" },
+      { pattern: "^gpt-5\\.1-codex", canonical: "gpt-5.1-codex" },
+      { pattern: "^gpt-5-codex", canonical: "gpt-5-codex" },
+      { pattern: "^gpt-5-mini", canonical: "gpt-5-mini" },
+      { pattern: "^gpt-5-fast", canonical: "gpt-5-fast" },
+      { pattern: "^gpt-5\\b", canonical: "gpt-5" },
+      { pattern: "^gemini-3\\.5-flash", canonical: "gemini-3.5-flash" },
+      { pattern: "^gemini-3\\.1-pro", canonical: "gemini-3.1-pro" },
+      { pattern: "^gemini-3-pro", canonical: "gemini-3-pro" },
+      { pattern: "^gemini-3-flash", canonical: "gemini-3-flash" },
+      { pattern: "^gemini-2\\.5-flash", canonical: "gemini-2.5-flash" },
+      { pattern: "^grok-4\\.20", canonical: "grok-4.20" },
+      { pattern: "^grok-4\\.3", canonical: "grok-4.3" },
+      { pattern: "^grok-build-0\\.1", canonical: "grok-build-0.1" },
+      { pattern: "^kimi-k2\\.5", canonical: "kimi-k2.5" },
+    ],
+  }
+
+  function resolveModelRates(slug) {
+    const s = String(slug || "").trim().toLowerCase()
+    if (!s) return null
+    for (let i = 0; i < CURSOR_PRICING.alias_rules.length; i++) {
+      const rule = CURSOR_PRICING.alias_rules[i]
+      var re
+      try {
+        re = new RegExp(rule.pattern)
+      } catch (e) {
+        continue
+      }
+      if (re.test(s)) {
+        return CURSOR_PRICING.models[rule.canonical] || null
+      }
+    }
+    return null
+  }
+
   function readStateValue(ctx, key) {
     try {
       const sql =
@@ -666,5 +767,9 @@
     return { plan: plan, lines: lines }
   }
 
-  globalThis.__openusage_plugin = { id: "cursor", probe }
+  globalThis.__openusage_plugin = {
+    id: "cursor",
+    probe,
+    __test: { resolveModelRates },
+  }
 })()

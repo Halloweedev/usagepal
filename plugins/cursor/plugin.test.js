@@ -1814,3 +1814,20 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Usage request failed. Check your connection.")
   })
 })
+
+describe("cursor pricing", () => {
+  it("resolves a known slug and its alias to rates", async () => {
+    const plugin = await loadPlugin()
+    const r = plugin.__test.resolveModelRates("composer-2.5-fast")
+    expect(r).toEqual({ input: 0.5, cache_write: null, cache_read: 0.2, output: 2.5, apply_max_mode_uplift: true })
+    expect(plugin.__test.resolveModelRates("claude-sonnet-5")).toEqual({
+      input: 3.0, cache_write: 3.75, cache_read: 0.3, output: 15.0, apply_max_mode_uplift: true,
+    })
+  })
+
+  it("returns null for an unknown slug", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.resolveModelRates("totally-unknown-model")).toBeNull()
+    expect(plugin.__test.resolveModelRates("")).toBeNull()
+  })
+})
