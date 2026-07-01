@@ -1975,6 +1975,31 @@ describe("cursor spend history assembly", () => {
     }
   })
 
+  it("selects Today's bucket by UTC day, not local timezone", async () => {
+    // Force a local timezone well behind UTC (America/New_York) so that
+    // 2026-07-01T02:00:00Z (June 30 local) still resolves to the July 1 UTC
+    // bucket. This reproduces the bug regardless of the host machine's TZ.
+    vi.stubEnv("TZ", "America/New_York")
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-01T02:00:00.000Z"))
+    try {
+      const ctx = makeCtx()
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        bodyText: HEADER2 + "\n" + csvRow("2026-07-01T02:00:00.000Z", 3000000) + "\n",
+      })
+      const plugin = await loadPlugin()
+      const lines = []
+      plugin.__test.appendSpendHistory(ctx, lines, TOKEN, false)
+
+      const byLabel = Object.fromEntries(lines.map((l) => [l.label, l]))
+      expect(byLabel["Today"].value).toContain("3M tokens")
+    } finally {
+      vi.useRealTimers()
+      vi.unstubAllEnvs()
+    }
+  })
+
   it("adds no lines when the CSV request fails", async () => {
     const ctx = makeCtx()
     ctx.host.http.request.mockReturnValue({ status: 500, bodyText: "" })

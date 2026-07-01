@@ -390,11 +390,11 @@
     var daily = aggregateDailyFromCsvRows(ctx, rows, nowMs, isRequestBasedPlan)
     if (!daily.length) return
 
-    var now = new Date(nowMs)
-    var todayKey = dayKeyFromDate(now)
-    var yesterday = new Date(nowMs)
-    yesterday.setDate(yesterday.getDate() - 1)
-    var yesterdayKey = dayKeyFromDate(yesterday)
+    // Buckets are keyed by UTC day (dayKeyFromUsageDate reads the ISO Z prefix),
+    // so derive today/yesterday in UTC too — otherwise users far from UTC get
+    // their current-day spend mislabeled or dropped from Today/Yesterday.
+    var todayKey = new Date(nowMs).toISOString().slice(0, 10)
+    var yesterdayKey = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
     var todayEntry = null
     var yesterdayEntry = null
