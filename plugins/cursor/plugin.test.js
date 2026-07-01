@@ -1996,3 +1996,55 @@ describe("cursor spend history assembly", () => {
     expect(lines).toEqual([])
   })
 })
+
+describe("cursor probe integrates spend history", () => {
+  const HEADER3 =
+    "Date,Cloud Agent ID,Automation ID,Kind,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Total Tokens,Requests"
+
+  it("appends Today/Yesterday/Last 30 Days/Usage Trend to a successful probe", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"))
+    try {
+      const ctx = makeCtx()
+      // Valid access token in sqlite so probe authenticates.
+      const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url")
+      const payload = Buffer.from(JSON.stringify({ sub: "auth0|user_x", exp: 4102444800 })).toString("base64url")
+      const token = `${header}.${payload}.sig`
+      ctx.host.sqlite.query.mockImplementation((_db, sql) => {
+        if (sql.includes("cursorAuth/accessToken")) return JSON.stringify([{ value: token }])
+        return JSON.stringify([])
+      })
+      ctx.host.http.request.mockImplementation((opts) => {
+        if (opts.url.includes("export-usage-events-csv")) {
+          return {
+            status: 200,
+            bodyText:
+              HEADER3 +
+              "\n" +
+              '"2026-07-01T01:00:00.000Z","","","free","composer-2","No","0","1000000","0","0","1000000","1"\n',
+          }
+        }
+        if (opts.url.includes("GetCurrentPeriodUsage")) {
+          return {
+            status: 200,
+            bodyText: JSON.stringify({
+              enabled: true,
+              planUsage: { limit: 20, totalPercentUsed: 10, remaining: 18 },
+              billingCycleStart: "1",
+              billingCycleEnd: "2",
+            }),
+          }
+        }
+        // GetPlanInfo, credits, stripe: benign empty successes.
+        return { status: 200, bodyText: JSON.stringify({}) }
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const labels = result.lines.map((l) => l.label)
+      expect(labels).toEqual(expect.arrayContaining(["Today", "Yesterday", "Last 30 Days", "Usage Trend"]))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

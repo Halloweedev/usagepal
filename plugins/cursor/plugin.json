@@ -16,6 +16,10 @@
     { "type": "progress", "label": "Requests", "scope": "overview", "primaryOrder": 3 },
     { "type": "progress", "label": "Auto usage", "scope": "detail" },
     { "type": "progress", "label": "API usage", "scope": "detail" },
-    { "type": "progress", "label": "On-demand", "scope": "detail" }
+    { "type": "progress", "label": "On-demand", "scope": "detail" },
+    { "type": "text", "label": "Today", "scope": "detail" },
+    { "type": "text", "label": "Yesterday", "scope": "detail" },
+    { "type": "text", "label": "Last 30 Days", "scope": "detail" },
+    { "type": "barChart", "label": "Usage Trend", "scope": "detail" }
   ]
 }

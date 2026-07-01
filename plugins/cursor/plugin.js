@@ -760,6 +760,8 @@
       if (planLabel) plan = planLabel
     }
 
+    appendSpendHistory(ctx, lines, accessToken, true)
+
     return { plan: plan, lines: lines }
   }
 
@@ -1078,6 +1080,8 @@
         }))
       }
     }
+
+    appendSpendHistory(ctx, lines, accessToken, false)
 
     return { plan: plan, lines: lines }
   }
