@@ -378,6 +378,35 @@ fn run_probe_batch(
     }
 }
 
+/// Longest the scheduler sleeps in a single slice while waiting for the next
+/// update. Bounding each sleep lets the loop notice a wake-from-sleep — where
+/// the wall clock jumps past the deadline — within one slice, instead of
+/// oversleeping by the whole suspend duration. Each extra wake is a single
+/// integer compare, so the battery/CPU cost is negligible; the machine performs
+/// no wakes at all while actually asleep.
+const SCHEDULER_MAX_SLICE_MS: u64 = 30_000;
+
+/// What the scheduler loop should do on this tick, given the current wall-clock
+/// time and the deadline for the next update. Kept pure so the wake-aware timing
+/// logic is unit-testable without spawning threads or sleeping.
+#[derive(Debug, PartialEq, Eq)]
+enum SchedulerAction {
+    /// Deadline reached (or passed, e.g. after waking from sleep) — probe now.
+    Fire,
+    /// Sleep this many milliseconds, then re-evaluate.
+    Sleep(u64),
+}
+
+/// Decide the next scheduler action. Fires once `now_ms` reaches `deadline_ms`;
+/// otherwise sleeps toward the deadline in slices capped at `max_slice_ms`.
+fn scheduler_step(now_ms: u64, deadline_ms: u64, max_slice_ms: u64) -> SchedulerAction {
+    if now_ms >= deadline_ms {
+        SchedulerAction::Fire
+    } else {
+        SchedulerAction::Sleep((deadline_ms - now_ms).min(max_slice_ms))
+    }
+}
+
 /// Native auto-update scheduler. Replaces the previous frontend `setTimeout`
 /// loop so the panel's WebView no longer has to run JS while hidden. Each cycle
 /// re-reads the interval and the enabled-plugin set from settings.json (so
@@ -393,17 +422,33 @@ fn start_auto_update_scheduler(
     let known_plugin_ids: Vec<String> = plugins.iter().map(|p| p.manifest.id.clone()).collect();
 
     std::thread::spawn(move || {
+        // Wall-clock start of the current wait cycle. Reset after each fire so
+        // the next interval is measured from when the last one completed.
+        let mut cycle_start_ms = unix_now_ms();
         loop {
             let interval_minutes = local_http_api::read_auto_update_interval_minutes(&app_data_dir);
-            let interval = Duration::from_secs(interval_minutes.saturating_mul(60));
-            // Publish the next-run time before sleeping so the UI can show an
-            // accurate countdown even if it queries mid-cycle or after the
-            // WebView was throttled while hidden.
-            NEXT_UPDATE_AT_MS.store(
-                unix_now_ms().saturating_add(interval.as_millis() as u64),
-                Ordering::Relaxed,
-            );
-            std::thread::sleep(interval);
+            let interval_ms = interval_minutes
+                .saturating_mul(60)
+                .saturating_mul(1000);
+            let deadline_ms = cycle_start_ms.saturating_add(interval_ms);
+            // Publish the next-run time so the UI can show an accurate countdown
+            // even if it queries mid-cycle or after the WebView was throttled
+            // while hidden.
+            NEXT_UPDATE_AT_MS.store(deadline_ms, Ordering::Relaxed);
+
+            // Wait for the deadline in bounded slices. Sleeping in slices (rather
+            // than one long sleep) means a wake-from-sleep that lands past the
+            // deadline is noticed within one slice and fires immediately, instead
+            // of oversleeping by the whole suspend duration. While the machine is
+            // actually asleep the thread does not run, so this costs no battery.
+            while let SchedulerAction::Sleep(ms) =
+                scheduler_step(unix_now_ms(), deadline_ms, SCHEDULER_MAX_SLICE_MS)
+            {
+                std::thread::sleep(Duration::from_millis(ms));
+            }
+            // Firing now — measure the next cycle from this moment so every path
+            // below (including the early `continue`s) starts a fresh interval.
+            cycle_start_ms = unix_now_ms();
 
             let enabled = local_http_api::read_enabled_plugin_ids(&app_data_dir, &known_plugin_ids);
             if enabled.is_empty() {
@@ -724,7 +769,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_CONCURRENT_PROBES, probe_worker_count};
+    use super::{MAX_CONCURRENT_PROBES, SchedulerAction, probe_worker_count, scheduler_step};
 
     #[test]
     fn probe_worker_count_is_bounded() {
@@ -737,6 +782,40 @@ mod tests {
         assert_eq!(
             probe_worker_count(MAX_CONCURRENT_PROBES + 1),
             MAX_CONCURRENT_PROBES
+        );
+    }
+
+    #[test]
+    fn scheduler_fires_when_deadline_reached() {
+        assert_eq!(scheduler_step(1_000, 1_000, 30_000), SchedulerAction::Fire);
+    }
+
+    #[test]
+    fn scheduler_fires_when_woken_far_past_deadline() {
+        // The machine slept through the deadline: wall clock jumped way past it.
+        assert_eq!(
+            scheduler_step(60_000_000, 1_000, 30_000),
+            SchedulerAction::Fire
+        );
+    }
+
+    #[test]
+    fn scheduler_sleeps_a_capped_slice_when_deadline_is_far() {
+        // 5 minutes out, capped to a 30s slice so a wake mid-wait is noticed
+        // within one slice instead of oversleeping the whole nap.
+        assert_eq!(
+            scheduler_step(0, 300_000, 30_000),
+            SchedulerAction::Sleep(30_000)
+        );
+    }
+
+    #[test]
+    fn scheduler_sleeps_exactly_the_remainder_near_the_deadline() {
+        // Within one slice of the deadline: sleep just the remainder so we don't
+        // add pointless wakeups at the tail of the wait.
+        assert_eq!(
+            scheduler_step(295_000, 300_000, 30_000),
+            SchedulerAction::Sleep(5_000)
         );
     }
 }
