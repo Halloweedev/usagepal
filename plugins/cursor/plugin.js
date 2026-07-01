@@ -262,6 +262,174 @@
       })
   }
 
+  function fmtTokens(n) {
+    var abs = Math.abs(n)
+    var sign = n < 0 ? "-" : ""
+    var units = [
+      { threshold: 1e9, divisor: 1e9, suffix: "B" },
+      { threshold: 1e6, divisor: 1e6, suffix: "M" },
+      { threshold: 1e3, divisor: 1e3, suffix: "K" },
+    ]
+    for (var i = 0; i < units.length; i++) {
+      var unit = units[i]
+      if (abs >= unit.threshold) {
+        var scaled = abs / unit.divisor
+        var formatted = scaled >= 10 ? Math.round(scaled).toString() : scaled.toFixed(1).replace(/\.0$/, "")
+        return sign + formatted + unit.suffix
+      }
+    }
+    return sign + Math.round(abs).toString()
+  }
+
+  function costAndTokensLabel(data, opts) {
+    var includeZeroTokens = !!(opts && opts.includeZeroTokens)
+    var parts = []
+    if (data.costUSD != null) parts.push("$" + data.costUSD.toFixed(2))
+    if (data.tokens > 0 || (includeZeroTokens && data.tokens === 0)) {
+      parts.push(fmtTokens(data.tokens) + " tokens")
+    }
+    return parts.join(" · ")
+  }
+
+  function usageCostUsd(day) {
+    if (!day || typeof day !== "object") return null
+    if (day.costUSD != null) {
+      var costUSD = Number(day.costUSD)
+      if (Number.isFinite(costUSD)) return costUSD
+    }
+    return null
+  }
+
+  function usageDayLabel(rawDate) {
+    var key = dayKeyFromUsageDate(rawDate)
+    if (!key) return String(rawDate || "").slice(0, 10) || "Usage"
+    var month = Number(key.slice(5, 7))
+    var day = Number(key.slice(8, 10))
+    return month + "/" + day
+  }
+
+  function collectUsageChartPoints(daily) {
+    var points = []
+    for (var i = 0; i < daily.length; i++) {
+      var day = daily[i]
+      var tokens = Number(day && day.totalTokens)
+      if (!Number.isFinite(tokens) || tokens < 0) continue
+      var key = dayKeyFromUsageDate(day.date)
+      if (!key) continue
+      points.push({
+        key: key,
+        label: usageDayLabel(day.date),
+        value: tokens,
+        valueLabel: fmtTokens(tokens) + " tokens",
+      })
+    }
+    return points
+      .sort(function (a, b) {
+        return a.key.localeCompare(b.key)
+      })
+      .slice(-31)
+      .map(function (point) {
+        return { label: point.label, value: point.value, valueLabel: point.valueLabel }
+      })
+  }
+
+  function pushUsageChartLine(lines, ctx, daily) {
+    var points = collectUsageChartPoints(daily)
+    if (points.length === 0) return
+    lines.push(
+      ctx.line.barChart({
+        label: "Usage Trend",
+        points: points,
+        note: "Estimated at API rates.",
+        color: "#000000",
+      })
+    )
+  }
+
+  function pushDayUsageLine(lines, ctx, label, dayEntry) {
+    var tokens = Number(dayEntry && dayEntry.totalTokens) || 0
+    var cost = usageCostUsd(dayEntry)
+    if (tokens > 0) {
+      lines.push(ctx.line.text({ label: label, value: costAndTokensLabel({ tokens: tokens, costUSD: cost }) }))
+      return
+    }
+    lines.push(
+      ctx.line.text({ label: label, value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true }) })
+    )
+  }
+
+  var USAGE_CSV_URL = "https://cursor.com/api/dashboard/export-usage-events-csv"
+
+  function fetchUsageEventsCsv(ctx, accessToken) {
+    var session = buildSessionToken(ctx, accessToken)
+    if (!session) return null
+    try {
+      var resp = ctx.util.request({
+        method: "GET",
+        url: USAGE_CSV_URL,
+        headers: { Cookie: "WorkosCursorSessionToken=" + session.sessionToken },
+        timeoutMs: 10000,
+      })
+      if (!resp || resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.warn("usage events csv returned status=" + (resp && resp.status))
+        return null
+      }
+      return typeof resp.bodyText === "string" ? resp.bodyText : null
+    } catch (e) {
+      ctx.host.log.warn("usage events csv fetch failed: " + String(e))
+      return null
+    }
+  }
+
+  function appendSpendHistory(ctx, lines, accessToken, isRequestBasedPlan) {
+    var csv = fetchUsageEventsCsv(ctx, accessToken)
+    if (!csv) return
+    var rows = parseUsageEventsCsv(csv)
+    if (!rows.length) return
+    var nowMs = Date.now()
+    var daily = aggregateDailyFromCsvRows(ctx, rows, nowMs, isRequestBasedPlan)
+    if (!daily.length) return
+
+    var now = new Date(nowMs)
+    var todayKey = dayKeyFromDate(now)
+    var yesterday = new Date(nowMs)
+    yesterday.setDate(yesterday.getDate() - 1)
+    var yesterdayKey = dayKeyFromDate(yesterday)
+
+    var todayEntry = null
+    var yesterdayEntry = null
+    for (var i = 0; i < daily.length; i++) {
+      var k = dayKeyFromUsageDate(daily[i].date)
+      if (k === todayKey) todayEntry = daily[i]
+      else if (k === yesterdayKey) yesterdayEntry = daily[i]
+    }
+    pushDayUsageLine(lines, ctx, "Today", todayEntry)
+    pushDayUsageLine(lines, ctx, "Yesterday", yesterdayEntry)
+
+    var totalTokens = 0
+    var totalCostNanos = 0
+    var hasCost = false
+    for (var j = 0; j < daily.length; j++) {
+      var day = daily[j]
+      var t = Number(day.totalTokens)
+      if (Number.isFinite(t)) totalTokens += t
+      var c = usageCostUsd(day)
+      if (c != null) {
+        totalCostNanos += Math.round(c * 1e9)
+        hasCost = true
+      }
+    }
+    if (totalTokens > 0) {
+      lines.push(
+        ctx.line.text({
+          label: "Last 30 Days",
+          value: costAndTokensLabel({ tokens: totalTokens, costUSD: hasCost ? totalCostNanos / 1e9 : null }),
+        })
+      )
+    }
+    pushUsageChartLine(lines, ctx, daily)
+  }
+
   function readStateValue(ctx, key) {
     try {
       const sql =
@@ -924,6 +1092,7 @@
       aggregateDailyFromCsvRows,
       dayKeyFromDate,
       dayKeyFromUsageDate,
+      appendSpendHistory,
     },
   }
 })()

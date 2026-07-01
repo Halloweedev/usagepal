@@ -1930,3 +1930,69 @@ describe("cursor imputation + aggregation", () => {
     expect(ctx.host.log.info).toHaveBeenCalledWith("cursor pricing: unknown model unknownx")
   })
 })
+
+describe("cursor spend history assembly", () => {
+  const HEADER2 =
+    "Date,Cloud Agent ID,Automation ID,Kind,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Total Tokens,Requests"
+  // A valid Cursor access token JWT with sub "auth0|user_x" so buildSessionToken works.
+  const HEADER_JSON = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url")
+  const PAYLOAD_JSON = Buffer.from(JSON.stringify({ sub: "auth0|user_x" })).toString("base64url")
+  const TOKEN = `${HEADER_JSON}.${PAYLOAD_JSON}.sig`
+
+  function csvRow(dateIso, tokens) {
+    return `"${dateIso}","","","free","composer-2","No","0","${tokens}","0","0","${tokens}","1"`
+  }
+
+  it("adds Today/Yesterday/Last 30 Days + Usage Trend from CSV", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"))
+    try {
+      const ctx = makeCtx()
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        bodyText:
+          HEADER2 +
+          "\n" +
+          csvRow("2026-07-01T01:00:00.000Z", 1000000) +
+          "\n" +
+          csvRow("2026-06-30T01:00:00.000Z", 2000000) +
+          "\n",
+      })
+      const plugin = await loadPlugin()
+      const lines = []
+      plugin.__test.appendSpendHistory(ctx, lines, TOKEN, false)
+
+      const byLabel = Object.fromEntries(lines.map((l) => [l.label, l]))
+      expect(byLabel["Today"].type).toBe("text")
+      expect(byLabel["Today"].value).toContain("1M tokens")
+      expect(byLabel["Yesterday"].value).toContain("2M tokens")
+      expect(byLabel["Last 30 Days"].value).toContain("3M tokens")
+      expect(byLabel["Usage Trend"].type).toBe("barChart")
+      expect(byLabel["Usage Trend"].note).toBe("Estimated at API rates.")
+      expect(byLabel["Usage Trend"].points).toHaveLength(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("adds no lines when the CSV request fails", async () => {
+    const ctx = makeCtx()
+    ctx.host.http.request.mockReturnValue({ status: 500, bodyText: "" })
+    const plugin = await loadPlugin()
+    const lines = []
+    plugin.__test.appendSpendHistory(ctx, lines, TOKEN, false)
+    expect(lines).toEqual([])
+    expect(ctx.host.log.warn).toHaveBeenCalled()
+  })
+
+  it("adds no lines and does not throw when request throws", async () => {
+    const ctx = makeCtx()
+    ctx.host.http.request.mockImplementation(() => {
+      throw new Error("network down")
+    })
+    const plugin = await loadPlugin()
+    const lines = []
+    expect(() => plugin.__test.appendSpendHistory(ctx, lines, TOKEN, false)).not.toThrow()
+    expect(lines).toEqual([])
+  })
+})
