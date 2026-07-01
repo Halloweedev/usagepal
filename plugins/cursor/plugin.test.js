@@ -1831,3 +1831,49 @@ describe("cursor pricing", () => {
     expect(plugin.__test.resolveModelRates("")).toBeNull()
   })
 })
+
+describe("cursor usage CSV parser", () => {
+  const HEADER =
+    "Date,Cloud Agent ID,Automation ID,Kind,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Total Tokens,Requests"
+
+  it("parses the verified header + sample row into token buckets", async () => {
+    const plugin = await loadPlugin()
+    const csv =
+      HEADER +
+      "\r\n" +
+      '"2026-06-21T14:25:29.044Z","","","free","composer-2.5-fast","No","0","83265","685312","6760","775337","17.3"\r\n'
+    const rows = plugin.__test.parseUsageEventsCsv(csv)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toEqual({
+      date: "2026-06-21T14:25:29.044Z",
+      kind: "free",
+      model: "composer-2.5-fast",
+      maxMode: "No",
+      cacheWrite: 0,
+      input: 83265,
+      cacheRead: 685312,
+      output: 6760,
+      totalTokens: 775337,
+    })
+  })
+
+  it("skips blank/whitespace lines and rows with no date", async () => {
+    const plugin = await loadPlugin()
+    const csv =
+      HEADER +
+      "\n" +
+      '"2026-06-21T00:00:00.000Z","","","free","composer-2","Yes","1","2","3","4","10","1"\n' +
+      "\n" +
+      '"","","","free","composer-2","No","1","1","1","1","4","1"\n'
+    const rows = plugin.__test.parseUsageEventsCsv(csv)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].model).toBe("composer-2")
+    expect(rows[0].maxMode).toBe("Yes")
+  })
+
+  it("returns empty for empty or header-only input", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.parseUsageEventsCsv("")).toEqual([])
+    expect(plugin.__test.parseUsageEventsCsv(HEADER)).toEqual([])
+  })
+})

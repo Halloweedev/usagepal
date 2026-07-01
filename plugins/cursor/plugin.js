@@ -115,6 +115,89 @@
     return null
   }
 
+  function parseCsvLine(line) {
+    const out = []
+    var cur = ""
+    var inQuotes = false
+    for (var i = 0; i < line.length; i++) {
+      var ch = line.charAt(i)
+      if (inQuotes) {
+        if (ch === '"') {
+          if (line.charAt(i + 1) === '"') {
+            cur += '"'
+            i++
+          } else {
+            inQuotes = false
+          }
+        } else {
+          cur += ch
+        }
+      } else if (ch === '"') {
+        inQuotes = true
+      } else if (ch === ",") {
+        out.push(cur)
+        cur = ""
+      } else {
+        cur += ch
+      }
+    }
+    out.push(cur)
+    return out
+  }
+
+  function parseUsageEventsCsv(text) {
+    var rows = []
+    if (typeof text !== "string" || !text.trim()) return rows
+    var lines = text.split(/\r?\n/)
+    if (lines.length < 2) return rows
+    var header = parseCsvLine(lines[0]).map(function (h) {
+      return h.trim()
+    })
+    function col(name) {
+      return header.indexOf(name)
+    }
+    var iDate = col("Date")
+    var iKind = col("Kind")
+    var iModel = col("Model")
+    var iMax = col("Max Mode")
+    var iCW = col("Input (w/ Cache Write)")
+    var iIn = col("Input (w/o Cache Write)")
+    var iCR = col("Cache Read")
+    var iOut = col("Output Tokens")
+    var iTot = col("Total Tokens")
+    if (iDate < 0 || iModel < 0) return rows
+    function num(v) {
+      var n = Number(String(v == null ? "" : v).trim())
+      return Number.isFinite(n) ? n : 0
+    }
+    function str(v) {
+      return String(v == null ? "" : v).trim()
+    }
+    for (var i = 1; i < lines.length; i++) {
+      var raw = lines[i]
+      if (!raw || !raw.trim()) continue
+      var c = parseCsvLine(raw)
+      var date = str(c[iDate])
+      if (!date) continue
+      var cacheWrite = iCW >= 0 ? num(c[iCW]) : 0
+      var input = iIn >= 0 ? num(c[iIn]) : 0
+      var cacheRead = iCR >= 0 ? num(c[iCR]) : 0
+      var output = iOut >= 0 ? num(c[iOut]) : 0
+      rows.push({
+        date: date,
+        kind: iKind >= 0 ? str(c[iKind]) : "",
+        model: str(c[iModel]),
+        maxMode: iMax >= 0 ? str(c[iMax]) : "",
+        cacheWrite: cacheWrite,
+        input: input,
+        cacheRead: cacheRead,
+        output: output,
+        totalTokens: iTot >= 0 ? num(c[iTot]) : cacheWrite + input + cacheRead + output,
+      })
+    }
+    return rows
+  }
+
   function readStateValue(ctx, key) {
     try {
       const sql =
@@ -770,6 +853,6 @@
   globalThis.__openusage_plugin = {
     id: "cursor",
     probe,
-    __test: { resolveModelRates },
+    __test: { resolveModelRates, parseUsageEventsCsv },
   }
 })()
