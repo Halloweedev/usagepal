@@ -93,6 +93,7 @@ pub struct ManifestLineDto {
     pub line_type: String,
     pub label: String,
     pub scope: String,
+    pub escalate_at_percent: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -605,6 +606,7 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                         line_type: line.line_type.clone(),
                         label: line.label.clone(),
                         scope: line.scope.clone(),
+                        escalate_at_percent: line.escalate_at_percent,
                     })
                     .collect(),
                 links: plugin

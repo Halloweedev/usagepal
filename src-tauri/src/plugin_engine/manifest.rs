@@ -15,6 +15,11 @@ pub struct ManifestLine {
     /// Marks this line as the provider's recurring-period metric for the
     /// menubar metric preference. Currently only "weekly" is recognized.
     pub period: Option<String>,
+    /// When this progress line's usage fraction reaches this percent (0-100),
+    /// it escalates: it takes over the overview card and menubar tray in place
+    /// of the provider's normal primary/overview metrics. Ignored on non-progress
+    /// lines and when out of range. (serde defaults a missing Option to None.)
+    pub escalate_at_percent: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -114,6 +119,23 @@ fn load_single_plugin(
                     manifest.id,
                     line.label,
                     period
+                );
+            }
+        }
+        if let Some(percent) = line.escalate_at_percent {
+            if line.line_type != "progress" {
+                log::warn!(
+                    "plugin {} line '{}' has escalateAtPercent but type is '{}'; will be ignored",
+                    manifest.id,
+                    line.label,
+                    line.line_type
+                );
+            } else if !(0.0..=100.0).contains(&percent) {
+                log::warn!(
+                    "plugin {} line '{}' has escalateAtPercent {} outside 0-100; will be ignored",
+                    manifest.id,
+                    line.label,
+                    percent
                 );
             }
         }
@@ -392,6 +414,30 @@ mod tests {
         assert_eq!(manifest.links.len(), 2);
         assert_eq!(manifest.links[0].label, "Status");
         assert_eq!(manifest.links[1].url, "https://example.com/billing");
+    }
+
+    #[test]
+    fn escalate_at_percent_parsed_for_progress_line() {
+        let manifest = parse_manifest(
+            r#"
+            {
+              "schemaVersion": 1,
+              "id": "x",
+              "name": "X",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "brandColor": null,
+              "lines": [
+                { "type": "progress", "label": "Monthly", "scope": "detail", "escalateAtPercent": 98 },
+                { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 }
+              ]
+            }
+            "#,
+        );
+
+        assert_eq!(manifest.lines[0].escalate_at_percent, Some(98.0));
+        assert!(manifest.lines[1].escalate_at_percent.is_none());
     }
 
     #[test]
