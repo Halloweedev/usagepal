@@ -408,6 +408,21 @@ fn scheduler_step(now_ms: u64, deadline_ms: u64, max_slice_ms: u64) -> Scheduler
     }
 }
 
+/// Extra wall-clock time, beyond the slice we asked to sleep, that marks the
+/// machine as having been suspended (lid closed) rather than merely descheduled.
+/// A real suspend jumps the wall clock by minutes-to-hours; normal scheduler
+/// jitter stays far below this, so the slack keeps us from firing spuriously.
+const SUSPEND_DETECT_SLACK_MS: u64 = 5_000;
+
+/// True when a slice that asked to sleep `slept_ms` actually saw `elapsed_ms` of
+/// wall clock pass — i.e. the machine was suspended mid-slice and just woke. On
+/// wake we refresh right away (within one slice) even if the interval deadline
+/// hasn't arrived, so coming back to the app shows fresh data without reopening
+/// it and without waiting out the rest of the interval. Kept pure for testing.
+fn woke_from_suspend(slept_ms: u64, elapsed_ms: u64, slack_ms: u64) -> bool {
+    elapsed_ms > slept_ms.saturating_add(slack_ms)
+}
+
 /// Native auto-update scheduler. Replaces the previous frontend `setTimeout`
 /// loop so the panel's WebView no longer has to run JS while hidden. Each cycle
 /// re-reads the interval and the enabled-plugin set from settings.json (so
@@ -438,14 +453,27 @@ fn start_auto_update_scheduler(
             NEXT_UPDATE_AT_MS.store(deadline_ms, Ordering::Relaxed);
 
             // Wait for the deadline in bounded slices. Sleeping in slices (rather
-            // than one long sleep) means a wake-from-sleep that lands past the
-            // deadline is noticed within one slice and fires immediately, instead
-            // of oversleeping by the whole suspend duration. While the machine is
-            // actually asleep the thread does not run, so this costs no battery.
-            while let SchedulerAction::Sleep(ms) =
-                scheduler_step(unix_now_ms(), deadline_ms, SCHEDULER_MAX_SLICE_MS)
-            {
-                std::thread::sleep(Duration::from_millis(ms));
+            // than one long sleep) does two things: a wake-from-sleep that lands
+            // past the deadline is noticed within one slice and fires immediately
+            // (instead of oversleeping the whole suspend), and — because we
+            // remeasure the wall clock around each slice — a wake that lands
+            // *before* the deadline (a nap shorter than the interval) is detected
+            // as a suspend and also fires. That makes waking the machine refresh
+            // the data on its own within one slice, no matter the nap length,
+            // without reopening the panel. While the machine is actually asleep
+            // the thread does not run, so this costs no battery.
+            loop {
+                let before_ms = unix_now_ms();
+                match scheduler_step(before_ms, deadline_ms, SCHEDULER_MAX_SLICE_MS) {
+                    SchedulerAction::Fire => break,
+                    SchedulerAction::Sleep(ms) => {
+                        std::thread::sleep(Duration::from_millis(ms));
+                        let elapsed_ms = unix_now_ms().saturating_sub(before_ms);
+                        if woke_from_suspend(ms, elapsed_ms, SUSPEND_DETECT_SLACK_MS) {
+                            break;
+                        }
+                    }
+                }
             }
             // Firing now — measure the next cycle from this moment so every path
             // below (including the early `continue`s) starts a fresh interval.
@@ -771,7 +799,10 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_CONCURRENT_PROBES, SchedulerAction, probe_worker_count, scheduler_step};
+    use super::{
+        MAX_CONCURRENT_PROBES, SchedulerAction, probe_worker_count, scheduler_step,
+        woke_from_suspend,
+    };
 
     #[test]
     fn probe_worker_count_is_bounded() {
@@ -819,5 +850,35 @@ mod tests {
             scheduler_step(295_000, 300_000, 30_000),
             SchedulerAction::Sleep(5_000)
         );
+    }
+
+    #[test]
+    fn suspend_detected_when_wall_clock_jumps_past_the_slice() {
+        // Asked to sleep 30s but two hours of wall clock elapsed: the machine was
+        // suspended mid-slice and just woke, so we should refresh on wake even
+        // though the interval deadline may still be in the future.
+        assert!(woke_from_suspend(30_000, 7_200_000, 5_000));
+    }
+
+    #[test]
+    fn no_suspend_for_a_normal_slice_with_jitter() {
+        // A slice that slept about as long as requested (plus a little scheduler
+        // jitter) is not a wake-from-suspend and must not trigger a refresh.
+        assert!(!woke_from_suspend(30_000, 30_400, 5_000));
+    }
+
+    #[test]
+    fn no_suspend_right_at_the_slack_boundary() {
+        // Elapsed exactly slept + slack is still within tolerance (strict `>`),
+        // so it is not treated as a suspend.
+        assert!(!woke_from_suspend(30_000, 35_000, 5_000));
+        assert!(woke_from_suspend(30_000, 35_001, 5_000));
+    }
+
+    #[test]
+    fn suspend_detected_for_a_nap_shorter_than_the_interval() {
+        // Even a short nap (a couple of minutes) that never crosses the interval
+        // deadline is a wake-from-suspend and refreshes on wake.
+        assert!(woke_from_suspend(30_000, 120_000, 5_000));
     }
 }
