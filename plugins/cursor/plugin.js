@@ -198,6 +198,70 @@
     return rows
   }
 
+  function dayKeyFromDate(date) {
+    var year = date.getFullYear()
+    var month = date.getMonth() + 1
+    var day = date.getDate()
+    return year + "-" + (month < 10 ? "0" : "") + month + "-" + (day < 10 ? "0" : "") + day
+  }
+
+  function dayKeyFromUsageDate(rawDate) {
+    if (typeof rawDate !== "string") return null
+    var value = rawDate.trim()
+    if (!value) return null
+    var isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (isoMatch) {
+      return isoMatch[1] + "-" + isoMatch[2] + "-" + isoMatch[3]
+    }
+    var ms = Date.parse(value)
+    if (!Number.isFinite(ms)) return null
+    return dayKeyFromDate(new Date(ms))
+  }
+
+  function imputeRowCostUsd(row, rates, isRequestBasedPlan) {
+    if (!rates) return 0
+    var cwRate = rates.cache_write == null ? rates.input : rates.cache_write
+    var base =
+      (row.input * rates.input +
+        row.cacheWrite * cwRate +
+        row.cacheRead * rates.cache_read +
+        row.output * rates.output) /
+      1e6
+    var uplift =
+      row.maxMode === "Yes" && isRequestBasedPlan && rates.apply_max_mode_uplift
+        ? MAX_MODE_UPLIFT
+        : 1
+    return base * uplift
+  }
+
+  function aggregateDailyFromCsvRows(ctx, rows, nowMs, isRequestBasedPlan) {
+    var cutoffMs = nowMs - 31 * 24 * 60 * 60 * 1000
+    var byDay = {}
+    var warned = {}
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i]
+      var ms = Date.parse(row.date)
+      if (!Number.isFinite(ms) || ms < cutoffMs) continue
+      var key = dayKeyFromUsageDate(row.date)
+      if (!key) continue
+      var rates = resolveModelRates(row.model)
+      if (!rates && row.model && !warned[row.model]) {
+        warned[row.model] = true
+        ctx.host.log.info("cursor pricing: unknown model " + row.model)
+      }
+      var cost = imputeRowCostUsd(row, rates, isRequestBasedPlan)
+      if (!byDay[key]) byDay[key] = { date: key, costUSD: 0, totalTokens: 0 }
+      byDay[key].costUSD += cost
+      var t = Number(row.totalTokens)
+      if (Number.isFinite(t)) byDay[key].totalTokens += t
+    }
+    return Object.keys(byDay)
+      .sort()
+      .map(function (k) {
+        return byDay[k]
+      })
+  }
+
   function readStateValue(ctx, key) {
     try {
       const sql =
@@ -853,6 +917,13 @@
   globalThis.__openusage_plugin = {
     id: "cursor",
     probe,
-    __test: { resolveModelRates, parseUsageEventsCsv },
+    __test: {
+      resolveModelRates,
+      parseUsageEventsCsv,
+      imputeRowCostUsd,
+      aggregateDailyFromCsvRows,
+      dayKeyFromDate,
+      dayKeyFromUsageDate,
+    },
   }
 })()

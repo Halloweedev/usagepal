@@ -1877,3 +1877,56 @@ describe("cursor usage CSV parser", () => {
     expect(plugin.__test.parseUsageEventsCsv(HEADER)).toEqual([])
   })
 })
+
+describe("cursor imputation + aggregation", () => {
+  it("imputes cost from token buckets at model rates", async () => {
+    const plugin = await loadPlugin()
+    const rates = plugin.__test.resolveModelRates("composer-2.5")
+    // input 83265*0.5 + cacheWrite 0 (null->input rate) + cacheRead 685312*0.2 + output 6760*2.5, /1e6
+    const row = { model: "composer-2.5", maxMode: "No", cacheWrite: 0, input: 83265, cacheRead: 685312, output: 6760, totalTokens: 775337 }
+    const cost = plugin.__test.imputeRowCostUsd(row, rates, false)
+    expect(cost).toBeCloseTo((83265 * 0.5 + 685312 * 0.2 + 6760 * 2.5) / 1e6, 9)
+  })
+
+  it("prices cache-write at the input rate when cache_write is null", async () => {
+    const plugin = await loadPlugin()
+    const rates = plugin.__test.resolveModelRates("composer-2")
+    const row = { model: "composer-2", maxMode: "No", cacheWrite: 1000, input: 0, cacheRead: 0, output: 0, totalTokens: 1000 }
+    expect(plugin.__test.imputeRowCostUsd(row, rates, false)).toBeCloseTo((1000 * rates.input) / 1e6, 12)
+  })
+
+  it("applies the 20% Max Mode uplift only on request-based plans", async () => {
+    const plugin = await loadPlugin()
+    const rates = plugin.__test.resolveModelRates("composer-2")
+    const row = { model: "composer-2", maxMode: "Yes", cacheWrite: 0, input: 1000000, cacheRead: 0, output: 0, totalTokens: 1000000 }
+    const base = rates.input // 1e6 input tokens => exactly rates.input dollars
+    expect(plugin.__test.imputeRowCostUsd(row, rates, true)).toBeCloseTo(base * 1.2, 9)
+    expect(plugin.__test.imputeRowCostUsd(row, rates, false)).toBeCloseTo(base, 9)
+    const noMax = { ...row, maxMode: "No" }
+    expect(plugin.__test.imputeRowCostUsd(noMax, rates, true)).toBeCloseTo(base, 9)
+  })
+
+  it("returns 0 cost for unknown model but still needs no rates", async () => {
+    const plugin = await loadPlugin()
+    const row = { model: "nope", maxMode: "No", cacheWrite: 0, input: 100, cacheRead: 0, output: 0, totalTokens: 100 }
+    expect(plugin.__test.imputeRowCostUsd(row, null, false)).toBe(0)
+  })
+
+  it("aggregates rows by UTC day, filters >31 days, logs unknown models once", async () => {
+    const ctx = makeCtx()
+    const plugin = await loadPlugin()
+    const now = Date.UTC(2026, 6, 1, 12, 0, 0) // 2026-07-01T12:00Z
+    const rows = [
+      { date: "2026-07-01T01:00:00.000Z", model: "composer-2", maxMode: "No", cacheWrite: 0, input: 1000000, cacheRead: 0, output: 0, totalTokens: 1000000 },
+      { date: "2026-07-01T09:00:00.000Z", model: "unknownx", maxMode: "No", cacheWrite: 0, input: 5, cacheRead: 0, output: 0, totalTokens: 5 },
+      { date: "2026-06-30T23:00:00.000Z", model: "composer-2", maxMode: "No", cacheWrite: 0, input: 0, cacheRead: 0, output: 0, totalTokens: 42 },
+      { date: "2026-05-01T00:00:00.000Z", model: "composer-2", maxMode: "No", cacheWrite: 0, input: 1000000, cacheRead: 0, output: 0, totalTokens: 999 },
+    ]
+    const daily = plugin.__test.aggregateDailyFromCsvRows(ctx, rows, now, false)
+    expect(daily.map((d) => d.date)).toEqual(["2026-06-30", "2026-07-01"])
+    const jul1 = daily.find((d) => d.date === "2026-07-01")
+    expect(jul1.totalTokens).toBe(1000005)
+    expect(jul1.costUSD).toBeCloseTo(0.5, 9) // 1e6 input * composer-2 input(0.5)/1e6; unknown adds 0
+    expect(ctx.host.log.info).toHaveBeenCalledWith("cursor pricing: unknown model unknownx")
+  })
+})
