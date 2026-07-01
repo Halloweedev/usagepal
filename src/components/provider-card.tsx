@@ -13,6 +13,7 @@ import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode, type TimeFormatMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
 import { groupLinesByType } from "@/lib/group-lines-by-type"
+import { selectEscalatedLine } from "@/lib/metric-escalation"
 import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
 import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
 import { buildPaceDetailText, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
@@ -130,7 +131,14 @@ export function ProviderCard({
     ? lines
     : lines.filter(line => overviewLabels.has(line.label))
 
-  const hasResetCountdown = filteredLines.some(
+  // In overview scope, a metric that has crossed its escalation threshold takes
+  // over the card: show only it, replacing the normal overview lines. The detail
+  // view (scopeFilter "all") always shows every line, so it is left untouched.
+  const escalatedLine =
+    scopeFilter === "overview" ? selectEscalatedLine(lines, skeletonLines) : undefined
+  const displayLines = escalatedLine ? [escalatedLine] : filteredLines
+
+  const hasResetCountdown = displayLines.some(
     (line) => line.type === "progress" && Boolean(line.resetsAt)
   )
 
@@ -305,7 +313,7 @@ export function ProviderCard({
 
         {hasStaleData && (
           <div className="space-y-4">
-            {groupLinesByType(filteredLines).map((group, gi) =>
+            {groupLinesByType(displayLines).map((group, gi) =>
               group.kind === "text" ? (
                 <div key={gi} className="space-y-1">
                   {group.lines.map((line, li) => (

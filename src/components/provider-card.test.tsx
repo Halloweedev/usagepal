@@ -963,6 +963,72 @@ describe("ProviderCard", () => {
     )
     expect(screen.queryByText(/Updated/)).toBeNull()
   })
+
+  it("overview scope shows only the escalated line", () => {
+    render(
+      <ProviderCard
+        name="OpenCode"
+        displayMode="used"
+        scopeFilter="overview"
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+          { type: "progress", label: "Weekly", scope: "overview" },
+          { type: "progress", label: "Monthly", scope: "detail", escalateAtPercent: 98 },
+        ]}
+        lines={[
+          { type: "progress", label: "Session", used: 0, limit: 100, format: { kind: "percent" } },
+          { type: "progress", label: "Weekly", used: 40, limit: 100, format: { kind: "percent" } },
+          { type: "progress", label: "Monthly", used: 99, limit: 100, format: { kind: "percent" } },
+        ]}
+      />
+    )
+    expect(screen.getByText("Monthly")).toBeInTheDocument()
+    expect(screen.queryByText("Session")).not.toBeInTheDocument()
+    expect(screen.queryByText("Weekly")).not.toBeInTheDocument()
+  })
+
+  it("overview scope keeps normal lines when below threshold", () => {
+    render(
+      <ProviderCard
+        name="OpenCode"
+        displayMode="used"
+        scopeFilter="overview"
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+          { type: "progress", label: "Weekly", scope: "overview" },
+          { type: "progress", label: "Monthly", scope: "detail", escalateAtPercent: 98 },
+        ]}
+        lines={[
+          { type: "progress", label: "Session", used: 10, limit: 100, format: { kind: "percent" } },
+          { type: "progress", label: "Weekly", used: 40, limit: 100, format: { kind: "percent" } },
+          { type: "progress", label: "Monthly", used: 50, limit: 100, format: { kind: "percent" } },
+        ]}
+      />
+    )
+    expect(screen.getByText("Session")).toBeInTheDocument()
+    expect(screen.getByText("Weekly")).toBeInTheDocument()
+    expect(screen.queryByText("Monthly")).not.toBeInTheDocument()
+  })
+
+  it("detail scope shows all lines even when escalated", () => {
+    render(
+      <ProviderCard
+        name="OpenCode"
+        displayMode="used"
+        scopeFilter="all"
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+          { type: "progress", label: "Monthly", scope: "detail", escalateAtPercent: 98 },
+        ]}
+        lines={[
+          { type: "progress", label: "Session", used: 0, limit: 100, format: { kind: "percent" } },
+          { type: "progress", label: "Monthly", used: 99, limit: 100, format: { kind: "percent" } },
+        ]}
+      />
+    )
+    expect(screen.getByText("Session")).toBeInTheDocument()
+    expect(screen.getByText("Monthly")).toBeInTheDocument()
+  })
 })
 
 describe("groupLinesByType", () => {
