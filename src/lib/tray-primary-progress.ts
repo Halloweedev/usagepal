@@ -2,6 +2,7 @@ import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
 import type { PluginSettings } from "@/lib/settings"
 import { DEFAULT_DISPLAY_MODE, type DisplayMode } from "@/lib/settings"
 import { clamp01 } from "@/lib/utils"
+import { selectEscalatedLine } from "@/lib/metric-escalation"
 
 type PluginState = {
   data: PluginOutput | null
@@ -72,32 +73,45 @@ export function getTrayPrimaryBars(args: {
     let label: string | undefined
     let weekly: true | undefined
     if (data) {
-      // Prefer the declared weekly line when requested and present in data.
-      const weeklyLabel = preferWeekly ? meta.weeklyCandidate : undefined
-      const usesWeekly =
-        weeklyLabel !== undefined &&
-        data.lines.some((line) => isProgressLine(line) && line.label === weeklyLabel)
+      // A metric that has crossed its manifest-declared escalation threshold
+      // takes over the bar, overriding both the primary candidate and weekly
+      // mode — a nearly-maxed limit matters more than the default view.
+      const escalated = selectEscalatedLine(data.lines, meta.lines)
+      if (escalated) {
+        label = escalated.label
+        const shownAmount =
+          displayMode === "used"
+            ? escalated.used
+            : escalated.limit - escalated.used
+        fraction = clamp01(shownAmount / escalated.limit)
+      } else {
+        // Prefer the declared weekly line when requested and present in data.
+        const weeklyLabel = preferWeekly ? meta.weeklyCandidate : undefined
+        const usesWeekly =
+          weeklyLabel !== undefined &&
+          data.lines.some((line) => isProgressLine(line) && line.label === weeklyLabel)
 
-      // Otherwise fall back to the first primary candidate that exists in data.
-      const metricLabel = usesWeekly
-        ? weeklyLabel
-        : meta.primaryCandidates.find((candidate) =>
-            data.lines.some((line) => isProgressLine(line) && line.label === candidate)
+        // Otherwise fall back to the first primary candidate that exists in data.
+        const metricLabel = usesWeekly
+          ? weeklyLabel
+          : meta.primaryCandidates.find((candidate) =>
+              data.lines.some((line) => isProgressLine(line) && line.label === candidate)
+            )
+
+        if (metricLabel) {
+          label = metricLabel
+          weekly = usesWeekly || undefined
+          const metricLine = data.lines.find(
+            (line): line is ProgressLine =>
+              isProgressLine(line) && line.label === metricLabel
           )
-
-      if (metricLabel) {
-        label = metricLabel
-        weekly = usesWeekly || undefined
-        const metricLine = data.lines.find(
-          (line): line is ProgressLine =>
-            isProgressLine(line) && line.label === metricLabel
-        )
-        if (metricLine && metricLine.limit > 0) {
-          const shownAmount =
-            displayMode === "used"
-              ? metricLine.used
-              : metricLine.limit - metricLine.used
-          fraction = clamp01(shownAmount / metricLine.limit)
+          if (metricLine && metricLine.limit > 0) {
+            const shownAmount =
+              displayMode === "used"
+                ? metricLine.used
+                : metricLine.limit - metricLine.used
+            fraction = clamp01(shownAmount / metricLine.limit)
+          }
         }
       }
     }

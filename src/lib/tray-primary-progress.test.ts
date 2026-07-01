@@ -511,4 +511,114 @@ describe("getTrayPrimaryBars", () => {
       expect(bars).toEqual([{ id: "a", fraction: 0.2, label: "Session" }])
     })
   })
+
+  it("escalated line overrides the primary candidate", () => {
+    const bars = getTrayPrimaryBars({
+      displayMode: "used",
+      pluginsMeta: [
+        {
+          id: "oc",
+          name: "OpenCode",
+          iconUrl: "",
+          primaryCandidates: ["Session"],
+          lines: [
+            { type: "progress", label: "Session", scope: "overview" },
+            { type: "progress", label: "Monthly", scope: "detail", escalateAtPercent: 98 },
+          ],
+        },
+      ],
+      pluginSettings: { order: ["oc"], disabled: [] },
+      pluginStates: {
+        oc: {
+          data: {
+            providerId: "oc",
+            displayName: "OpenCode",
+            iconUrl: "",
+            lines: [
+              { type: "progress", label: "Session", used: 0, limit: 100, format: { kind: "percent" } },
+              { type: "progress", label: "Monthly", used: 99, limit: 100, format: { kind: "percent" } },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+    })
+
+    expect(bars).toEqual([{ id: "oc", fraction: 0.99, label: "Monthly" }])
+  })
+
+  it("escalated line overrides weekly mode", () => {
+    const bars = getTrayPrimaryBars({
+      displayMode: "used",
+      preferWeekly: true,
+      pluginsMeta: [
+        {
+          id: "oc",
+          name: "OpenCode",
+          iconUrl: "",
+          primaryCandidates: ["Session"],
+          weeklyCandidate: "Weekly",
+          lines: [
+            { type: "progress", label: "Weekly", scope: "overview", escalateAtPercent: undefined },
+            { type: "progress", label: "Monthly", scope: "detail", escalateAtPercent: 98 },
+          ],
+        },
+      ],
+      pluginSettings: { order: ["oc"], disabled: [] },
+      pluginStates: {
+        oc: {
+          data: {
+            providerId: "oc",
+            displayName: "OpenCode",
+            iconUrl: "",
+            lines: [
+              { type: "progress", label: "Weekly", used: 40, limit: 100, format: { kind: "percent" } },
+              { type: "progress", label: "Monthly", used: 100, limit: 100, format: { kind: "percent" } },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+    })
+
+    expect(bars).toEqual([{ id: "oc", fraction: 1, label: "Monthly" }])
+  })
+
+  it("does not escalate when below threshold (keeps primary)", () => {
+    const bars = getTrayPrimaryBars({
+      displayMode: "used",
+      pluginsMeta: [
+        {
+          id: "oc",
+          name: "OpenCode",
+          iconUrl: "",
+          primaryCandidates: ["Session"],
+          lines: [
+            { type: "progress", label: "Session", scope: "overview" },
+            { type: "progress", label: "Monthly", scope: "detail", escalateAtPercent: 98 },
+          ],
+        },
+      ],
+      pluginSettings: { order: ["oc"], disabled: [] },
+      pluginStates: {
+        oc: {
+          data: {
+            providerId: "oc",
+            displayName: "OpenCode",
+            iconUrl: "",
+            lines: [
+              { type: "progress", label: "Session", used: 20, limit: 100, format: { kind: "percent" } },
+              { type: "progress", label: "Monthly", used: 50, limit: 100, format: { kind: "percent" } },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+    })
+
+    expect(bars).toEqual([{ id: "oc", fraction: 0.2, label: "Session" }])
+  })
 })
