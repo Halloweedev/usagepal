@@ -28,6 +28,8 @@ export type ManifestLine = {
   type: "text" | "progress" | "badge" | "barChart"
   label: string
   scope: "overview" | "detail"
+  /** When set on a progress line, it escalates once used/limit >= this percent. */
+  escalateAtPercent?: number
 }
 
 export type PluginLink = {
