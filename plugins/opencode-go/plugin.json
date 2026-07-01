@@ -32,7 +32,8 @@
     {
       "type": "progress",
       "label": "Monthly",
-      "scope": "detail"
+      "scope": "detail",
+      "escalateAtPercent": 98
     }
   ]
 }
