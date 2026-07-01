@@ -50,21 +50,21 @@ function makeRoundedBarPath(args: {
 }
 
 function getMinVisibleRemainderPx(trackW: number): number {
-  // Keep remainder clearly visible after tray downsampling.
-  return Math.max(4, Math.round(trackW * 0.2))
+  // Keep a thin but visible tail on near-full (yet sub-threshold) bars so they
+  // still read as "not quite full", while surviving tray downsampling.
+  return Math.max(2, Math.round(trackW * 0.05))
 }
+
+/** At or above this fill, a bar reads as completely full (no tail). */
+const BAR_FULL_THRESHOLD = 0.97
 
 function getVisualBarFraction(fraction: number): number {
   if (!Number.isFinite(fraction)) return 0
   const clamped = Math.max(0, Math.min(1, fraction))
-  if (clamped > 0.7 && clamped < 1) {
-    // Quantize high-end bars by remainder in 15% steps so near-full values
-    // still leave a meaningful visible tail.
-    const remainder = 1 - clamped
-    const quantizedRemainder = Math.min(1, Math.ceil(remainder / 0.15) * 0.15)
-    return Math.max(0, 1 - quantizedRemainder)
-  }
-  return clamped
+  // Treat a near-maxed metric as full so it reads as maxed in the tiny tray
+  // icon; below the threshold render the true fraction (the min-remainder floor
+  // keeps a thin visible tail so just-below-full values still look not-full).
+  return clamped >= BAR_FULL_THRESHOLD ? 1 : clamped
 }
 
 export function getBarFillLayout(trackW: number, fraction: number): {

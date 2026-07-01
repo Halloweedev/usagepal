@@ -6,7 +6,12 @@ vi.mock("@tauri-apps/api/image", () => ({
   },
 }))
 
-import { getTrayIconSizePx, makeTrayBarsSvg, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
+import {
+  getBarFillLayout,
+  getTrayIconSizePx,
+  makeTrayBarsSvg,
+  renderTrayBarsIcon,
+} from "@/lib/tray-bars-icon"
 
 describe("tray-bars-icon", () => {
   it("getTrayIconSizePx renders 18px at 1x and 36px at 2x", () => {
@@ -57,7 +62,7 @@ describe("tray-bars-icon", () => {
     expect(svg).not.toContain("<image ")
   })
 
-  it("style=bars with high-end quantized fraction (0.95) renders bars (rect and path)", () => {
+  it("style=bars with near-full fraction (0.95) renders bars (rect and path)", () => {
     const svg = makeTrayBarsSvg({
       bars: [{ id: "a", fraction: 0.95 }],
       sizePx: 36,
@@ -181,5 +186,60 @@ describe("tray-bars-icon", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(document as any).createElement = originalCreateElement
     }
+  })
+})
+
+describe("getBarFillLayout", () => {
+  // Retina track width: 36px icon - 2*3px pad = 30px.
+  const TRACK = 30
+
+  it("renders completely full at the 0.97 threshold (no tail)", () => {
+    expect(getBarFillLayout(TRACK, 0.97)).toEqual({
+      fillW: TRACK,
+      remainderDrawW: 0,
+      dividerX: null,
+    })
+  })
+
+  it("renders completely full at 1.0", () => {
+    expect(getBarFillLayout(TRACK, 1)).toEqual({
+      fillW: TRACK,
+      remainderDrawW: 0,
+      dividerX: null,
+    })
+  })
+
+  it("just below the threshold (0.96) leaves only a thin 2px tail", () => {
+    // maxFillW = 30 - max(2, round(30*0.05)=2) = 28.
+    expect(getBarFillLayout(TRACK, 0.96)).toEqual({
+      fillW: 28,
+      remainderDrawW: 2,
+      dividerX: 28,
+    })
+  })
+
+  it("renders the true fraction below the near-full band (0.90)", () => {
+    expect(getBarFillLayout(TRACK, 0.9)).toEqual({
+      fillW: 27,
+      remainderDrawW: 3,
+      dividerX: 27,
+    })
+  })
+
+  it("no longer caps mid-high fills at 80% (0.85 fills past the old cap)", () => {
+    // Old behavior capped fillW at 24 (80%); new floor lets it reach 26.
+    expect(getBarFillLayout(TRACK, 0.85)).toEqual({
+      fillW: 26,
+      remainderDrawW: 4,
+      dividerX: 26,
+    })
+  })
+
+  it("returns an empty layout for zero/negative fraction", () => {
+    expect(getBarFillLayout(TRACK, 0)).toEqual({
+      fillW: 0,
+      remainderDrawW: 0,
+      dividerX: null,
+    })
   })
 })
