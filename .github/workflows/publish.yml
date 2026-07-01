@@ -55,6 +55,23 @@ jobs:
             exit 1
           fi
 
+      # Write the repo-root .env that src-tauri/build.rs reads (`../.env`) so the
+      # publishable KEYLIGHT_* client identifiers are compiled into the release.
+      # Without this the free-tier launch beacon compiles to a no-op and the
+      # Keylight dashboard shows 0 free-tier devices. SDK key is a masked secret;
+      # tenant/product/pubkey are non-secret repo variables.
+      - name: Write Keylight config
+        env:
+          KEYLIGHT_SDK_KEY: ${{ secrets.KEYLIGHT_SDK_KEY }}
+        run: |
+          cat > .env <<EOF
+          KEYLIGHT_TENANT=${{ vars.KEYLIGHT_TENANT }}
+          KEYLIGHT_PRODUCT=${{ vars.KEYLIGHT_PRODUCT }}
+          KEYLIGHT_SDK_KEY=$KEYLIGHT_SDK_KEY
+          KEYLIGHT_PUBKEY=${{ vars.KEYLIGHT_PUBKEY }}
+          EOF
+          echo "Wrote .env (tenant=${{ vars.KEYLIGHT_TENANT }} product=${{ vars.KEYLIGHT_PRODUCT }} sdk_key_set=${KEYLIGHT_SDK_KEY:+yes})"
+
       - name: Validate release tag
         run: |
           if [[ -z "$RELEASE_TAG" ]]; then
