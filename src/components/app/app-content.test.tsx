@@ -1,10 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { overviewPageMock, providerDetailPageMock, settingsPageMock } = vi.hoisted(() => ({
+const { overviewPageMock, providerDetailPageMock, settingsPageMock, sharePageMock } = vi.hoisted(() => ({
   overviewPageMock: vi.fn(),
   settingsPageMock: vi.fn(),
   providerDetailPageMock: vi.fn(),
+  sharePageMock: vi.fn(),
 }))
 
 vi.mock("@/pages/overview", () => ({
@@ -18,6 +19,13 @@ vi.mock("@/pages/settings", () => ({
   SettingsPage: (props: unknown) => {
     settingsPageMock(props)
     return <div data-testid="settings-page" />
+  },
+}))
+
+vi.mock("@/pages/share", () => ({
+  SharePage: (props: unknown) => {
+    sharePageMock(props)
+    return <div data-testid="share-page" />
   },
 }))
 
@@ -73,6 +81,7 @@ describe("AppContent", () => {
     overviewPageMock.mockReset()
     settingsPageMock.mockReset()
     providerDetailPageMock.mockReset()
+    sharePageMock.mockReset()
     useAppUiStore.getState().resetState()
     useAppPreferencesStore.getState().resetState()
   })
@@ -102,5 +111,13 @@ describe("AppContent", () => {
 
     expect(providerDetailPageMock).toHaveBeenCalledTimes(1)
     expect(props.onRetryPlugin).toHaveBeenCalledWith("codex")
+  })
+
+  it("renders share page for share view", () => {
+    useAppUiStore.getState().setActiveView("share")
+    render(<AppContent {...createProps()} />)
+
+    expect(screen.getByTestId("share-page")).toBeInTheDocument()
+    expect(sharePageMock).toHaveBeenCalledWith(expect.objectContaining({ plugins: [] }))
   })
 })
