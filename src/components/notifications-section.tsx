@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { isTauri } from "@tauri-apps/api/core"
 import {
   isPermissionGranted,
   requestPermission,
+  sendNotification,
 } from "@tauri-apps/plugin-notification"
+import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { MILESTONE_META, PACE_MILESTONES } from "@/lib/pace-notifications"
 import type { PaceNotificationSettings } from "@/lib/settings"
@@ -27,10 +29,37 @@ export function NotificationsSection() {
   const setToggle = useAppNotificationsStore((s) => s.setToggle)
   const hydrate = useAppNotificationsStore((s) => s.hydrate)
   const [permissionDenied, setPermissionDenied] = useState(false)
+  const [testStatus, setTestStatus] = useState<"sent" | "failed" | null>(null)
+  const testCount = useRef(0)
 
   useEffect(() => {
     void hydrate()
   }, [hydrate])
+
+  // Fire a real notification on demand so you can confirm delivery works on this Mac — pace alerts
+  // only fire when a metric worsens across refreshes, which is hard to trigger by hand.
+  const handleTest = async () => {
+    if (!isTauri()) return
+    setTestStatus(null)
+    const granted = await ensureNotificationPermission()
+    if (!granted) {
+      setPermissionDenied(true)
+      return
+    }
+    try {
+      // Unique (i32-safe) id + body per click so macOS doesn't coalesce identical notifications.
+      testCount.current += 1
+      sendNotification({
+        id: testCount.current,
+        title: "UsagePal",
+        body: `Test notification #${testCount.current} — alerts are working.`,
+      })
+      setTestStatus("sent")
+    } catch (error) {
+      console.error("Failed to send test notification:", error)
+      setTestStatus("failed")
+    }
+  }
 
   const handleToggle = async (key: keyof PaceNotificationSettings, checked: boolean) => {
     setToggle(key, checked)
@@ -66,6 +95,17 @@ export function NotificationsSection() {
             </label>
           )
         })}
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={() => void handleTest()}>
+          Send Test Notification
+        </Button>
+        {testStatus === "sent" && (
+          <span className="text-xs text-muted-foreground">Sent — check Notification Center.</span>
+        )}
+        {testStatus === "failed" && (
+          <span className="text-xs text-muted-foreground">Couldn't send — see System Settings.</span>
+        )}
       </div>
       {permissionDenied && (
         <p className="text-sm text-muted-foreground mt-2">
