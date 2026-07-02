@@ -5,6 +5,7 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification"
+import { openUrl } from "@tauri-apps/plugin-opener"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { MILESTONE_META, PACE_MILESTONES } from "@/lib/pace-notifications"
@@ -13,6 +14,10 @@ import { useAppNotificationsStore } from "@/stores/app-notifications-store"
 
 // The three toggles map 1:1 onto the milestone keys, in urgency order.
 const MILESTONE_KEYS: (keyof PaceNotificationSettings)[] = PACE_MILESTONES
+
+// Deep link to the macOS Notifications settings pane. Tauri can't show a permission prompt on desktop
+// (it hardcodes "granted"), so we point the user here instead.
+const NOTIFICATION_SETTINGS_URL = "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
 
 async function ensureNotificationPermission(): Promise<boolean> {
   try {
@@ -28,8 +33,8 @@ export function NotificationsSection() {
   const settings = useAppNotificationsStore((s) => s.settings)
   const setToggle = useAppNotificationsStore((s) => s.setToggle)
   const hydrate = useAppNotificationsStore((s) => s.hydrate)
-  const [permissionDenied, setPermissionDenied] = useState(false)
   const [testStatus, setTestStatus] = useState<"sent" | "failed" | null>(null)
+  const [showPermissionModal, setShowPermissionModal] = useState(false)
   const testCount = useRef(0)
 
   useEffect(() => {
@@ -41,9 +46,8 @@ export function NotificationsSection() {
   const handleTest = async () => {
     if (!isTauri()) return
     setTestStatus(null)
-    const granted = await ensureNotificationPermission()
-    if (!granted) {
-      setPermissionDenied(true)
+    if (!(await ensureNotificationPermission())) {
+      setShowPermissionModal(true)
       return
     }
     try {
@@ -61,13 +65,12 @@ export function NotificationsSection() {
     }
   }
 
-  const handleToggle = async (key: keyof PaceNotificationSettings, checked: boolean) => {
+  const handleToggle = (key: keyof PaceNotificationSettings, checked: boolean) => {
     setToggle(key, checked)
-    // Request permission the first time any trigger is turned on. The toggle stays set even if denied,
-    // and the evaluation simply won't deliver until permission is granted.
+    // macOS never shows a permission prompt for Tauri apps, and notifications can default to off — so
+    // remind the user to allow them in System Settings when they turn a trigger on.
     if (checked && isTauri()) {
-      const granted = await ensureNotificationPermission()
-      setPermissionDenied(!granted)
+      setShowPermissionModal(true)
     }
   }
 
@@ -89,7 +92,7 @@ export function NotificationsSection() {
               <Checkbox
                 key={`notif-${key}-${settings[key]}`}
                 checked={settings[key]}
-                onCheckedChange={(checked) => void handleToggle(key, checked === true)}
+                onCheckedChange={(checked) => handleToggle(key, checked === true)}
               />
               {meta.label}
             </label>
@@ -107,10 +110,36 @@ export function NotificationsSection() {
           <span className="text-xs text-muted-foreground">Couldn't send — see System Settings.</span>
         )}
       </div>
-      {permissionDenied && (
-        <p className="text-sm text-muted-foreground mt-2">
-          Notifications are blocked. Enable them for UsagePal in System Settings › Notifications.
-        </p>
+
+      {showPermissionModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowPermissionModal(false)
+          }}
+        >
+          <div className="bg-card rounded-lg border shadow-xl p-5 max-w-xs w-full mx-4 animate-in fade-in zoom-in-95 duration-200">
+            <h2 className="text-base font-semibold mb-1">Allow Notifications</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              To get UsagePal alerts, turn on notifications for UsagePal in System Settings.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowPermissionModal(false)}>
+                Done
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => {
+                  void openUrl(NOTIFICATION_SETTINGS_URL)
+                  setShowPermissionModal(false)
+                }}
+              >
+                Open Settings
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   )
