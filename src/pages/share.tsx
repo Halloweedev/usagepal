@@ -21,6 +21,7 @@ export function SharePage({ plugins }: SharePageProps) {
   const [copyState, setCopyState] = useState<CopyState>("idle")
   const [copyError, setCopyError] = useState<string | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
+  const seededForRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (selectedId && plugins.some((plugin) => plugin.meta.id === selectedId)) return
@@ -38,6 +39,8 @@ export function SharePage({ plugins }: SharePageProps) {
   }, [selected])
 
   useEffect(() => {
+    if (seededForRef.current === selectedId) return
+    seededForRef.current = selectedId
     setCheckedLabels(
       new Set(shareableLines.filter((entry) => entry.defaultChecked).map((entry) => entry.line.label))
     )
