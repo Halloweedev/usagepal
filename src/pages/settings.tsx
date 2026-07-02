@@ -15,13 +15,14 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { ExternalLink, KeyRound } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import { ApiKeysSection } from "@/components/api-keys-section";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { NotificationsSection } from "@/components/notifications-section";
+import { OpenRouterKeyDialog } from "@/components/openrouter-key-dialog";
 import { SettingsAppMenu } from "@/components/settings-app-menu";
 import { SupporterSection } from "@/components/supporter-section";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
@@ -226,12 +227,23 @@ function SortablePluginItem({
   };
 
   const referralUrl = getReferralUrl(plugin.id);
+  const needsApiKey = plugin.id === "openrouter";
+  const [keyDialogOpen, setKeyDialogOpen] = useState(false);
+
+  // OpenRouter has no CLI to read credentials from, so enabling it opens a small dialog to add the
+  // API key. The key icon reopens the dialog later to change or clear it.
+  const handleToggle = () => {
+    if (needsApiKey && !plugin.enabled) {
+      setKeyDialogOpen(true);
+    }
+    onToggle(plugin.id);
+  };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      onClick={() => onToggle(plugin.id)}
+      onClick={handleToggle}
       className={cn(
         "flex items-center gap-3 px-3 py-2 rounded-md bg-card cursor-pointer",
         "border border-transparent",
@@ -262,6 +274,22 @@ function SortablePluginItem({
         {plugin.name}
       </span>
 
+      {needsApiKey && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Manage ${plugin.name} API key`}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.currentTarget.blur();
+            setKeyDialogOpen(true);
+          }}
+        >
+          <KeyRound className="h-3 w-3 opacity-70" />
+        </Button>
+      )}
+
       {referralUrl && (
         <Button
           type="button"
@@ -283,9 +311,15 @@ function SortablePluginItem({
         <Checkbox
           key={`${plugin.id}-${plugin.enabled}`}
           checked={plugin.enabled}
-          onCheckedChange={() => onToggle(plugin.id)}
+          onCheckedChange={handleToggle}
         />
       </span>
+
+      {keyDialogOpen && (
+        <span onClick={(e) => e.stopPropagation()}>
+          <OpenRouterKeyDialog onClose={() => setKeyDialogOpen(false)} />
+        </span>
+      )}
     </div>
   );
 }
@@ -593,7 +627,6 @@ export function SettingsPage({
         </label>
       </section>
       <NotificationsSection />
-      <ApiKeysSection />
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>
         <p className="text-sm text-muted-foreground mb-2">
