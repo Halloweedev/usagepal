@@ -28,6 +28,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.RELEASE_TAG }}
+          # Full history + tags so the release-notes step can diff against the previous tag.
+          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -119,6 +121,38 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm certificate.p12
 
+      # Build grouped release notes from conventional-commit subjects since the previous tag, so the
+      # GitHub release lists the features, fixes, and chores it contains. Both matrix jobs compute the
+      # same notes and pass them as releaseBody (idempotent), avoiding a post-publish edit race.
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 "${RELEASE_TAG}^" 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..$RELEASE_TAG"; else RANGE="$RELEASE_TAG"; fi
+
+          subjects() { git log --no-merges --pretty=format:'%s' "$RANGE"; }
+          FEATS=$(subjects | grep -E '^feat(\(.+\))?!?:' || true)
+          FIXES=$(subjects | grep -E '^fix(\(.+\))?!?:' || true)
+          CHORES=$(subjects | grep -vE '^(feat|fix)(\(.+\))?!?:' || true)
+
+          {
+            echo "## What's Changed"
+            echo ""
+            if [ -n "$FEATS" ]; then echo "### Features"; echo "$FEATS" | sed 's/^/- /'; echo ""; fi
+            if [ -n "$FIXES" ]; then echo "### Fixes"; echo "$FIXES" | sed 's/^/- /'; echo ""; fi
+            if [ -n "$CHORES" ]; then echo "### Chores"; echo "$CHORES" | sed 's/^/- /'; echo ""; fi
+            if [ -n "$PREV_TAG" ]; then
+              echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${RELEASE_TAG}"
+            fi
+          } > release-notes.md
+
+          cat release-notes.md
+          {
+            echo "body<<RELEASE_NOTES_EOF"
+            cat release-notes.md
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -133,6 +167,7 @@ jobs:
         with:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: ${{ env.RELEASE_TAG }}
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           # Any tag with a prerelease suffix (e.g. v0.7.26-beta.1) publishes as a GitHub
           # pre-release, so it never becomes "Latest" and the stable auto-updater
