@@ -74,7 +74,7 @@ describe("copilot plugin", () => {
     mockUsageOk(ctx);
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
-    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(result.lines.find((l) => l.label === "Credits")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
     expect(call.headers.Authorization).toBe("token ghu_keychain");
   });
@@ -85,7 +85,7 @@ describe("copilot plugin", () => {
     mockUsageOk(ctx);
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
-    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(result.lines.find((l) => l.label === "Credits")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
     expect(call.headers.Authorization).toBe("token gho_plain_token");
   });
@@ -97,7 +97,7 @@ describe("copilot plugin", () => {
     mockUsageOk(ctx);
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
-    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(result.lines.find((l) => l.label === "Credits")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
     expect(call.headers.Authorization).toBe("token gho_encoded_token");
   });
@@ -108,7 +108,7 @@ describe("copilot plugin", () => {
     mockUsageOk(ctx);
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
-    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(result.lines.find((l) => l.label === "Credits")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
     expect(call.headers.Authorization).toBe("token ghu_state");
   });
@@ -164,13 +164,13 @@ describe("copilot plugin", () => {
     expect(ctx.host.keychain.writeGenericPassword).not.toHaveBeenCalled();
   });
 
-  it("renders both Premium and Chat lines for paid tier", async () => {
+  it("renders both Credits and Chat lines for paid tier", async () => {
     const ctx = makePluginTestContext();
     setKeychainToken(ctx, "tok");
     mockUsageOk(ctx);
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
-    const premium = result.lines.find((l) => l.label === "Premium");
+    const premium = result.lines.find((l) => l.label === "Credits");
     const chat = result.lines.find((l) => l.label === "Chat");
     expect(premium).toBeTruthy();
     expect(premium.used).toBe(20); // 100 - 80
@@ -179,7 +179,7 @@ describe("copilot plugin", () => {
     expect(chat.used).toBe(5); // 100 - 95
   });
 
-  it("renders only Premium when Chat is missing", async () => {
+  it("renders only Credits when Chat is missing", async () => {
     const ctx = makePluginTestContext();
     setKeychainToken(ctx, "tok");
     ctx.host.http.request.mockReturnValue({
@@ -199,7 +199,7 @@ describe("copilot plugin", () => {
     });
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
-    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(result.lines.find((l) => l.label === "Credits")).toBeTruthy();
     expect(result.lines.find((l) => l.label === "Chat")).toBeFalsy();
   });
 
@@ -244,7 +244,7 @@ describe("copilot plugin", () => {
     mockUsageOk(ctx);
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
-    const premium = result.lines.find((l) => l.label === "Premium");
+    const premium = result.lines.find((l) => l.label === "Credits");
     expect(premium.resetsAt).toBe("2099-01-15T00:00:00.000Z");
   });
 
@@ -268,7 +268,7 @@ describe("copilot plugin", () => {
     });
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
-    expect(result.lines.find((l) => l.label === "Premium").used).toBe(0);
+    expect(result.lines.find((l) => l.label === "Credits").used).toBe(0);
   });
 
   it("throws on 401", async () => {
@@ -351,7 +351,7 @@ describe("copilot plugin", () => {
     mockUsageOk(ctx);
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
-    const premium = result.lines.find((l) => l.label === "Premium");
+    const premium = result.lines.find((l) => l.label === "Credits");
     const chat = result.lines.find((l) => l.label === "Chat");
     expect(premium.periodDurationMs).toBe(30 * 24 * 60 * 60 * 1000);
     expect(chat.periodDurationMs).toBe(30 * 24 * 60 * 60 * 1000);
@@ -473,7 +473,7 @@ describe("copilot plugin", () => {
     });
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
-    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(result.lines.find((l) => l.label === "Credits")).toBeTruthy();
     expect(callCount).toBe(2);
     // Should have cleared the stale token
     expect(ctx.host.keychain.deleteGenericPassword).toHaveBeenCalledWith("UsagePal-copilot");
@@ -506,7 +506,7 @@ describe("copilot plugin", () => {
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
     expect(result.plan).toBeNull();
-    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(result.lines.find((l) => l.label === "Credits")).toBeTruthy();
   });
 
   it("shows status badge when free-tier quotas are present but invalid", async () => {
@@ -525,5 +525,109 @@ describe("copilot plugin", () => {
     const result = plugin.probe(ctx);
     expect(result.lines).toHaveLength(1);
     expect(result.lines[0].text).toBe("No usage data");
+  });
+
+  describe("AI Credits + Extra Usage", () => {
+    it("derives Credits % from entitlement/remaining when percent_remaining is absent", async () => {
+      const ctx = makePluginTestContext();
+      setKeychainToken(ctx, "tok");
+      mockUsageOk(
+        ctx,
+        makeUsageResponse({
+          quota_snapshots: {
+            premium_interactions: { entitlement: 300, remaining: 90, quota_id: "premium" },
+          },
+        }),
+      );
+      const plugin = await loadPlugin();
+      const result = plugin.probe(ctx);
+      const credits = result.lines.find((l) => l.label === "Credits");
+      expect(credits).toBeTruthy();
+      expect(credits.used).toBe(70); // 100 - (90/300)*100
+    });
+
+    it("suppresses Chat/Completions carrying the -1 unlimited sentinel (paid usage-based)", async () => {
+      const ctx = makePluginTestContext();
+      setKeychainToken(ctx, "tok");
+      mockUsageOk(
+        ctx,
+        makeUsageResponse({
+          quota_snapshots: {
+            premium_interactions: { entitlement: 300, remaining: 150, quota_id: "premium" },
+            chat: { entitlement: -1, remaining: -1, unlimited: true },
+            completions: { entitlement: -1, remaining: -1 },
+          },
+        }),
+      );
+      const plugin = await loadPlugin();
+      const result = plugin.probe(ctx);
+      expect(result.lines.find((l) => l.label === "Credits")).toBeTruthy();
+      expect(result.lines.find((l) => l.label === "Chat")).toBeFalsy();
+      expect(result.lines.find((l) => l.label === "Completions")).toBeFalsy();
+    });
+
+    it("suppresses a zero-entitlement Credits placeholder", async () => {
+      const ctx = makePluginTestContext();
+      setKeychainToken(ctx, "tok");
+      mockUsageOk(
+        ctx,
+        makeUsageResponse({
+          quota_snapshots: {
+            premium_interactions: { entitlement: 0, remaining: 0, quota_id: "premium" },
+          },
+        }),
+      );
+      const plugin = await loadPlugin();
+      const result = plugin.probe(ctx);
+      expect(result.lines.find((l) => l.label === "Credits")).toBeFalsy();
+    });
+
+    it("adds an Extra Usage line only when overage is permitted", async () => {
+      const ctx = makePluginTestContext();
+      setKeychainToken(ctx, "tok");
+      mockUsageOk(
+        ctx,
+        makeUsageResponse({
+          quota_snapshots: {
+            premium_interactions: {
+              percent_remaining: 0,
+              entitlement: 300,
+              remaining: 0,
+              overage_permitted: true,
+              overage_count: 42,
+              quota_id: "premium",
+            },
+          },
+        }),
+      );
+      const plugin = await loadPlugin();
+      const result = plugin.probe(ctx);
+      const extra = result.lines.find((l) => l.label === "Extra Usage");
+      expect(extra).toBeTruthy();
+      expect(extra.type).toBe("text");
+      expect(extra.value).toBe("42");
+    });
+
+    it("omits Extra Usage when overage is not permitted", async () => {
+      const ctx = makePluginTestContext();
+      setKeychainToken(ctx, "tok");
+      mockUsageOk(
+        ctx,
+        makeUsageResponse({
+          quota_snapshots: {
+            premium_interactions: {
+              percent_remaining: 20,
+              entitlement: 300,
+              remaining: 60,
+              overage_count: 5,
+              quota_id: "premium",
+            },
+          },
+        }),
+      );
+      const plugin = await loadPlugin();
+      const result = plugin.probe(ctx);
+      expect(result.lines.find((l) => l.label === "Extra Usage")).toBeFalsy();
+    });
   });
 });

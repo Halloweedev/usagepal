@@ -1,0 +1,37 @@
+# Pace Alerts
+
+UsagePal can send a macOS notification when one of your usage limits is on pace to run out. Alerts
+are **off by default** — turn on the ones you want in **Settings → Notifications**. The first time you
+enable a trigger, macOS asks for notification permission.
+
+## The three triggers
+
+| Trigger | Fires when |
+|---|---|
+| **Almost Out** | A limit drops below 10% remaining for the current window. |
+| **Cutting It Close** | A limit's projected end-of-period usage moves into "close to the limit". |
+| **Will Run Out** | A limit is projected to finish before the window resets. |
+
+Each trigger is independent — enable any combination. Turning all three off silences alerts entirely.
+
+## How it behaves
+
+- **Once per window.** Each trigger fires at most once per metric per reset window, so a limit sitting
+  at a high level doesn't re-alert on every refresh. When the window resets, the triggers re-arm.
+- **No launch spam.** The first reading after the app starts is recorded as a baseline without firing,
+  so a limit that's already high when you open the app doesn't immediately alert.
+- **Worsening edges only.** "Cutting It Close" and "Will Run Out" fire on the step into a worse state.
+  A limit that jumps straight from healthy to running-out sends the single, more urgent "Will Run Out"
+  alert rather than both.
+- **Recovery re-arms.** If pace improves and later worsens again, the alert can fire again.
+- **Every provider, every metric.** Any progress meter with a reset window is evaluated; "Almost Out"
+  also applies to meters without a pace projection (e.g. a remaining credit balance).
+
+Evaluation runs on each scheduled refresh, so alerts fire even while the panel is closed.
+
+## Notes
+
+- Alerts are best-effort: if macOS notification permission is denied, nothing is delivered until you
+  grant it in **System Settings → Notifications → UsagePal**.
+- Trigger choices persist across restarts. The per-metric "already alerted this window" memory is
+  in-memory and resets when the app restarts (which is why the first post-launch reading only baselines).

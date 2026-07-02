@@ -114,10 +114,37 @@
     });
   }
 
-  function makeProgressLine(ctx, label, snapshot, resetDate) {
-    if (!snapshot || typeof snapshot.percent_remaining !== "number")
+  function numOrNull(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }
+
+  function clampPercent(value) {
+    return Math.min(100, Math.max(0, value));
+  }
+
+  // A `quota_snapshots` bucket -> percent-used meter, or null to suppress. Suppressed for: a missing
+  // bucket; an `unlimited` bucket or the `-1` entitlement/remaining sentinel (paid Chat & Completions
+  // under usage-based billing carry no real meter, so they're hidden rather than shown as a misleading
+  // 0%); and a zero-entitlement placeholder (e.g. Credits on a free account, which has no allotment).
+  function snapshotLine(ctx, label, snapshot, resetDate) {
+    if (!snapshot || typeof snapshot !== "object") return null;
+
+    const entitlement = numOrNull(snapshot.entitlement);
+    const remaining = numOrNull(snapshot.remaining);
+
+    if (snapshot.unlimited === true || entitlement === -1 || remaining === -1) return null;
+    if (entitlement === 0) return null;
+
+    let usedPercent;
+    const percentRemaining = numOrNull(snapshot.percent_remaining);
+    if (percentRemaining !== null) {
+      usedPercent = clampPercent(100 - percentRemaining);
+    } else if (entitlement !== null && entitlement > 0 && remaining !== null) {
+      usedPercent = clampPercent(100 - (remaining / entitlement) * 100);
+    } else {
       return null;
-    const usedPercent = Math.min(100, Math.max(0, 100 - snapshot.percent_remaining));
+    }
+
     return ctx.line.progress({
       label: label,
       used: usedPercent,
@@ -126,6 +153,15 @@
       resetsAt: ctx.util.toIso(resetDate),
       periodDurationMs: 30 * 24 * 60 * 60 * 1000,
     });
+  }
+
+  // "Extra Usage" — premium interactions consumed beyond the included Credits pool. Surfaced only once
+  // the user has enabled additional (overage) spend (`overage_permitted`); a real zero is then shown.
+  // No spending cap is exposed here, so this is an unbounded count, not a meter.
+  function overageLine(ctx, snapshot) {
+    if (!snapshot || typeof snapshot !== "object" || snapshot.overage_permitted !== true) return null;
+    const overage = Math.max(0, numOrNull(snapshot.overage_count) || 0);
+    return ctx.line.text({ label: "Extra Usage", value: String(overage) });
   }
 
   function makeLimitedProgressLine(ctx, label, remaining, total, resetDate) {
@@ -214,36 +250,39 @@
       plan = ctx.fmt.planLabel(data.copilot_plan);
     }
 
-    // Paid tier: quota_snapshots
+    // Since usage-based billing (AI Credits), the metered premium pool is surfaced as "Credits", with
+    // "Extra Usage" carrying overage beyond it. Paid plans report Chat/Completions as the `-1`
+    // "unlimited" sentinel (suppressed); free plans carry real counts inside quota_snapshots (current)
+    // or, on older responses, as limited_user_quotas against monthly_quotas below.
     const snapshots = data.quota_snapshots;
+    const resetDate = data.quota_reset_date || data.limited_user_reset_date;
     if (snapshots) {
-      const premiumLine = makeProgressLine(
-        ctx,
-        "Premium",
-        snapshots.premium_interactions,
-        data.quota_reset_date,
-      );
-      if (premiumLine) lines.push(premiumLine);
+      const premium = snapshots.premium_interactions;
+      const creditsLine = snapshotLine(ctx, "Credits", premium, resetDate);
+      if (creditsLine) lines.push(creditsLine);
 
-      const chatLine = makeProgressLine(
-        ctx,
-        "Chat",
-        snapshots.chat,
-        data.quota_reset_date,
-      );
+      const extraLine = overageLine(ctx, premium);
+      if (extraLine) lines.push(extraLine);
+
+      const chatLine = snapshotLine(ctx, "Chat", snapshots.chat, resetDate);
       if (chatLine) lines.push(chatLine);
+
+      const completionsLine = snapshotLine(ctx, "Completions", snapshots.completions, resetDate);
+      if (completionsLine) lines.push(completionsLine);
     }
 
-    // Free tier: limited_user_quotas
-    if (data.limited_user_quotas && data.monthly_quotas) {
+    // Legacy free-tier shape (predates quota_snapshots): remaining counts against monthly limits. Gated
+    // on nothing else having been produced — otherwise a paid account (Credits present, Chat/Completions
+    // suppressed as unlimited) that still carried limited_user_quotas would wrongly show free-tier meters.
+    if (lines.length === 0 && data.limited_user_quotas && data.monthly_quotas) {
       const lq = data.limited_user_quotas;
       const mq = data.monthly_quotas;
-      const resetDate = data.limited_user_reset_date;
+      const freeResetDate = data.limited_user_reset_date;
 
-      const chatLine = makeLimitedProgressLine(ctx, "Chat", lq.chat, mq.chat, resetDate);
+      const chatLine = makeLimitedProgressLine(ctx, "Chat", lq.chat, mq.chat, freeResetDate);
       if (chatLine) lines.push(chatLine);
 
-      const completionsLine = makeLimitedProgressLine(ctx, "Completions", lq.completions, mq.completions, resetDate);
+      const completionsLine = makeLimitedProgressLine(ctx, "Completions", lq.completions, mq.completions, freeResetDate);
       if (completionsLine) lines.push(completionsLine);
     }
 

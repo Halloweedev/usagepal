@@ -26,6 +26,20 @@ export type MenubarMetric = "default" | "weekly";
 
 export type GlobalShortcut = string | null;
 
+/** Per-milestone quota pace notification toggles. All default OFF; the app requests notification
+ * permission the first time a trigger is enabled, so a fresh install stays quiet until opted in. */
+export type PaceNotificationSettings = {
+  underTenPercent: boolean;
+  healthyToClose: boolean;
+  closeToRunningOut: boolean;
+};
+
+export const DEFAULT_PACE_NOTIFICATION_SETTINGS: PaceNotificationSettings = {
+  underTenPercent: false,
+  healthyToClose: false,
+  closeToRunningOut: false,
+};
+
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
 const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
@@ -39,6 +53,7 @@ const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
+const PACE_NOTIFICATIONS_KEY = "paceNotifications";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -307,6 +322,31 @@ export async function loadMenubarMetric(): Promise<MenubarMetric> {
 
 export async function saveMenubarMetric(metric: MenubarMetric): Promise<void> {
   await store.set(MENUBAR_METRIC_KEY, metric);
+  await store.save();
+}
+
+function normalizePaceNotifications(value: unknown): PaceNotificationSettings {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const readBool = (key: keyof PaceNotificationSettings) =>
+    typeof record[key] === "boolean"
+      ? (record[key] as boolean)
+      : DEFAULT_PACE_NOTIFICATION_SETTINGS[key];
+  return {
+    underTenPercent: readBool("underTenPercent"),
+    healthyToClose: readBool("healthyToClose"),
+    closeToRunningOut: readBool("closeToRunningOut"),
+  };
+}
+
+export async function loadPaceNotificationSettings(): Promise<PaceNotificationSettings> {
+  const stored = await store.get<unknown>(PACE_NOTIFICATIONS_KEY);
+  return normalizePaceNotifications(stored);
+}
+
+export async function savePaceNotificationSettings(
+  settings: PaceNotificationSettings
+): Promise<void> {
+  await store.set(PACE_NOTIFICATIONS_KEY, settings);
   await store.save();
 }
 

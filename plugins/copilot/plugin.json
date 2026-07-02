@@ -7,7 +7,8 @@
   "icon": "icon.svg",
   "brandColor": "#A855F7",
   "lines": [
-    { "type": "progress", "label": "Premium", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
+    { "type": "text", "label": "Extra Usage", "scope": "detail" },
     { "type": "progress", "label": "Chat", "scope": "overview", "primaryOrder": 2 },
     { "type": "progress", "label": "Completions", "scope": "overview" }
   ]

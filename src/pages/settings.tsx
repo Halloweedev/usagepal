@@ -19,7 +19,9 @@ import { ExternalLink } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { ApiKeysSection } from "@/components/api-keys-section";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
+import { NotificationsSection } from "@/components/notifications-section";
 import { SettingsAppMenu } from "@/components/settings-app-menu";
 import { SupporterSection } from "@/components/supporter-section";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
@@ -590,6 +592,8 @@ export function SettingsPage({
           Start on login
         </label>
       </section>
+      <NotificationsSection />
+      <ApiKeysSection />
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>
         <p className="text-sm text-muted-foreground mb-2">

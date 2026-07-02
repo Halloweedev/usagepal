@@ -11,6 +11,7 @@ const { invokeMock } = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
+  isTauri: () => false,
 }))
 
 vi.mock("@dnd-kit/core", () => ({

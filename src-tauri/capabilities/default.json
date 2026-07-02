@@ -19,6 +19,7 @@
     "autostart:default",
     "clipboard-manager:allow-write-text",
     "core:menu:default",
-    "keylight:default"
+    "keylight:default",
+    "notification:default"
   ]
 }

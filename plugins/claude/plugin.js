@@ -611,6 +611,25 @@
     return parts.join(" \u00b7 ")
   }
 
+  // Finds a model-scoped weekly limit in Anthropic's `limits` array by its display name. Returns the
+  // matching `kind: "weekly_scoped"` entry (with `percent` / `resets_at`) or null.
+  function findScopedWeeklyLimit(limits, modelName) {
+    if (!Array.isArray(limits)) return null
+    for (let i = 0; i < limits.length; i++) {
+      const entry = limits[i]
+      if (
+        entry &&
+        entry.kind === "weekly_scoped" &&
+        entry.scope &&
+        entry.scope.model &&
+        entry.scope.model.display_name === modelName
+      ) {
+        return entry
+      }
+    }
+    return null
+  }
+
   function modelTokenCount(modelUsage) {
     if (!modelUsage || typeof modelUsage !== "object") return 0
     const total = Number(modelUsage.totalTokens)
@@ -915,6 +934,21 @@
           limit: 100,
           format: { kind: "percent" },
           resetsAt: ctx.util.toIso(data.seven_day_omelette.resets_at),
+          periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
+        }))
+      }
+
+      // Model-scoped weekly limits (e.g. Fable) moved off the legacy top-level `seven_day_<model>`
+      // keys into a `limits` array of `kind: "weekly_scoped"` entries, each naming its model via
+      // `scope.model.display_name` and carrying a 0-100 `percent`.
+      const fable = findScopedWeeklyLimit(data.limits, "Fable")
+      if (fable && typeof fable.percent === "number") {
+        lines.push(ctx.line.progress({
+          label: "Fable",
+          used: fable.percent,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: ctx.util.toIso(fable.resets_at),
           periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
         }))
       }

@@ -1,6 +1,7 @@
 mod config;
 mod local_http_api;
 mod log_path;
+mod openrouter_key;
 mod panel;
 mod keylight;
 mod plugin_engine;
@@ -684,6 +685,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_keylight::init(crate::keylight::config()))
         .invoke_handler(tauri::generate_handler![
             init_panel,
@@ -697,7 +699,10 @@ pub fn run() {
             get_log_path,
             get_cached_usage,
             get_next_update_at,
-            update_global_shortcut
+            update_global_shortcut,
+            openrouter_key::openrouter_key_status,
+            openrouter_key::save_openrouter_key,
+            openrouter_key::clear_openrouter_key
         ])
         .setup(|app| {
             std::thread::spawn(crate::keylight::report_on_launch);

@@ -31,6 +31,7 @@ UsagePal lives in your menu bar and shows you how much of your AI coding subscri
 
 - **One glance.** All your AI tools, one panel.
 - **Always up-to-date.** Refreshes automatically on a schedule you pick.
+- **[Pace alerts](docs/notifications.md).** Optional notifications when a limit is on track to run out.
 - **Global shortcut.** Toggle the panel from anywhere with a customizable keyboard shortcut.
 - **Lightweight.** Opens instantly, stays out of your way.
 - **Plugin-based.** New providers get added without updating the whole app.
@@ -43,7 +44,7 @@ UsagePal lives in your menu bar and shows you how much of your AI coding subscri
 - [**Antigravity**](docs/providers/antigravity.md) / all models
 - [**Claude**](docs/providers/claude.md) / session, weekly, extra usage, local token usage (ccusage)
 - [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits
-- [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
+- [**Copilot**](docs/providers/copilot.md) / credits, extra usage, chat, completions
 - [**Cursor**](docs/providers/cursor.md) / credits, total usage, auto usage, API usage, on-demand, CLI auth
 - [**Factory / Droid**](docs/providers/factory.md) / standard, premium tokens
 - [**Grok**](docs/providers/grok.md) / credits used, plan, pay-as-you-go cap
@@ -52,6 +53,7 @@ UsagePal lives in your menu bar and shows you how much of your AI coding subscri
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
 - [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
+- [**OpenRouter**](docs/providers/openrouter.md) / credits, balance, daily/weekly/monthly spend, key limit
 - [**Devin**](docs/providers/devin.md) / weekly quota, extra usage
 - [**Z.ai**](docs/providers/zai.md) / session, weekly, web searches
 

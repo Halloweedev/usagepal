@@ -53,11 +53,23 @@ Returns rate limit windows and optional extra credits.
     "used_credits": 500,            // cents spent
     "monthly_limit": 10000,         // cents cap (0 = unlimited)
     "currency": "USD"
-  }
+  },
+  "limits": [                       // model-scoped windows (newer shape)
+    {
+      "kind": "weekly_scoped",      // per-model weekly window
+      "percent": 42,                // % used (0-100)
+      "resets_at": "2026-02-01T00:00:00Z",
+      "scope": { "model": { "display_name": "Fable" } }
+    }
+  ]
 }
 ```
 
 All windows are enforced simultaneously — hitting any limit throttles the user.
+
+Anthropic is moving per-model weekly windows off the legacy top-level `seven_day_<model>` keys
+(which now return null on newer accounts) and into the `limits` array. Each entry names its model via
+`scope.model.display_name`; UsagePal reads the `Fable` entry to show its weekly line.
 
 ## Authentication
 

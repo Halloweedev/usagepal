@@ -51,17 +51,24 @@ X-Github-Api-Version: 2025-04-01
       "percent_remaining": 80,
       "entitlement": 300,
       "remaining": 240,
+      "overage_permitted": true,
+      "overage_count": 12,
       "quota_id": "premium"
     },
     "chat": {
-      "percent_remaining": 95,
-      "entitlement": 1000,
-      "remaining": 950,
-      "quota_id": "chat"
+      "unlimited": true,
+      "entitlement": -1,
+      "remaining": -1
     }
   }
 }
 ```
+
+Since usage-based billing (AI Credits), the `premium_interactions` pool is shown as **Credits**
+(percent used). When `percent_remaining` is absent it is derived from `remaining / entitlement`. A
+bucket that is `unlimited`, carries the `-1` entitlement/remaining sentinel, or has a `0` entitlement
+is suppressed rather than rendered as a misleading 0%. When `overage_permitted` is true, premium usage
+beyond the pool is surfaced as an **Extra Usage** count (`overage_count`).
 
 ### Response (Free Tier)
 
@@ -83,11 +90,12 @@ X-Github-Api-Version: 2025-04-01
 
 ## Displayed Lines
 
-| Line         | Tier | Description                              |
-|--------------|------|------------------------------------------|
-| Premium      | Paid | Premium interactions remaining (percent) |
-| Chat         | Both | Chat messages remaining                  |
-| Completions  | Free | Code completions remaining               |
+| Line         | Tier | Description                                    |
+|--------------|------|------------------------------------------------|
+| Credits      | Paid | Premium interactions used (percent of pool)    |
+| Extra Usage  | Paid | Premium interactions beyond the pool (count)   |
+| Chat         | Both | Chat messages used                             |
+| Completions  | Free | Code completions used                          |
 
 All progress lines include:
 - `resetsAt` — ISO timestamp of next quota reset

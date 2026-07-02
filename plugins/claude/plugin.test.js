@@ -2055,4 +2055,77 @@ describe("claude plugin", () => {
       }
     })
   })
+
+  describe("model-scoped weekly limits (limits array)", () => {
+    const usageWithLimits = (limits) =>
+      JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        limits,
+      })
+
+    it("surfaces a Fable weekly-scoped limit from the limits array", async () => {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => false
+      ctx.host.keychain.readGenericPasswordForCurrentUser.mockReturnValue(
+        JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+      )
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        bodyText: usageWithLimits([
+          {
+            kind: "weekly_scoped",
+            percent: 42,
+            resets_at: "2099-01-08T00:00:00.000Z",
+            scope: { model: { display_name: "Fable" } },
+          },
+        ]),
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const fable = result.lines.find((line) => line.label === "Fable")
+      expect(fable).toBeTruthy()
+      expect(fable.type).toBe("progress")
+      expect(fable.used).toBe(42)
+      expect(fable.limit).toBe(100)
+      expect(fable.resetsAt).toBe("2099-01-08T00:00:00.000Z")
+    })
+
+    it("ignores non-matching scopes and non-weekly-scoped entries", async () => {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => false
+      ctx.host.keychain.readGenericPasswordForCurrentUser.mockReturnValue(
+        JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+      )
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        bodyText: usageWithLimits([
+          { kind: "weekly_scoped", percent: 5, scope: { model: { display_name: "Opus" } } },
+          { kind: "monthly_scoped", percent: 90, scope: { model: { display_name: "Fable" } } },
+        ]),
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((line) => line.label === "Fable")).toBeUndefined()
+    })
+
+    it("does not add a Fable line when the limits array is absent", async () => {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => false
+      ctx.host.keychain.readGenericPasswordForCurrentUser.mockReturnValue(
+        JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+      )
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        }),
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((line) => line.label === "Fable")).toBeUndefined()
+    })
+  })
 })
