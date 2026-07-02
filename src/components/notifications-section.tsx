@@ -1,10 +1,5 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
-import {
-  isPermissionGranted,
-  requestPermission,
-  sendNotification,
-} from "@tauri-apps/plugin-notification"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { MILESTONE_META, PACE_MILESTONES } from "@/lib/pace-notifications"
@@ -14,51 +9,15 @@ import { useAppNotificationsStore } from "@/stores/app-notifications-store"
 // The three toggles map 1:1 onto the milestone keys, in urgency order.
 const MILESTONE_KEYS: (keyof PaceNotificationSettings)[] = PACE_MILESTONES
 
-async function ensureNotificationPermission(): Promise<boolean> {
-  try {
-    if (await isPermissionGranted()) return true
-    return (await requestPermission()) === "granted"
-  } catch (error) {
-    console.error("Failed to request notification permission:", error)
-    return false
-  }
-}
-
 export function NotificationsSection() {
   const settings = useAppNotificationsStore((s) => s.settings)
   const setToggle = useAppNotificationsStore((s) => s.setToggle)
   const hydrate = useAppNotificationsStore((s) => s.hydrate)
-  const [testStatus, setTestStatus] = useState<"sent" | "failed" | null>(null)
   const [showPermissionModal, setShowPermissionModal] = useState(false)
-  const testCount = useRef(0)
 
   useEffect(() => {
     void hydrate()
   }, [hydrate])
-
-  // Fire a real notification on demand so you can confirm delivery works on this Mac — pace alerts
-  // only fire when a metric worsens across refreshes, which is hard to trigger by hand.
-  const handleTest = async () => {
-    if (!isTauri()) return
-    setTestStatus(null)
-    if (!(await ensureNotificationPermission())) {
-      setShowPermissionModal(true)
-      return
-    }
-    try {
-      // Unique (i32-safe) id + body per click so macOS doesn't coalesce identical notifications.
-      testCount.current += 1
-      sendNotification({
-        id: testCount.current,
-        title: "UsagePal",
-        body: `Test notification #${testCount.current} — alerts are working.`,
-      })
-      setTestStatus("sent")
-    } catch (error) {
-      console.error("Failed to send test notification:", error)
-      setTestStatus("failed")
-    }
-  }
 
   const handleToggle = (key: keyof PaceNotificationSettings, checked: boolean) => {
     setToggle(key, checked)
@@ -93,17 +52,6 @@ export function NotificationsSection() {
             </label>
           )
         })}
-      </div>
-      <div className="mt-3 flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => void handleTest()}>
-          Send Test Notification
-        </Button>
-        {testStatus === "sent" && (
-          <span className="text-xs text-muted-foreground">Sent — check Notification Center.</span>
-        )}
-        {testStatus === "failed" && (
-          <span className="text-xs text-muted-foreground">Couldn't send — see System Settings.</span>
-        )}
       </div>
 
       {showPermissionModal && (

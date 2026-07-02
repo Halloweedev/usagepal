@@ -13,11 +13,6 @@ const state = vi.hoisted(() => ({
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: state.invokeMock }))
-vi.mock("@tauri-apps/plugin-notification", () => ({
-  isPermissionGranted: vi.fn().mockResolvedValue(true),
-  requestPermission: vi.fn().mockResolvedValue("granted"),
-  sendNotification: vi.fn(),
-}))
 vi.mock("@/stores/app-notifications-store", () => ({
   useAppNotificationsStore: (selector: (s: typeof state.store) => unknown) => selector(state.store),
 }))
