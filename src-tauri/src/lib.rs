@@ -536,6 +536,20 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     log_path::for_app(&app_handle).map(|path| path.to_string_lossy().to_string())
 }
 
+/// Open the macOS System Settings → Notifications pane. The opener plugin doesn't handle the
+/// `x-apple.systempreferences:` scheme, so shell out to `open`, which does.
+#[tauri::command]
+fn open_notification_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.Notifications-Settings.extension")
+            .spawn()
+            .map_err(|e| format!("Couldn't open notification settings: {e}"))?;
+    }
+    Ok(())
+}
+
 /// Update the global shortcut registration.
 /// Pass `null` to disable the shortcut, or a shortcut string like "CommandOrControl+Shift+U".
 #[cfg(desktop)]
@@ -700,6 +714,7 @@ pub fn run() {
             get_cached_usage,
             get_next_update_at,
             update_global_shortcut,
+            open_notification_settings,
             openrouter_key::openrouter_key_status,
             openrouter_key::save_openrouter_key,
             openrouter_key::clear_openrouter_key

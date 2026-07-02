@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react"
-import { isTauri } from "@tauri-apps/api/core"
+import { invoke, isTauri } from "@tauri-apps/api/core"
 import {
   isPermissionGranted,
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification"
-import { openUrl } from "@tauri-apps/plugin-opener"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { MILESTONE_META, PACE_MILESTONES } from "@/lib/pace-notifications"
@@ -14,10 +13,6 @@ import { useAppNotificationsStore } from "@/stores/app-notifications-store"
 
 // The three toggles map 1:1 onto the milestone keys, in urgency order.
 const MILESTONE_KEYS: (keyof PaceNotificationSettings)[] = PACE_MILESTONES
-
-// Deep link to the macOS Notifications settings pane. Tauri can't show a permission prompt on desktop
-// (it hardcodes "granted"), so we point the user here instead.
-const NOTIFICATION_SETTINGS_URL = "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
 
 async function ensureNotificationPermission(): Promise<boolean> {
   try {
@@ -131,7 +126,9 @@ export function NotificationsSection() {
                 variant="default"
                 size="sm"
                 onClick={() => {
-                  void openUrl(NOTIFICATION_SETTINGS_URL)
+                  void invoke("open_notification_settings").catch((e) =>
+                    console.error("Failed to open notification settings:", e)
+                  )
                   setShowPermissionModal(false)
                 }}
               >

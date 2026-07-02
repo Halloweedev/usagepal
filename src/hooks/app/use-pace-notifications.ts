@@ -67,7 +67,7 @@ export function usePaceNotifications(pluginStates: Record<string, PluginState>) 
         try {
           sendNotification({
             title: meta.title,
-            body: `${item.displayName} · ${item.metricLabel} — ${meta.body}`,
+            body: `${item.displayName} ${item.metricLabel} — ${meta.body}`,
           })
           // Commit the dedup mark only after a successful send.
           statesRef.current.get(item.key)?.firedMilestones.add(item.milestone)

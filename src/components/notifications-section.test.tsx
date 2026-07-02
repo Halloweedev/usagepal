@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const state = vi.hoisted(() => ({
-  openUrlMock: vi.fn(),
+  invokeMock: vi.fn().mockResolvedValue(undefined),
   setToggleMock: vi.fn(),
   store: {
     settings: { underTenPercent: false, healthyToClose: false, closeToRunningOut: false },
@@ -12,13 +12,12 @@ const state = vi.hoisted(() => ({
   },
 }))
 
-vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: vi.fn() }))
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: state.invokeMock }))
 vi.mock("@tauri-apps/plugin-notification", () => ({
   isPermissionGranted: vi.fn().mockResolvedValue(true),
   requestPermission: vi.fn().mockResolvedValue("granted"),
   sendNotification: vi.fn(),
 }))
-vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: state.openUrlMock }))
 vi.mock("@/stores/app-notifications-store", () => ({
   useAppNotificationsStore: (selector: (s: typeof state.store) => unknown) => selector(state.store),
 }))
@@ -27,7 +26,8 @@ import { NotificationsSection } from "./notifications-section"
 
 describe("NotificationsSection", () => {
   beforeEach(() => {
-    state.openUrlMock.mockReset()
+    state.invokeMock.mockReset()
+    state.invokeMock.mockResolvedValue(undefined)
     state.setToggleMock.mockReset()
   })
 
@@ -47,7 +47,7 @@ describe("NotificationsSection", () => {
     render(<NotificationsSection />)
     await userEvent.click(screen.getAllByRole("checkbox")[0])
     await userEvent.click(await screen.findByRole("button", { name: "Open Settings" }))
-    expect(state.openUrlMock).toHaveBeenCalledWith(expect.stringContaining("Notifications-Settings"))
+    expect(state.invokeMock).toHaveBeenCalledWith("open_notification_settings")
     expect(screen.queryByText(/Allow Notifications/i)).toBeNull()
   })
 
@@ -55,7 +55,7 @@ describe("NotificationsSection", () => {
     render(<NotificationsSection />)
     await userEvent.click(screen.getAllByRole("checkbox")[0])
     await userEvent.click(await screen.findByRole("button", { name: "Done" }))
-    expect(state.openUrlMock).not.toHaveBeenCalled()
+    expect(state.invokeMock).not.toHaveBeenCalledWith("open_notification_settings")
     expect(screen.queryByText(/Allow Notifications/i)).toBeNull()
   })
 })
