@@ -3,6 +3,7 @@
   "id": "openrouter",
   "name": "OpenRouter",
   "version": "0.0.1",
+  "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#94A3B8",
   "links": [
@@ -11,7 +12,7 @@
   ],
   "lines": [
     { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
-    { "type": "text", "label": "Balance", "scope": "overview", "primaryOrder": 2 },
+    { "type": "text", "label": "Balance", "scope": "overview" },
     { "type": "text", "label": "Today", "scope": "detail" },
     { "type": "text", "label": "This Week", "scope": "detail" },
     { "type": "text", "label": "This Month", "scope": "detail" },
