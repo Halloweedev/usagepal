@@ -86,6 +86,16 @@ Don't open a PR for large features without discussing first. [Open an issue](htt
 All PRs require approval from at least 2 maintainers before merging.
 Release tags (`v*`) are owner-managed and can only be created by [@robinebers](https://github.com/robinebers).
 
+### Releases and betas
+
+- **Stable:** tag `vX.Y.Z` (e.g. `v0.7.26`) with the three version files (`package.json`,
+  `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`) set to `X.Y.Z`. Publishes as GitHub "Latest"
+  and auto-updates everyone via `releases/latest/download/latest.json`.
+- **Beta / dev:** tag `vX.Y.Z-beta.N` (or `-rc.N`) with the version files set to the matching
+  `X.Y.Z-beta.N`. The publish workflow marks any tag containing `-` as a GitHub **pre-release**, so it
+  never becomes "Latest" and the stable auto-updater never serves it. Testers install the beta DMG from
+  the pre-release's assets by hand. Auto-updating betas (an Early Access channel) is not wired up yet.
+
 ## Questions?
 
 Open a [bug report](https://github.com/robinebers/openusage/issues/new?template=bug_report.yml) or [feature request](https://github.com/robinebers/openusage/issues/new?template=feature_request.yml) using the issue templates.

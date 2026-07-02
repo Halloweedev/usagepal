@@ -78,8 +78,8 @@ jobs:
             echo "Missing RELEASE_TAG (push a v* tag)."
             exit 1
           fi
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid RELEASE_TAG: $RELEASE_TAG (expected vMAJOR.MINOR.PATCH)"
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "Invalid RELEASE_TAG: $RELEASE_TAG (expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease)"
             exit 1
           fi
 
@@ -134,7 +134,10 @@ jobs:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: ${{ env.RELEASE_TAG }}
           releaseDraft: false
-          prerelease: false
+          # Any tag with a prerelease suffix (e.g. v0.7.26-beta.1) publishes as a GitHub
+          # pre-release, so it never becomes "Latest" and the stable auto-updater
+          # (releases/latest/download/latest.json) never serves it. Betas are install-by-hand.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           includeUpdaterJson: true
           args: --target ${{ matrix.target }} --bundles app
 
@@ -197,4 +200,4 @@ jobs:
 
           printf '%s\n' "$ASSETS" | grep -Fxq 'latest.json' || { echo "Missing updater manifest: latest.json"; exit 1; }
           printf '%s\n' "$ASSETS" | grep -Eq '\.sig$' || { echo "Missing updater signatures (.sig)"; exit 1; }
-          printf '%s\n' "$ASSETS" | grep -Eq '^UsagePal-[0-9]+\.[0-9]+\.[0-9]+-${{ matrix.arch }}\.dmg$' || { echo "Missing Lutin DMG for ${{ matrix.arch }}"; exit 1; }
+          printf '%s\n' "$ASSETS" | grep -Eq '^UsagePal-[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?-${{ matrix.arch }}\.dmg$' || { echo "Missing Lutin DMG for ${{ matrix.arch }}"; exit 1; }
