@@ -229,14 +229,31 @@ function SortablePluginItem({
   const referralUrl = getReferralUrl(plugin.id);
   const needsApiKey = plugin.id === "openrouter";
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
+  // True when the dialog was opened by enabling the plugin, so cancelling can undo that enable.
+  const [openedViaEnable, setOpenedViaEnable] = useState(false);
 
   // OpenRouter has no CLI to read credentials from, so enabling it opens a small dialog to add the
   // API key. The key icon reopens the dialog later to change or clear it.
   const handleToggle = () => {
     if (needsApiKey && !plugin.enabled) {
+      setOpenedViaEnable(true);
       setKeyDialogOpen(true);
     }
     onToggle(plugin.id);
+  };
+
+  const closeKeyDialog = () => {
+    setKeyDialogOpen(false);
+    // Cancelling the dialog that an enable opened undoes that enable.
+    if (openedViaEnable && plugin.enabled) {
+      onToggle(plugin.id);
+    }
+    setOpenedViaEnable(false);
+  };
+
+  const saveKeyDialog = () => {
+    setKeyDialogOpen(false);
+    setOpenedViaEnable(false);
   };
 
   return (
@@ -283,6 +300,7 @@ function SortablePluginItem({
           onClick={(e) => {
             e.stopPropagation();
             e.currentTarget.blur();
+            setOpenedViaEnable(false);
             setKeyDialogOpen(true);
           }}
         >
@@ -317,7 +335,7 @@ function SortablePluginItem({
 
       {keyDialogOpen && (
         <span onClick={(e) => e.stopPropagation()}>
-          <OpenRouterKeyDialog onClose={() => setKeyDialogOpen(false)} />
+          <OpenRouterKeyDialog onClose={closeKeyDialog} onSaved={saveKeyDialog} />
         </span>
       )}
     </div>

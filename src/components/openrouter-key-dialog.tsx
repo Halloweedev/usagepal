@@ -10,10 +10,16 @@ const OPENROUTER_KEYS_URL = "https://openrouter.ai/keys"
 
 /**
  * Small modal for adding / clearing the OpenRouter API key, opened from the OpenRouter row in the
- * plugin list. Reuses the same Rust commands as before; the saved key is never read back into the
- * webview, so the dialog only knows whether a key is present.
+ * plugin list. `onSaved` fires only after a successful save; `onClose` fires on cancel/dismiss (the
+ * caller uses that to undo an enable). The saved key is never read back into the webview.
  */
-export function OpenRouterKeyDialog({ onClose }: { onClose: () => void }) {
+export function OpenRouterKeyDialog({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void
+  onSaved: () => void
+}) {
   const [status, setStatus] = useState<KeyStatus>({ saved: false, fromEnv: false })
   const [keyInput, setKeyInput] = useState("")
   const [busy, setBusy] = useState(false)
@@ -59,7 +65,7 @@ export function OpenRouterKeyDialog({ onClose }: { onClose: () => void }) {
     setError(null)
     try {
       await invoke("save_openrouter_key", { key: trimmed })
-      onClose()
+      onSaved()
     } catch (e) {
       setError(String(e))
       setBusy(false)
@@ -81,11 +87,13 @@ export function OpenRouterKeyDialog({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const statusNote = status.saved
-    ? "A key is saved. Enter a new one to replace it, or clear it."
-    : status.fromEnv
-      ? "Using the key from your environment. Save one here to override it."
-      : "Create a key at OpenRouter, then paste it here."
+  const note = error
+    ? error
+    : status.saved
+      ? "A key is saved."
+      : status.fromEnv
+        ? "Using a key from your environment."
+        : null
 
   return (
     <div
@@ -97,15 +105,14 @@ export function OpenRouterKeyDialog({ onClose }: { onClose: () => void }) {
       <div className="bg-card rounded-lg border shadow-xl p-5 max-w-xs w-full mx-4 animate-in fade-in zoom-in-95 duration-200">
         <h2 className="text-base font-semibold mb-1">OpenRouter API Key</h2>
         <p className="text-sm text-muted-foreground mb-3">
-          OpenRouter has no CLI to read from, so add your{" "}
+          Paste your key to track usage.{" "}
           <button
             type="button"
             className="inline-flex items-center gap-0.5 text-primary hover:underline"
             onClick={() => void openUrl(OPENROUTER_KEYS_URL)}
           >
-            API key <ExternalLink className="size-3" />
-          </button>{" "}
-          to track usage. It's stored in a local config file.
+            Get a key <ExternalLink className="size-3" />
+          </button>
         </p>
 
         <input
@@ -123,7 +130,7 @@ export function OpenRouterKeyDialog({ onClose }: { onClose: () => void }) {
           aria-label="OpenRouter API key"
         />
 
-        <p className="text-xs text-muted-foreground mt-2">{error ? error : statusNote}</p>
+        {note && <p className="text-xs text-muted-foreground mt-2">{note}</p>}
 
         <div className="flex items-center justify-end gap-2 mt-4">
           {status.saved && (

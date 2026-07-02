@@ -176,7 +176,7 @@
   function probe(ctx) {
     const apiKey = loadApiKey(ctx)
     if (!apiKey) {
-      throw "No OpenRouter API key. Set OPENROUTER_API_KEY or add it to ~/.config/usagepal/openrouter.json."
+      throw "No API key. Add one in Settings."
     }
 
     // /credits is required for a usable snapshot; /key is best-effort and merges independently.

@@ -33,21 +33,22 @@ describe("OpenRouterKeyDialog", () => {
   })
 
   it("shows the empty-state hint and no Clear button when no key is set", async () => {
-    render(<OpenRouterKeyDialog onClose={vi.fn()} />)
+    render(<OpenRouterKeyDialog onClose={vi.fn()} onSaved={vi.fn()} />)
     await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("openrouter_key_status"))
-    expect(screen.getByText(/Create a key at OpenRouter/i)).toBeTruthy()
+    expect(screen.getByText(/Paste your key/i)).toBeTruthy()
     expect(screen.queryByRole("button", { name: "Clear" })).toBeNull()
   })
 
   it("notes an environment key when present but unsaved", async () => {
     routeInvoke({ saved: false, fromEnv: true })
-    render(<OpenRouterKeyDialog onClose={vi.fn()} />)
+    render(<OpenRouterKeyDialog onClose={vi.fn()} onSaved={vi.fn()} />)
     await waitFor(() => expect(screen.getByText(/from your environment/i)).toBeTruthy())
   })
 
-  it("saves a pasted key and closes", async () => {
+  it("saves a pasted key and fires onSaved (not onClose)", async () => {
     const onClose = vi.fn()
-    render(<OpenRouterKeyDialog onClose={onClose} />)
+    const onSaved = vi.fn()
+    render(<OpenRouterKeyDialog onClose={onClose} onSaved={onSaved} />)
     await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("openrouter_key_status"))
 
     await userEvent.type(screen.getByLabelText("OpenRouter API key"), "sk-or-v1-abc")
@@ -56,12 +57,13 @@ describe("OpenRouterKeyDialog", () => {
     await waitFor(() =>
       expect(state.invokeMock).toHaveBeenCalledWith("save_openrouter_key", { key: "sk-or-v1-abc" })
     )
-    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it("clears a saved key and shows a Clear button", async () => {
     routeInvoke({ saved: true, fromEnv: false })
-    render(<OpenRouterKeyDialog onClose={vi.fn()} />)
+    render(<OpenRouterKeyDialog onClose={vi.fn()} onSaved={vi.fn()} />)
     const clear = await screen.findByRole("button", { name: "Clear" })
     routeInvoke({ saved: false, fromEnv: false })
     await userEvent.click(clear)
@@ -69,17 +71,19 @@ describe("OpenRouterKeyDialog", () => {
   })
 
   it("keeps Save disabled until a key is entered", async () => {
-    render(<OpenRouterKeyDialog onClose={vi.fn()} />)
+    render(<OpenRouterKeyDialog onClose={vi.fn()} onSaved={vi.fn()} />)
     const save = await screen.findByRole("button", { name: "Save" })
     expect((save as HTMLButtonElement).disabled).toBe(true)
     await userEvent.type(screen.getByLabelText("OpenRouter API key"), "sk")
     expect((save as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it("closes on Cancel", async () => {
+  it("fires onClose (dismiss) on Cancel", async () => {
     const onClose = vi.fn()
-    render(<OpenRouterKeyDialog onClose={onClose} />)
+    const onSaved = vi.fn()
+    render(<OpenRouterKeyDialog onClose={onClose} onSaved={onSaved} />)
     await userEvent.click(await screen.findByRole("button", { name: "Cancel" }))
     expect(onClose).toHaveBeenCalled()
+    expect(onSaved).not.toHaveBeenCalled()
   })
 })

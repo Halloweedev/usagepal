@@ -49,7 +49,7 @@ describe("openrouter plugin", () => {
   it("throws when no API key is configured", async () => {
     const ctx = makeCtx()
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("No OpenRouter API key")
+    expect(() => plugin.probe(ctx)).toThrow("No API key")
   })
 
   it("reads the key from the environment and sends it as a Bearer token", async () => {
