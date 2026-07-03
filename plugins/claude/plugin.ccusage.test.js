@@ -77,8 +77,8 @@ describe("claude plugin ccusage usage trend", () => {
     })
     expect(chart.points.map((point) => point.value)).toEqual([150, 300])
 
-    const sonnet = result.lines.find((line) => line.label === "claude-sonnet-4-20250514")
-    const opus = result.lines.find((line) => line.label === "claude-opus-4-1-20250805")
+    const sonnet = result.lines.find((line) => line.label === "Sonnet 4")
+    const opus = result.lines.find((line) => line.label === "Opus 4.1")
     expect(sonnet).toMatchObject({
       type: "text",
       value: "50%",
@@ -136,8 +136,8 @@ describe("claude plugin ccusage usage trend", () => {
     // Total = 300, so opus = 260/300 = 86.7%, sonnet = 40/300 = 13.3%.
     // opus cost: Today=3, 7d=3+4=7 (10d-ago entry is outside the 7d window), 30d=3+4+2=9.
     // sonnet cost: only contributes on "today", which is inside every window, so Today=7d=30d=2.
-    const opus = result.lines.find((line) => line.label === "claude-opus-4-8")
-    const sonnet = result.lines.find((line) => line.label === "claude-sonnet-4-6")
+    const opus = result.lines.find((line) => line.label === "Opus 4.8")
+    const sonnet = result.lines.find((line) => line.label === "Sonnet 4.6")
     expect(opus).toMatchObject({ type: "text", value: "86.7% · Today $3.00 · 7d $7.00 · 30d $9.00" })
     expect(sonnet).toMatchObject({ type: "text", value: "13.3% · Today $2.00 · 7d $2.00 · 30d $2.00" })
 
@@ -191,6 +191,30 @@ describe("claude plugin ccusage usage trend", () => {
     expect(big).toMatchObject({
       type: "text",
       value: "100% · Today $1,235 · 7d $1,235 · 30d $1,235",
+    })
+  })
+
+  it("leaves an unrecognized model id unchanged", async () => {
+    const todayKey = localDayKey(new Date())
+    const ctx = makeProbeCtx({
+      ccusageResult: okUsage([
+        {
+          date: todayKey,
+          totalTokens: 100,
+          totalCost: 1,
+          modelBreakdowns: [
+            { modelName: "some-custom-model", cost: 1, totalTokens: 100 },
+          ],
+        },
+      ]),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const custom = result.lines.find((line) => line.label === "some-custom-model")
+    expect(custom).toMatchObject({
+      type: "text",
+      value: "100% · Today $1.00 · 7d $1.00 · 30d $1.00",
     })
   })
 })

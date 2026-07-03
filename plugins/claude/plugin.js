@@ -701,6 +701,18 @@
     return "$" + Math.round(amount).toLocaleString("en-US")
   }
 
+  function prettifyModelName(rawId) {
+    if (typeof rawId !== "string" || !rawId.startsWith("claude-")) return rawId
+    const parts = rawId.slice("claude-".length).split("-")
+    if (parts.length < 2) return rawId
+    if (/^\d{8}$/.test(parts[parts.length - 1])) parts.pop()
+    if (parts.length < 2) return rawId
+    const family = parts[0]
+    const versionParts = parts.slice(1)
+    if (!/^[a-z]+$/.test(family) || !versionParts.every((p) => /^\d+$/.test(p))) return rawId
+    return family.charAt(0).toUpperCase() + family.slice(1) + " " + versionParts.join(".")
+  }
+
   function pushModelUsageLines(lines, ctx, daily, now) {
     const models = collectModelUsage(daily)
     const todayKey = dayKeyFromDate(now)
@@ -715,7 +727,7 @@
       if (costTotals["30d"][model.name]) segments.push("30d " + fmtModelCost(costTotals["30d"][model.name]))
       if (segments.length > 0) value += " · " + segments.join(" · ")
       lines.push(ctx.line.text({
-        label: model.name,
+        label: prettifyModelName(model.name),
         value: value,
       }))
     }
