@@ -120,7 +120,7 @@ export function SharePage({ plugins }: SharePageProps) {
         <h2 className="text-xl font-bold">Share Usage</h2>
 
         <Tabs value={selectedId ?? undefined} onValueChange={(value) => setSelectedId(String(value))}>
-          <TabsList className="h-11">
+          <TabsList className="!h-11">
             {plugins.map((plugin) => (
               <TabsTrigger
                 key={plugin.meta.id}
