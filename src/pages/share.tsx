@@ -94,75 +94,87 @@ export function SharePage({ plugins }: SharePageProps) {
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <h2 className="text-sm font-semibold">Share Usage</h2>
+    <div className="flex flex-row items-start gap-4" data-testid="share-page">
+      <div className="flex min-w-0 flex-1 flex-col gap-2" data-testid="share-page-controls">
+        <h2 className="text-sm font-semibold">Share Usage</h2>
 
-      <Tabs value={selectedId ?? undefined} onValueChange={(value) => setSelectedId(String(value))}>
-        <TabsList>
-          {plugins.map((plugin) => (
-            <TabsTrigger key={plugin.meta.id} value={plugin.meta.id}>
-              {plugin.meta.name}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
-      {!selected?.data ? (
-        <p className="text-sm text-muted-foreground">No data yet for this provider.</p>
-      ) : (
-        <>
-          <div className="flex max-h-40 flex-col gap-2 overflow-y-auto pr-1">
-            {groupedLines.map((group) => (
-              <div key={group.label} className="flex flex-col gap-1">
-                <span className="text-[10px] font-medium uppercase text-muted-foreground">{group.label}</span>
-                <div className="flex flex-wrap gap-1">
-                  {group.entries.map((entry) => (
-                    <label
-                      key={entry.line.label}
-                      className="flex items-center gap-1.5 rounded-md border px-1.5 py-1 text-xs"
-                    >
-                      <Checkbox
-                        aria-label={entry.line.label}
-                        checked={checkedLabels.has(entry.line.label)}
-                        onCheckedChange={(checked) => toggleLabel(entry.line.label, checked === true)}
-                      />
-                      {entry.line.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
+        <Tabs value={selectedId ?? undefined} onValueChange={(value) => setSelectedId(String(value))}>
+          <TabsList>
+            {plugins.map((plugin) => (
+              <TabsTrigger key={plugin.meta.id} value={plugin.meta.id}>
+                {plugin.meta.name}
+              </TabsTrigger>
             ))}
-          </div>
+          </TabsList>
+        </Tabs>
 
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs">
-              <Checkbox
-                aria-label="Light card"
-                checked={theme === "light"}
-                onCheckedChange={(checked) => setTheme(checked === true ? "light" : "dark")}
-              />
-              Light card
-            </label>
-            <label className="flex items-center gap-1.5 text-xs">
-              <Checkbox
-                aria-label="Watermark"
-                checked={showWatermark}
-                onCheckedChange={(checked) => setShowWatermark(checked === true)}
-              />
-              Watermark
-            </label>
-            {selected.data.plan && (
+        {!selected?.data ? (
+          <p className="text-sm text-muted-foreground">No data yet for this provider.</p>
+        ) : (
+          <>
+            <div className="flex flex-col gap-2">
+              {groupedLines.map((group) => (
+                <div key={group.label} className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium uppercase text-muted-foreground">{group.label}</span>
+                  <div className="flex flex-wrap gap-1">
+                    {group.entries.map((entry) => (
+                      <label
+                        key={entry.line.label}
+                        className="flex items-center gap-1.5 rounded-md border px-1.5 py-1 text-xs"
+                      >
+                        <Checkbox
+                          aria-label={entry.line.label}
+                          checked={checkedLabels.has(entry.line.label)}
+                          onCheckedChange={(checked) => toggleLabel(entry.line.label, checked === true)}
+                        />
+                        {entry.line.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-1.5 text-xs">
                 <Checkbox
-                  aria-label="Plan"
-                  checked={showPlan}
-                  onCheckedChange={(checked) => setShowPlan(checked === true)}
+                  aria-label="Light card"
+                  checked={theme === "light"}
+                  onCheckedChange={(checked) => setTheme(checked === true ? "light" : "dark")}
                 />
-                Plan
+                Light card
               </label>
-            )}
-          </div>
+              <label className="flex items-center gap-1.5 text-xs">
+                <Checkbox
+                  aria-label="Watermark"
+                  checked={showWatermark}
+                  onCheckedChange={(checked) => setShowWatermark(checked === true)}
+                />
+                Watermark
+              </label>
+              {selected.data.plan && (
+                <label className="flex items-center gap-1.5 text-xs">
+                  <Checkbox
+                    aria-label="Plan"
+                    checked={showPlan}
+                    onCheckedChange={(checked) => setShowPlan(checked === true)}
+                  />
+                  Plan
+                </label>
+              )}
+            </div>
 
+            <Button onClick={handleCopy} disabled={copyState === "copying" || checkedLines.length === 0}>
+              {copyState === "copying" ? "Copying..." : "Copy Image"}
+            </Button>
+            {copyState === "success" && <p className="text-sm text-muted-foreground">Copied to clipboard.</p>}
+            {copyState === "error" && <p className="text-sm text-destructive">{copyError}</p>}
+          </>
+        )}
+      </div>
+
+      {selected?.data && (
+        <div className="flex shrink-0 items-start" data-testid="share-page-preview">
           <div ref={cardRef}>
             <ShareCard
               providerName={selected.meta.name}
@@ -174,13 +186,7 @@ export function SharePage({ plugins }: SharePageProps) {
               showWatermark={showWatermark}
             />
           </div>
-
-          <Button onClick={handleCopy} disabled={copyState === "copying" || checkedLines.length === 0}>
-            {copyState === "copying" ? "Copying..." : "Copy Image"}
-          </Button>
-          {copyState === "success" && <p className="text-sm text-muted-foreground">Copied to clipboard.</p>}
-          {copyState === "error" && <p className="text-sm text-destructive">{copyError}</p>}
-        </>
+        </div>
       )}
     </div>
   )

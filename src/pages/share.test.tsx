@@ -202,4 +202,18 @@ describe("SharePage", () => {
     render(<SharePage plugins={[makePlugin()]} />)
     expect(screen.queryByRole("checkbox", { name: "Plan" })).not.toBeInTheDocument()
   })
+
+  it("renders controls on the left and the card preview on the right", () => {
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    const page = screen.getByTestId("share-page")
+    const controls = screen.getByTestId("share-page-controls")
+    const preview = screen.getByTestId("share-page-preview")
+
+    expect(page).toContainElement(controls)
+    expect(page).toContainElement(preview)
+    expect(controls.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByTestId("share-card-mock").closest("[data-testid='share-page-preview']")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Copy Image" }).closest("[data-testid='share-page-controls']")).toBeTruthy()
+  })
 })

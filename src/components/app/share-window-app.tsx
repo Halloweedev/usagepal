@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { SharePage } from "@/pages/share"
 import { useShareWindowData } from "@/hooks/app/use-share-window-data"
+import { useShareWindowResize } from "@/hooks/app/use-share-window-resize"
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
 import { DEFAULT_THEME_MODE, loadThemeMode, type ThemeMode } from "@/lib/settings"
 
@@ -12,6 +13,7 @@ import { DEFAULT_THEME_MODE, loadThemeMode, type ThemeMode } from "@/lib/setting
 export function ShareWindowApp() {
   const plugins = useShareWindowData()
   const [themeMode, setThemeMode] = useState<ThemeMode>(DEFAULT_THEME_MODE)
+  const { containerRef, maxContentHeightPx } = useShareWindowResize()
 
   useEffect(() => {
     loadThemeMode()
@@ -24,8 +26,15 @@ export function ShareWindowApp() {
   useSettingsTheme(themeMode)
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="mx-auto max-w-md rounded-xl border bg-card p-4 shadow-sm">
+    <div ref={containerRef} className="bg-background p-6" data-testid="share-window-root">
+      <div
+        className="rounded-xl border bg-card p-4 shadow-sm"
+        style={
+          maxContentHeightPx
+            ? { maxHeight: `${maxContentHeightPx}px`, overflowY: "auto" }
+            : undefined
+        }
+      >
         <SharePage plugins={plugins} />
       </div>
     </div>

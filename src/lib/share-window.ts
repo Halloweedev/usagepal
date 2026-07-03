@@ -4,6 +4,7 @@ import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import { SHARE_PLUGINS_UPDATED, SHARE_READY } from "@/lib/share-window-events"
 
 export const SHARE_WINDOW_LABEL = "share"
+export const SHARE_WINDOW_WIDTH = 640
 
 /**
  * Opens (or focuses) the dedicated share pop-out window and seeds it with the
@@ -29,8 +30,8 @@ export async function openShareWindow(plugins: DisplayPluginState[]): Promise<vo
     const shareWindow = new WebviewWindow(SHARE_WINDOW_LABEL, {
       url: "/",
       title: "Share Usage",
-      width: 480,
-      height: 640,
+      width: SHARE_WINDOW_WIDTH,
+      height: 480,
       resizable: true,
       center: true,
     })

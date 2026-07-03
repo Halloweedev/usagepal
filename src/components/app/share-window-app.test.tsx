@@ -29,6 +29,13 @@ vi.mock("@/lib/settings", async () => {
   }
 })
 
+vi.mock("@/hooks/app/use-share-window-resize", () => ({
+  useShareWindowResize: () => ({
+    containerRef: { current: null },
+    maxContentHeightPx: null,
+  }),
+}))
+
 import { ShareWindowApp } from "@/components/app/share-window-app"
 import { SHARE_PLUGINS_UPDATED, SHARE_READY } from "@/lib/share-window-events"
 
@@ -93,5 +100,10 @@ describe("ShareWindowApp", () => {
     render(<ShareWindowApp />)
     await waitFor(() => expect(state.loadThemeModeMock).toHaveBeenCalled())
     await waitFor(() => expect(document.documentElement.classList.contains("dark")).toBe(true))
+  })
+
+  it("renders the share window root shell for dynamic resizing", () => {
+    render(<ShareWindowApp />)
+    expect(screen.getByTestId("share-window-root")).toBeInTheDocument()
   })
 })
