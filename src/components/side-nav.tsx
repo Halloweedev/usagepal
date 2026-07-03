@@ -43,6 +43,7 @@ interface NavPlugin {
 interface SideNavProps {
   activeView: ActiveView
   onViewChange: (view: ActiveView) => void
+  onShareClick?: () => void
   plugins: NavPlugin[]
   onPluginContextAction?: (pluginId: string, action: PluginContextAction) => void
   isPluginRefreshAvailable?: (pluginId: string) => boolean
@@ -141,6 +142,7 @@ function SortableNavPlugin({ plugin, isActive, isDark, onClick, onContextMenu }:
 export function SideNav({
   activeView,
   onViewChange,
+  onShareClick,
   plugins,
   onPluginContextAction,
   isPluginRefreshAvailable,
@@ -252,7 +254,7 @@ export function SideNav({
       {/* Share */}
       <NavButton
         isActive={activeView === "share"}
-        onClick={() => onViewChange("share")}
+        onClick={() => onShareClick?.()}
         aria-label="Share"
       >
         <Share2 className="size-6" />

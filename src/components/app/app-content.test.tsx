@@ -1,11 +1,16 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { overviewPageMock, providerDetailPageMock, settingsPageMock, sharePageMock } = vi.hoisted(() => ({
+const { overviewPageMock, providerDetailPageMock, settingsPageMock, sharePageMock, isTauriMock } = vi.hoisted(() => ({
   overviewPageMock: vi.fn(),
   settingsPageMock: vi.fn(),
   providerDetailPageMock: vi.fn(),
   sharePageMock: vi.fn(),
+  isTauriMock: vi.fn(() => false),
+}))
+
+vi.mock("@tauri-apps/api/core", () => ({
+  isTauri: isTauriMock,
 }))
 
 vi.mock("@/pages/overview", () => ({
@@ -82,6 +87,8 @@ describe("AppContent", () => {
     settingsPageMock.mockReset()
     providerDetailPageMock.mockReset()
     sharePageMock.mockReset()
+    isTauriMock.mockReset()
+    isTauriMock.mockReturnValue(false)
     useAppUiStore.getState().resetState()
     useAppPreferencesStore.getState().resetState()
   })
@@ -113,11 +120,22 @@ describe("AppContent", () => {
     expect(props.onRetryPlugin).toHaveBeenCalledWith("codex")
   })
 
-  it("renders share page for share view", () => {
+  it("renders inline share page for share view in browser dev (no Tauri)", () => {
+    isTauriMock.mockReturnValue(false)
     useAppUiStore.getState().setActiveView("share")
     render(<AppContent {...createProps()} />)
 
     expect(screen.getByTestId("share-page")).toBeInTheDocument()
     expect(sharePageMock).toHaveBeenCalledWith(expect.objectContaining({ plugins: [] }))
+  })
+
+  it("does not render inline share page under Tauri (pop-out window owns it)", () => {
+    isTauriMock.mockReturnValue(true)
+    useAppUiStore.getState().setActiveView("share")
+    render(<AppContent {...createProps()} />)
+
+    expect(screen.queryByTestId("share-page")).not.toBeInTheDocument()
+    expect(sharePageMock).not.toHaveBeenCalled()
+    expect(screen.getByTestId("provider-detail-page")).toBeInTheDocument()
   })
 })

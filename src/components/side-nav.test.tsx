@@ -78,9 +78,17 @@ describe("SideNav", () => {
     expect(screen.queryByRole("button", { name: "Help" })).not.toBeInTheDocument()
   })
 
-  it("renders Share above Settings and calls onViewChange('share')", async () => {
+  it("renders Share above Settings and calls onShareClick, not onViewChange", async () => {
     const onViewChange = vi.fn()
-    render(<SideNav activeView="home" onViewChange={onViewChange} plugins={[]} />)
+    const onShareClick = vi.fn()
+    render(
+      <SideNav
+        activeView="home"
+        onViewChange={onViewChange}
+        onShareClick={onShareClick}
+        plugins={[]}
+      />
+    )
 
     const buttons = screen.getAllByRole("button")
     const shareIndex = buttons.findIndex((btn) => btn.getAttribute("aria-label") === "Share")
@@ -89,6 +97,7 @@ describe("SideNav", () => {
     expect(shareIndex).toBeLessThan(settingsIndex)
 
     await userEvent.click(screen.getByRole("button", { name: "Share" }))
-    expect(onViewChange).toHaveBeenCalledWith("share")
+    expect(onShareClick).toHaveBeenCalledTimes(1)
+    expect(onViewChange).not.toHaveBeenCalledWith("share")
   })
 })
