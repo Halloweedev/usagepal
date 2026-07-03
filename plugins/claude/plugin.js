@@ -696,13 +696,27 @@
     return (rounded % 1 === 0 ? String(Math.round(rounded)) : String(rounded)) + "%"
   }
 
-  function pushModelUsageLines(lines, ctx, daily) {
+  function fmtModelCost(amount) {
+    if (amount < 1000) return "$" + amount.toFixed(2)
+    return "$" + Math.round(amount).toLocaleString("en-US")
+  }
+
+  function pushModelUsageLines(lines, ctx, daily, now) {
     const models = collectModelUsage(daily)
+    const todayKey = dayKeyFromDate(now)
+    const recentKeys = recentDayKeys(now, 7)
+    const costTotals = collectModelCosts(daily, todayKey, recentKeys)
     for (let i = 0; i < models.length; i++) {
       const model = models[i]
+      let value = percentLabel(model.percent)
+      const segments = []
+      if (costTotals.Today[model.name]) segments.push("Today " + fmtModelCost(costTotals.Today[model.name]))
+      if (costTotals["7d"][model.name]) segments.push("7d " + fmtModelCost(costTotals["7d"][model.name]))
+      if (costTotals["30d"][model.name]) segments.push("30d " + fmtModelCost(costTotals["30d"][model.name]))
+      if (segments.length > 0) value += " · " + segments.join(" · ")
       lines.push(ctx.line.text({
         label: model.name,
-        value: percentLabel(model.percent),
+        value: value,
       }))
     }
   }
@@ -741,25 +755,6 @@
       }
     }
     return totals
-  }
-
-  function pushModelCostLines(lines, ctx, daily, now) {
-    const todayKey = dayKeyFromDate(now)
-    const recentKeys = recentDayKeys(now, 7)
-    const totals = collectModelCosts(daily, todayKey, recentKeys)
-    const periods = [["Today", totals.Today], ["7d", totals["7d"]], ["30d", totals["30d"]]]
-    for (let p = 0; p < periods.length; p++) {
-      const periodLabel = periods[p][0]
-      const modelTotals = periods[p][1]
-      const names = Object.keys(modelTotals).sort()
-      for (let n = 0; n < names.length; n++) {
-        const name = names[n]
-        lines.push(ctx.line.text({
-          label: name + " · " + periodLabel,
-          value: "$" + modelTotals[name].toFixed(2)
-        }))
-      }
-    }
   }
 
   function usageDayLabel(rawDate) {
@@ -1072,8 +1067,7 @@
       }
 
       pushUsageChartLine(lines, ctx, usage.daily)
-      pushModelUsageLines(lines, ctx, usage.daily)
-      pushModelCostLines(lines, ctx, usage.daily, now)
+      pushModelUsageLines(lines, ctx, usage.daily, now)
     }
 
     if (rateLimited) {

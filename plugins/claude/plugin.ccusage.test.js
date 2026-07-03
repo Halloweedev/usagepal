@@ -89,7 +89,7 @@ describe("claude plugin ccusage usage trend", () => {
     })
   })
 
-  it("adds per-model, per-period cost lines from modelBreakdowns", async () => {
+  it("merges Today/7d/30d cost into each model's existing % line", async () => {
     const todayKey = localDayKey(new Date())
     const threeDaysAgoKey = localDayKey(new Date(Date.now() - 3 * 24 * 60 * 60 * 1000))
     const tenDaysAgoKey = localDayKey(new Date(Date.now() - 10 * 24 * 60 * 60 * 1000))
@@ -132,20 +132,65 @@ describe("claude plugin ccusage usage trend", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    const opusToday = result.lines.find((line) => line.label === "claude-opus-4-8 · Today")
-    const sonnetToday = result.lines.find((line) => line.label === "claude-sonnet-4-6 · Today")
-    const opus7d = result.lines.find((line) => line.label === "claude-opus-4-8 · 7d")
-    const sonnet7d = result.lines.find((line) => line.label === "claude-sonnet-4-6 · 7d")
-    const opus30d = result.lines.find((line) => line.label === "claude-opus-4-8 · 30d")
-    const sonnet30d = result.lines.find((line) => line.label === "claude-sonnet-4-6 · 30d")
+    // opus tokens: 60 (today) + 100 (3d ago) + 100 (10d ago) = 260. sonnet tokens: 40 (today only).
+    // Total = 300, so opus = 260/300 = 86.7%, sonnet = 40/300 = 13.3%.
+    // opus cost: Today=3, 7d=3+4=7 (10d-ago entry is outside the 7d window), 30d=3+4+2=9.
+    // sonnet cost: only contributes on "today", which is inside every window, so Today=7d=30d=2.
+    const opus = result.lines.find((line) => line.label === "claude-opus-4-8")
+    const sonnet = result.lines.find((line) => line.label === "claude-sonnet-4-6")
+    expect(opus).toMatchObject({ type: "text", value: "86.7% · Today $3.00 · 7d $7.00 · 30d $9.00" })
+    expect(sonnet).toMatchObject({ type: "text", value: "13.3% · Today $2.00 · 7d $2.00 · 30d $2.00" })
 
-    expect(opusToday).toMatchObject({ type: "text", value: "$3.00" })
-    expect(sonnetToday).toMatchObject({ type: "text", value: "$2.00" })
-    // 7d = today (3) + 3-days-ago (4) = 7; the 10-days-ago entry is outside the 7d window.
-    expect(opus7d).toMatchObject({ type: "text", value: "$7.00" })
-    expect(sonnet7d).toMatchObject({ type: "text", value: "$2.00" })
-    // 30d = all three modelBreakdowns entries: 3 + 4 + 2 = 9.
-    expect(opus30d).toMatchObject({ type: "text", value: "$9.00" })
-    expect(sonnet30d).toMatchObject({ type: "text", value: "$2.00" })
+    // No separate period-suffixed lines exist anymore.
+    expect(result.lines.find((line) => line.label === "claude-opus-4-8 · Today")).toBeUndefined()
+    expect(result.lines.find((line) => line.label === "claude-opus-4-8 · 7d")).toBeUndefined()
+    expect(result.lines.find((line) => line.label === "claude-opus-4-8 · 30d")).toBeUndefined()
+  })
+
+  it("omits Today/7d segments for a model with cost only outside those windows", async () => {
+    const tenDaysAgoKey = localDayKey(new Date(Date.now() - 10 * 24 * 60 * 60 * 1000))
+    const ctx = makeProbeCtx({
+      ccusageResult: okUsage([
+        {
+          date: tenDaysAgoKey,
+          totalTokens: 100,
+          totalCost: 5,
+          modelBreakdowns: [
+            { modelName: "claude-legacy-model", cost: 5, totalTokens: 100 },
+          ],
+        },
+      ]),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // Only model, only day -> 100% of tokens. Its only contributing day is 10 days ago,
+    // which is outside both the Today and 7d windows but inside the 30d window.
+    const legacy = result.lines.find((line) => line.label === "claude-legacy-model")
+    expect(legacy).toMatchObject({ type: "text", value: "100% · 30d $5.00" })
+  })
+
+  it("abbreviates cost amounts of $1,000 or more", async () => {
+    const todayKey = localDayKey(new Date())
+    const ctx = makeProbeCtx({
+      ccusageResult: okUsage([
+        {
+          date: todayKey,
+          totalTokens: 100,
+          totalCost: 1234.5,
+          modelBreakdowns: [
+            { modelName: "claude-big-spender", cost: 1234.5, totalTokens: 100 },
+          ],
+        },
+      ]),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const big = result.lines.find((line) => line.label === "claude-big-spender")
+    expect(big).toMatchObject({
+      type: "text",
+      value: "100% · Today $1,235 · 7d $1,235 · 30d $1,235",
+    })
   })
 })
