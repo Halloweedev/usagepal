@@ -4,7 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ShareCard, type ShareCardTheme } from "@/components/share-card"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
-import { buildShareableLines } from "@/lib/share-lines"
+import { buildShareableLines, matchModelCostPeriod, MODEL_COST_PERIODS } from "@/lib/share-lines"
 import { copyCardImage } from "@/lib/share-image"
 
 export type SharePageProps = {
@@ -37,6 +37,32 @@ export function SharePage({ plugins }: SharePageProps) {
     if (!selected?.data) return []
     return buildShareableLines(selected.data.lines, selected.meta.lines)
   }, [selected])
+
+  const periodGroups = useMemo(() => {
+    const groups = new Map<string, string[]>()
+    for (const entry of shareableLines) {
+      const period = matchModelCostPeriod(entry.line.label)
+      if (!period) continue
+      const list = groups.get(period.label) ?? []
+      list.push(entry.line.label)
+      groups.set(period.label, list)
+    }
+    return groups
+  }, [shareableLines])
+
+  const allPeriodLabels = useMemo(() => Array.from(periodGroups.values()).flat(), [periodGroups])
+
+  const toggleGroup = (labels: string[]) => {
+    setCheckedLabels((prev) => {
+      const allChecked = labels.length > 0 && labels.every((label) => prev.has(label))
+      const next = new Set(prev)
+      for (const label of labels) {
+        if (allChecked) next.delete(label)
+        else next.add(label)
+      }
+      return next
+    })
+  }
 
   useEffect(() => {
     if (seededForRef.current === selectedId) return
@@ -97,6 +123,37 @@ export function SharePage({ plugins }: SharePageProps) {
         <p className="text-sm text-muted-foreground">No data yet for this provider.</p>
       ) : (
         <>
+          {MODEL_COST_PERIODS.some((period) => periodGroups.has(period.label)) && (
+            <div className="flex flex-wrap items-center gap-1">
+              {MODEL_COST_PERIODS.map((period) => {
+                const labels = periodGroups.get(period.label)
+                if (!labels) return null
+                const allChecked = labels.every((label) => checkedLabels.has(label))
+                return (
+                  <Button
+                    key={period.label}
+                    size="xs"
+                    variant={allChecked ? "default" : "outline"}
+                    onClick={() => toggleGroup(labels)}
+                  >
+                    {period.label}
+                  </Button>
+                )
+              })}
+              <Button
+                size="xs"
+                variant={
+                  allPeriodLabels.length > 0 && allPeriodLabels.every((label) => checkedLabels.has(label))
+                    ? "default"
+                    : "outline"
+                }
+                onClick={() => toggleGroup(allPeriodLabels)}
+              >
+                All periods
+              </Button>
+            </div>
+          )}
+
           <div className="flex max-h-28 flex-col gap-1 overflow-y-auto pr-1">
             {shareableLines.map((entry) => (
               <label key={entry.line.label} className="flex items-center gap-1.5 text-xs">
