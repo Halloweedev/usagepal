@@ -67,6 +67,13 @@ describe("ShareCard", () => {
     expect(screen.getByTestId("share-card")).toHaveClass("bg-white", "text-neutral-900")
   })
 
+  it("renders at the wider export size for a legible shared image", () => {
+    render(
+      <ShareCard providerName="Claude" providerIconUrl="/claude.svg" lines={[]} theme="dark" showWatermark={false} />
+    )
+    expect(screen.getByTestId("share-card")).toHaveClass("w-[440px]")
+  })
+
   it("shows the plan badge only when a plan is provided", () => {
     const { rerender } = render(
       <ShareCard providerName="Claude" providerIconUrl="/claude.svg" lines={[]} theme="dark" showWatermark={false} />

@@ -61,12 +61,12 @@ function ProgressRow({
 }) {
   const percent = line.limit > 0 ? clamp01(line.used / line.limit) * 100 : 0
   return (
-    <div data-testid="share-card-line-progress" className="flex flex-col gap-0.5">
-      <div className="flex items-center justify-between text-[10px]">
-        <span>{line.label}</span>
-        <span className={styles.subtext}>{progressValueLabel(line, percent)}</span>
+    <div data-testid="share-card-line-progress" className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className="text-sm">{line.label}</span>
+        <span className={cn("text-xs", styles.subtext)}>{progressValueLabel(line, percent)}</span>
       </div>
-      <div className={cn("h-1 w-full overflow-hidden rounded-full", styles.track)}>
+      <div className={cn("h-1.5 w-full overflow-hidden rounded-full", styles.track)}>
         <div
           className="h-full rounded-full"
           style={{ width: `${percent}%`, backgroundColor: brandColor ?? "currentColor" }}
@@ -78,19 +78,19 @@ function ProgressRow({
 
 function TextRow({ line }: { line: Extract<MetricLine, { type: "text" }> }) {
   return (
-    <div data-testid="share-card-line-text" className="flex items-center justify-between text-[10px]">
-      <span>{line.label}</span>
-      <span>{line.value}</span>
+    <div data-testid="share-card-line-text" className="flex items-center justify-between">
+      <span className="text-sm">{line.label}</span>
+      <span className="text-xs">{line.value}</span>
     </div>
   )
 }
 
 function BadgeRow({ line, styles }: { line: Extract<MetricLine, { type: "badge" }>; styles: ThemeStyle }) {
   return (
-    <div data-testid="share-card-line-badge" className="flex items-center justify-between text-[10px]">
-      <span>{line.label}</span>
+    <div data-testid="share-card-line-badge" className="flex items-center justify-between">
+      <span className="text-sm">{line.label}</span>
       <span
-        className={cn("rounded-full border px-1.5 py-0.5", line.color ? undefined : styles.border)}
+        className={cn("rounded-full border px-2 py-1 text-xs", line.color ? undefined : styles.border)}
         style={line.color ? { color: line.color, borderColor: line.color } : undefined}
       >
         {line.text}
@@ -112,9 +112,9 @@ function ModelBreakdownRow({
   const displayValue = parsed ? formatModelBreakdownValue(parsed, modelDisplay) : line.value
 
   return (
-    <div data-testid="share-card-line-model-breakdown" className="flex flex-col gap-0.5">
-      <span className="whitespace-nowrap text-[10px]">{line.label}</span>
-      {displayValue && <span className={cn("text-[10px]", styles.subtext)}>{displayValue}</span>}
+    <div data-testid="share-card-line-model-breakdown" className="flex flex-col gap-1">
+      <span className="whitespace-nowrap text-sm">{line.label}</span>
+      {displayValue && <span className={cn("text-xs", styles.subtext)}>{displayValue}</span>}
     </div>
   )
 }
@@ -132,9 +132,9 @@ function BarChartRow({
   const maxValue = Math.max(1, ...valid.map((point) => point.value))
 
   return (
-    <div data-testid="share-card-line-barchart" className="flex flex-col gap-0.5">
-      <span className="text-[10px]">{line.label}</span>
-      <div className="flex h-5 items-end gap-px">
+    <div data-testid="share-card-line-barchart" className="flex flex-col gap-1">
+      <span className="text-sm">{line.label}</span>
+      <div className="flex h-8 items-end gap-px">
         {valid.map((point, index) => (
           <div
             key={`${point.label}-${index}`}
@@ -172,12 +172,12 @@ export function ShareCard({
   return (
     <div
       data-testid="share-card"
-      className={cn("flex w-[240px] flex-col gap-1.5 rounded-xl border p-2.5", styles.bg, styles.text, styles.border)}
+      className={cn("flex w-[440px] flex-col gap-4 rounded-xl border p-5", styles.bg, styles.text, styles.border)}
     >
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <span
           aria-hidden="true"
-          className={cn("inline-block size-3.5", styles.text)}
+          className={cn("inline-block size-5", styles.text)}
           style={{
             backgroundColor: "currentColor",
             WebkitMaskImage: `url(${providerIconUrl})`,
@@ -190,17 +190,17 @@ export function ShareCard({
             maskPosition: "center",
           }}
         />
-        <span className="text-xs font-semibold">{providerName}</span>
+        <span className="text-base font-semibold">{providerName}</span>
         {plan && (
           <span
             data-testid="share-card-plan"
-            className={cn("ml-auto rounded-full border px-1.5 py-0.5 text-[9px]", styles.subtext, styles.border)}
+            className={cn("ml-auto rounded-full border px-2 py-1 text-xs", styles.subtext, styles.border)}
           >
             {plan}
           </span>
         )}
       </div>
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-3">
         {lines.map((line, index) => {
           if (line.type === "progress") {
             return <ProgressRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
@@ -230,7 +230,7 @@ export function ShareCard({
         })}
       </div>
       {showWatermark && (
-        <div data-testid="share-card-watermark" className={cn("text-center text-[10px]", styles.subtext)}>
+        <div data-testid="share-card-watermark" className={cn("text-center text-xs", styles.subtext)}>
           Shared via UsagePal
         </div>
       )}
