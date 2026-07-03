@@ -548,6 +548,15 @@
     return "$" + Math.round(amount).toLocaleString("en-US")
   }
 
+  function prettifyModelName(rawId) {
+    if (typeof rawId !== "string" || !rawId.startsWith("gpt-")) return rawId
+    const parts = rawId.slice("gpt-".length).split("-")
+    const version = parts[0]
+    if (!/^\d+(\.\d+)?$/.test(version)) return rawId
+    const suffixWords = parts.slice(1).map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    return ["GPT-" + version].concat(suffixWords).join(" ")
+  }
+
   function pushModelUsageLines(lines, ctx, daily, now) {
     const models = collectModelUsage(daily)
     const todayKey = dayKeyFromDate(now)
@@ -562,7 +571,7 @@
       if (costTotals["30d"][model.name]) segments.push("30d " + fmtModelCost(costTotals["30d"][model.name]))
       if (segments.length > 0) value += " · " + segments.join(" · ")
       lines.push(ctx.line.text({
-        label: model.name,
+        label: prettifyModelName(model.name),
         value: value,
       }))
     }

@@ -66,8 +66,8 @@ describe("codex plugin ccusage usage trend", () => {
     })
     expect(chart.points.map((point) => point.value)).toEqual([150, 300])
 
-    const gpt55 = result.lines.find((line) => line.label === "gpt-5.5")
-    const gpt5 = result.lines.find((line) => line.label === "gpt-5")
+    const gpt55 = result.lines.find((line) => line.label === "GPT-5.5")
+    const gpt5 = result.lines.find((line) => line.label === "GPT-5")
     expect(gpt55).toMatchObject({
       type: "text",
       value: "50%",
@@ -134,8 +134,8 @@ describe("codex plugin ccusage usage trend", () => {
     // gpt-5.5 tokens: 60 + 100 + 100 = 260. gpt-5 tokens: 40 (today only). Total = 300.
     // gpt-5.5 = 260/300 = 86.7%, gpt-5 = 40/300 = 13.3%.
     // gpt-5.5 cost: Today=3, 7d=3+4=7, 30d=3+4+2=9. gpt-5 cost: Today=7d=30d=2 (today only).
-    const gpt55 = result.lines.find((line) => line.label === "gpt-5.5")
-    const gpt5 = result.lines.find((line) => line.label === "gpt-5")
+    const gpt55 = result.lines.find((line) => line.label === "GPT-5.5")
+    const gpt5 = result.lines.find((line) => line.label === "GPT-5")
     expect(gpt55).toMatchObject({ type: "text", value: "86.7% · Today $3.00 · 7d $7.00 · 30d $9.00" })
     expect(gpt5).toMatchObject({ type: "text", value: "13.3% · Today $2.00 · 7d $2.00 · 30d $2.00" })
 
@@ -212,6 +212,43 @@ describe("codex plugin ccusage usage trend", () => {
     expect(big).toMatchObject({
       type: "text",
       value: "100% · Today $1,235 · 7d $1,235 · 30d $1,235",
+    })
+  })
+
+  it("leaves an unrecognized model id unchanged", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({
+      status: "ok",
+      data: {
+        daily: [
+          {
+            date: dayKey(0),
+            totalTokens: 100,
+            totalCost: 1,
+            modelBreakdowns: [
+              { modelName: "some-custom-model", cost: 1, totalTokens: 100 },
+            ],
+          },
+        ],
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const custom = result.lines.find((line) => line.label === "some-custom-model")
+    expect(custom).toMatchObject({
+      type: "text",
+      value: "100% · Today $1.00 · 7d $1.00 · 30d $1.00",
     })
   })
 })
