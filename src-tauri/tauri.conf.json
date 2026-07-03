@@ -20,6 +20,17 @@
         "decorations": false,
         "transparent": true,
         "visible": false
+      },
+      {
+        "label": "share",
+        "title": "Share Usage",
+        "width": 480,
+        "height": 640,
+        "resizable": true,
+        "decorations": true,
+        "transparent": false,
+        "visible": false,
+        "center": true
       }
     ],
     "security": {
