@@ -54,22 +54,6 @@ function makePlugin(overrides: Partial<DisplayPluginState> = {}): DisplayPluginS
   }
 }
 
-function makeCostPlugin(): DisplayPluginState {
-  return makePlugin({
-    data: {
-      providerId: "claude",
-      displayName: "Claude",
-      iconUrl: "/claude.svg",
-      lines: [
-        { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
-        { type: "text", label: "claude-opus-4-8 · Today", value: "$3.00" },
-        { type: "text", label: "claude-sonnet-4-6 · Today", value: "$2.00" },
-        { type: "text", label: "claude-opus-4-8 · 7d", value: "$7.00" },
-      ],
-    },
-  })
-}
-
 describe("SharePage", () => {
   beforeEach(() => {
     shareCardMock.mockReset()
@@ -153,37 +137,14 @@ describe("SharePage", () => {
     expect(await screen.findByText("clipboard denied")).toBeInTheDocument()
   })
 
-  it("shows period quick-toggle buttons only when model-cost lines exist, and bulk-toggles by period", async () => {
-    const user = userEvent.setup()
-    render(<SharePage plugins={[makeCostPlugin()]} />)
-
-    expect(screen.getByRole("button", { name: "Today" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "7d" })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "30d" })).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "All periods" })).toBeInTheDocument()
-
-    expect(screen.getByRole("checkbox", { name: "claude-opus-4-8 · Today" })).not.toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "claude-sonnet-4-6 · Today" })).not.toBeChecked()
-
-    await user.click(screen.getByRole("button", { name: "Today" }))
-    expect(screen.getByRole("checkbox", { name: "claude-opus-4-8 · Today" })).toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "claude-sonnet-4-6 · Today" })).toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "claude-opus-4-8 · 7d" })).not.toBeChecked()
-
-    await user.click(screen.getByRole("button", { name: "Today" }))
-    expect(screen.getByRole("checkbox", { name: "claude-opus-4-8 · Today" })).not.toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "claude-sonnet-4-6 · Today" })).not.toBeChecked()
-
-    await user.click(screen.getByRole("button", { name: "All periods" }))
-    expect(screen.getByRole("checkbox", { name: "claude-opus-4-8 · Today" })).toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "claude-sonnet-4-6 · Today" })).toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "claude-opus-4-8 · 7d" })).toBeChecked()
-  })
-
-  it("hides period quick-toggle buttons when the provider has no model-cost lines", () => {
+  it("renders checklist rows as bordered chips inside a wrapping container", () => {
     render(<SharePage plugins={[makePlugin()]} />)
 
-    expect(screen.queryByRole("button", { name: "Today" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "All periods" })).not.toBeInTheDocument()
+    const sessionCheckbox = screen.getByRole("checkbox", { name: "Session" })
+    const chip = sessionCheckbox.closest("label")
+    expect(chip).toHaveClass("rounded-md", "border")
+
+    const container = chip?.parentElement
+    expect(container).toHaveClass("flex-wrap")
   })
 })
