@@ -707,6 +707,61 @@
     }
   }
 
+  function recentDayKeys(now, count) {
+    const keys = []
+    for (let i = 0; i < count; i++) {
+      const d = new Date(now.getTime())
+      d.setDate(d.getDate() - i)
+      keys.push(dayKeyFromDate(d))
+    }
+    return keys
+  }
+
+  function collectModelCosts(daily, todayKey, recentKeys) {
+    const recentSet = new Set(recentKeys)
+    const totals = { Today: {}, "7d": {}, "30d": {} }
+    for (let i = 0; i < daily.length; i++) {
+      const day = daily[i]
+      const breakdowns = day && day.modelBreakdowns
+      if (!Array.isArray(breakdowns)) continue
+      const dayKey = dayKeyFromUsageDate(day.date)
+      const inToday = dayKey === todayKey
+      const in7d = recentSet.has(dayKey)
+      for (let j = 0; j < breakdowns.length; j++) {
+        const breakdown = breakdowns[j]
+        const name = String(
+          (breakdown && (breakdown.modelName || breakdown.name || breakdown.model)) || ""
+        ).trim()
+        if (!name) continue
+        const cost = Number(breakdown && breakdown.cost)
+        if (!Number.isFinite(cost) || cost <= 0) continue
+        totals["30d"][name] = (totals["30d"][name] || 0) + cost
+        if (in7d) totals["7d"][name] = (totals["7d"][name] || 0) + cost
+        if (inToday) totals.Today[name] = (totals.Today[name] || 0) + cost
+      }
+    }
+    return totals
+  }
+
+  function pushModelCostLines(lines, ctx, daily, now) {
+    const todayKey = dayKeyFromDate(now)
+    const recentKeys = recentDayKeys(now, 7)
+    const totals = collectModelCosts(daily, todayKey, recentKeys)
+    const periods = [["Today", totals.Today], ["7d", totals["7d"]], ["30d", totals["30d"]]]
+    for (let p = 0; p < periods.length; p++) {
+      const periodLabel = periods[p][0]
+      const modelTotals = periods[p][1]
+      const names = Object.keys(modelTotals).sort()
+      for (let n = 0; n < names.length; n++) {
+        const name = names[n]
+        lines.push(ctx.line.text({
+          label: name + " · " + periodLabel,
+          value: "$" + modelTotals[name].toFixed(2)
+        }))
+      }
+    }
+  }
+
   function usageDayLabel(rawDate) {
     const key = dayKeyFromUsageDate(rawDate)
     if (!key) return String(rawDate || "").slice(0, 10) || "Usage"
@@ -1018,6 +1073,7 @@
 
       pushUsageChartLine(lines, ctx, usage.daily)
       pushModelUsageLines(lines, ctx, usage.daily)
+      pushModelCostLines(lines, ctx, usage.daily, now)
     }
 
     if (rateLimited) {
