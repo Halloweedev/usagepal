@@ -216,4 +216,59 @@ describe("SharePage", () => {
     expect(screen.getByTestId("share-card-mock").closest("[data-testid='share-page-preview']")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Copy Image" }).closest("[data-testid='share-page-controls']")).toBeTruthy()
   })
+
+  it("shows Model Details toggles when a model line is checked", () => {
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    expect(screen.getByTestId("share-model-details-section")).toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Usage %" })).toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Today" })).toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "7 Days" })).toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "30 Days" })).toBeChecked()
+  })
+
+  it("hides Model Details when no model lines are checked", async () => {
+    const user = userEvent.setup()
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    await user.click(screen.getByRole("checkbox", { name: "claude-sonnet-5" }))
+
+    expect(screen.queryByTestId("share-model-details-section")).not.toBeInTheDocument()
+  })
+
+  it("passes modelDisplay toggles to ShareCard", async () => {
+    const user = userEvent.setup()
+    const withMergedModel = makePlugin({
+      data: {
+        providerId: "claude",
+        displayName: "Claude",
+        iconUrl: "/claude.svg",
+        lines: [
+          { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
+          {
+            type: "text",
+            label: "Opus 4.8",
+            value: "85.2% · Today $11.44 · 7d $1431 · 30d $6539",
+          },
+        ],
+      },
+    })
+    render(<SharePage plugins={[withMergedModel]} />)
+
+    await user.click(screen.getByRole("checkbox", { name: "7 Days" }))
+
+    const lastCall = shareCardMock.mock.calls.at(-1)?.[0] as {
+      modelDisplay?: { showSevenDay: boolean }
+      modelBreakdownLabels?: Set<string>
+    }
+    expect(lastCall.modelDisplay?.showSevenDay).toBe(false)
+    expect(lastCall.modelBreakdownLabels?.has("Opus 4.8")).toBe(true)
+  })
+
+  it("renders Card section with organized toggle grid", () => {
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    expect(screen.getByText("Card")).toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Light Card" }).closest(".grid")).toBeTruthy()
+  })
 })

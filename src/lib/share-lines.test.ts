@@ -64,4 +64,15 @@ describe("buildShareableLines", () => {
     expect(merged.scope).toBe("modelBreakdown")
     expect(merged.defaultChecked).toBe(true)
   })
+
+  it("treats an undeclared non-text line (e.g. a rate-limit badge) as detail scope, not model-breakdown", () => {
+    const dataLines: MetricLine[] = [
+      ...DATA_LINES,
+      { type: "badge", label: "Status", text: "Rate limited" },
+    ]
+    const result = buildShareableLines(dataLines, MANIFEST_LINES)
+    const status = result.find((entry) => entry.line.label === "Status")!
+    expect(status.scope).toBe("detail")
+    expect(status.defaultChecked).toBe(false)
+  })
 })

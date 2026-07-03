@@ -85,4 +85,52 @@ describe("ShareCard", () => {
     )
     expect(screen.getByTestId("share-card-plan")).toHaveTextContent("Max 5x")
   })
+
+  it("renders model breakdown lines as a two-row layout with formatted segments", () => {
+    const modelLine: MetricLine = {
+      type: "text",
+      label: "Haiku 4.5",
+      value: "85.2% · Today $11.44 · 7d $1431 · 30d $6539",
+    }
+
+    render(
+      <ShareCard
+        providerName="Claude"
+        providerIconUrl="/claude.svg"
+        lines={[modelLine]}
+        theme="dark"
+        showWatermark={false}
+        modelBreakdownLabels={new Set(["Haiku 4.5"])}
+        modelDisplay={{ showPercent: true, showToday: true, showSevenDay: false, showThirtyDay: false }}
+      />
+    )
+
+    expect(screen.getByTestId("share-card-line-model-breakdown")).toBeInTheDocument()
+    expect(screen.getByText("Haiku 4.5")).toHaveClass("whitespace-nowrap")
+    expect(screen.getByText("85.2% · Today $11.44")).toBeInTheDocument()
+    expect(screen.queryByText(/7d/)).not.toBeInTheDocument()
+  })
+
+  it("renders badge lines instead of silently dropping them", () => {
+    const badgeLine: MetricLine = {
+      type: "badge",
+      label: "Status",
+      text: "Rate limited",
+      color: "#f59e0b",
+    }
+
+    render(
+      <ShareCard
+        providerName="Claude"
+        providerIconUrl="/claude.svg"
+        lines={[badgeLine]}
+        theme="dark"
+        showWatermark={false}
+      />
+    )
+
+    expect(screen.getByTestId("share-card-line-badge")).toBeInTheDocument()
+    expect(screen.getByText("Status")).toBeInTheDocument()
+    expect(screen.getByText("Rate limited")).toBeInTheDocument()
+  })
 })

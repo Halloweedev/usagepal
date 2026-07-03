@@ -112,6 +112,31 @@ describe("openShareWindow", () => {
     expect(state.emitMock).toHaveBeenCalledWith(SHARE_PLUGINS_UPDATED, plugins)
   })
 
+  it("calls onClosed when a freshly-created window is destroyed", async () => {
+    state.getByLabelMock.mockResolvedValue(null)
+    const onClosed = vi.fn()
+
+    await openShareWindow(makePlugins(), onClosed)
+
+    const destroyedHandler = state.onceHandlers.get("tauri://destroyed")
+    expect(destroyedHandler).toBeDefined()
+    destroyedHandler?.(undefined)
+
+    expect(onClosed).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not call onClosed when re-focusing an already-open window", async () => {
+    state.getByLabelMock.mockResolvedValue({
+      show: state.showMock,
+      setFocus: state.setFocusMock,
+    })
+    const onClosed = vi.fn()
+
+    await openShareWindow(makePlugins(), onClosed)
+
+    expect(onClosed).not.toHaveBeenCalled()
+  })
+
   it("logs loudly when window creation reports an error", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     state.getByLabelMock.mockResolvedValue(null)

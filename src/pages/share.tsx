@@ -6,6 +6,7 @@ import { ShareCard, type ShareCardTheme } from "@/components/share-card"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import { buildShareableLines } from "@/lib/share-lines"
 import { copyCardImage } from "@/lib/share-image"
+import type { ModelDisplayOptions } from "@/lib/model-breakdown-format"
 
 const CHECKLIST_GROUPS = [
   { scope: "overview", label: "Usage" },
@@ -25,6 +26,12 @@ export function SharePage({ plugins }: SharePageProps) {
   const [theme, setTheme] = useState<ShareCardTheme>("dark")
   const [showWatermark, setShowWatermark] = useState(true)
   const [showPlan, setShowPlan] = useState(true)
+  const [modelDisplay, setModelDisplay] = useState<ModelDisplayOptions>({
+    showPercent: true,
+    showToday: true,
+    showSevenDay: true,
+    showThirtyDay: true,
+  })
   const [copyState, setCopyState] = useState<CopyState>("idle")
   const [copyError, setCopyError] = useState<string | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -67,6 +74,20 @@ export function SharePage({ plugins }: SharePageProps) {
     [shareableLines, checkedLabels]
   )
 
+  const modelBreakdownLabels = useMemo(
+    () => new Set(shareableLines.filter((entry) => entry.scope === "modelBreakdown").map((entry) => entry.line.label)),
+    [shareableLines]
+  )
+
+  const hasCheckedModels = useMemo(
+    () => [...modelBreakdownLabels].some((label) => checkedLabels.has(label)),
+    [modelBreakdownLabels, checkedLabels]
+  )
+
+  const setModelDisplayField = (field: keyof ModelDisplayOptions, checked: boolean) => {
+    setModelDisplay((prev) => ({ ...prev, [field]: checked }))
+  }
+
   const toggleLabel = (label: string, checked: boolean) => {
     setCheckedLabels((prev) => {
       const next = new Set(prev)
@@ -101,7 +122,7 @@ export function SharePage({ plugins }: SharePageProps) {
         <Tabs value={selectedId ?? undefined} onValueChange={(value) => setSelectedId(String(value))}>
           <TabsList>
             {plugins.map((plugin) => (
-              <TabsTrigger key={plugin.meta.id} value={plugin.meta.id}>
+              <TabsTrigger key={plugin.meta.id} value={plugin.meta.id} disabled={copyState === "copying"}>
                 {plugin.meta.name}
               </TabsTrigger>
             ))}
@@ -126,6 +147,7 @@ export function SharePage({ plugins }: SharePageProps) {
                           aria-label={entry.line.label}
                           checked={checkedLabels.has(entry.line.label)}
                           onCheckedChange={(checked) => toggleLabel(entry.line.label, checked === true)}
+                          disabled={copyState === "copying"}
                         />
                         {entry.line.label}
                       </label>
@@ -135,34 +157,84 @@ export function SharePage({ plugins }: SharePageProps) {
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-1.5 text-xs">
-                <Checkbox
-                  aria-label="Light card"
-                  checked={theme === "light"}
-                  onCheckedChange={(checked) => setTheme(checked === true ? "light" : "dark")}
-                />
-                Light card
-              </label>
-              <label className="flex items-center gap-1.5 text-xs">
-                <Checkbox
-                  aria-label="Watermark"
-                  checked={showWatermark}
-                  onCheckedChange={(checked) => setShowWatermark(checked === true)}
-                />
-                Watermark
-              </label>
-              {selected.data.plan && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-medium uppercase text-muted-foreground">Card</span>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 <label className="flex items-center gap-1.5 text-xs">
                   <Checkbox
-                    aria-label="Plan"
-                    checked={showPlan}
-                    onCheckedChange={(checked) => setShowPlan(checked === true)}
+                    aria-label="Light Card"
+                    checked={theme === "light"}
+                    onCheckedChange={(checked) => setTheme(checked === true ? "light" : "dark")}
+                    disabled={copyState === "copying"}
                   />
-                  Plan
+                  Light Card
                 </label>
-              )}
+                <label className="flex items-center gap-1.5 text-xs">
+                  <Checkbox
+                    aria-label="Watermark"
+                    checked={showWatermark}
+                    onCheckedChange={(checked) => setShowWatermark(checked === true)}
+                    disabled={copyState === "copying"}
+                  />
+                  Watermark
+                </label>
+                {selected.data.plan && (
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Checkbox
+                      aria-label="Plan"
+                      checked={showPlan}
+                      onCheckedChange={(checked) => setShowPlan(checked === true)}
+                      disabled={copyState === "copying"}
+                    />
+                    Plan
+                  </label>
+                )}
+              </div>
             </div>
+
+            {hasCheckedModels && (
+              <div className="flex flex-col gap-1" data-testid="share-model-details-section">
+                <span className="text-[10px] font-medium uppercase text-muted-foreground">Model Details</span>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Checkbox
+                      aria-label="Usage %"
+                      checked={modelDisplay.showPercent}
+                      onCheckedChange={(checked) => setModelDisplayField("showPercent", checked === true)}
+                      disabled={copyState === "copying"}
+                    />
+                    Usage %
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Checkbox
+                      aria-label="Today"
+                      checked={modelDisplay.showToday}
+                      onCheckedChange={(checked) => setModelDisplayField("showToday", checked === true)}
+                      disabled={copyState === "copying"}
+                    />
+                    Today
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Checkbox
+                      aria-label="7 Days"
+                      checked={modelDisplay.showSevenDay}
+                      onCheckedChange={(checked) => setModelDisplayField("showSevenDay", checked === true)}
+                      disabled={copyState === "copying"}
+                    />
+                    7 Days
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Checkbox
+                      aria-label="30 Days"
+                      checked={modelDisplay.showThirtyDay}
+                      onCheckedChange={(checked) => setModelDisplayField("showThirtyDay", checked === true)}
+                      disabled={copyState === "copying"}
+                    />
+                    30 Days
+                  </label>
+                </div>
+              </div>
+            )}
 
             <Button onClick={handleCopy} disabled={copyState === "copying" || checkedLines.length === 0}>
               {copyState === "copying" ? "Copying..." : "Copy Image"}
@@ -184,6 +256,8 @@ export function SharePage({ plugins }: SharePageProps) {
               lines={checkedLines}
               theme={theme}
               showWatermark={showWatermark}
+              modelDisplay={modelDisplay}
+              modelBreakdownLabels={modelBreakdownLabels}
             />
           </div>
         </div>

@@ -1,4 +1,6 @@
 import type { MetricLine } from "@/lib/plugin-types"
+import type { ModelDisplayOptions } from "@/lib/model-breakdown-format"
+import { formatModelBreakdownValue, parseModelBreakdownValue } from "@/lib/model-breakdown-format"
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
 
 export type ShareCardTheme = "dark" | "light"
@@ -11,6 +13,8 @@ export type ShareCardProps = {
   lines: MetricLine[]
   theme: ShareCardTheme
   showWatermark: boolean
+  modelDisplay?: ModelDisplayOptions
+  modelBreakdownLabels?: Set<string>
 }
 
 type ThemeStyle = {
@@ -81,6 +85,40 @@ function TextRow({ line }: { line: Extract<MetricLine, { type: "text" }> }) {
   )
 }
 
+function BadgeRow({ line, styles }: { line: Extract<MetricLine, { type: "badge" }>; styles: ThemeStyle }) {
+  return (
+    <div data-testid="share-card-line-badge" className="flex items-center justify-between text-[10px]">
+      <span>{line.label}</span>
+      <span
+        className={cn("rounded-full border px-1.5 py-0.5", line.color ? undefined : styles.border)}
+        style={line.color ? { color: line.color, borderColor: line.color } : undefined}
+      >
+        {line.text}
+      </span>
+    </div>
+  )
+}
+
+function ModelBreakdownRow({
+  line,
+  styles,
+  modelDisplay,
+}: {
+  line: Extract<MetricLine, { type: "text" }>
+  styles: ThemeStyle
+  modelDisplay: ModelDisplayOptions
+}) {
+  const parsed = parseModelBreakdownValue(line.value)
+  const displayValue = parsed ? formatModelBreakdownValue(parsed, modelDisplay) : line.value
+
+  return (
+    <div data-testid="share-card-line-model-breakdown" className="flex flex-col gap-0.5">
+      <span className="whitespace-nowrap text-[10px]">{line.label}</span>
+      {displayValue && <span className={cn("text-[10px]", styles.subtext)}>{displayValue}</span>}
+    </div>
+  )
+}
+
 function BarChartRow({
   line,
   styles,
@@ -120,8 +158,16 @@ export function ShareCard({
   lines,
   theme,
   showWatermark,
+  modelDisplay,
+  modelBreakdownLabels,
 }: ShareCardProps) {
   const styles = THEME_STYLES[theme]
+  const displayOptions = modelDisplay ?? {
+    showPercent: true,
+    showToday: true,
+    showSevenDay: true,
+    showThirtyDay: true,
+  }
 
   return (
     <div
@@ -160,10 +206,25 @@ export function ShareCard({
             return <ProgressRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
           }
           if (line.type === "text") {
+            const isModelBreakdown = modelBreakdownLabels?.has(line.label)
+            const parsed = isModelBreakdown ? parseModelBreakdownValue(line.value) : null
+            if (isModelBreakdown && parsed) {
+              return (
+                <ModelBreakdownRow
+                  key={`${line.label}-${index}`}
+                  line={line}
+                  styles={styles}
+                  modelDisplay={displayOptions}
+                />
+              )
+            }
             return <TextRow key={`${line.label}-${index}`} line={line} />
           }
           if (line.type === "barChart") {
             return <BarChartRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
+          }
+          if (line.type === "badge") {
+            return <BadgeRow key={`${line.label}-${index}`} line={line} styles={styles} />
           }
           return null
         })}

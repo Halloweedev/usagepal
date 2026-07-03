@@ -220,7 +220,9 @@ export function MainApp() {
       return
     }
     shareWindowOpenRef.current = true
-    void openShareWindow(displayPluginsRef.current)
+    void openShareWindow(displayPluginsRef.current, () => {
+      shareWindowOpenRef.current = false
+    })
   }, [setActiveView])
 
   // Respond to the share window's ready handshake with the current snapshot.

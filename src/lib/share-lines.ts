@@ -20,7 +20,11 @@ export function buildShareableLines(
 ): ShareableLine[] {
   return dataLines.map((line) => {
     const manifest = manifestLines.find((entry) => entry.label === line.label)
-    const scope: ShareLineScope = manifest ? manifest.scope : "modelBreakdown"
+    // Only text lines fall back to "modelBreakdown": that's the shape of the
+    // runtime-generated per-model rows this classification is meant to catch.
+    // Other unmatched line types (e.g. a "Status" badge) default to "detail"
+    // instead of being mislabeled as a model.
+    const scope: ShareLineScope = manifest ? manifest.scope : line.type === "text" ? "modelBreakdown" : "detail"
     const defaultChecked = scope === "overview" || scope === "modelBreakdown" || line.type === "barChart"
     return { line, scope, defaultChecked }
   })
