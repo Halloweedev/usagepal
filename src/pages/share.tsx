@@ -7,6 +7,12 @@ import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import { buildShareableLines } from "@/lib/share-lines"
 import { copyCardImage } from "@/lib/share-image"
 
+const CHECKLIST_GROUPS = [
+  { scope: "overview", label: "Usage" },
+  { scope: "detail", label: "Details" },
+  { scope: "modelBreakdown", label: "Models" },
+] as const
+
 export type SharePageProps = {
   plugins: DisplayPluginState[]
 }
@@ -18,6 +24,7 @@ export function SharePage({ plugins }: SharePageProps) {
   const [checkedLabels, setCheckedLabels] = useState<Set<string>>(new Set())
   const [theme, setTheme] = useState<ShareCardTheme>("dark")
   const [showWatermark, setShowWatermark] = useState(true)
+  const [showPlan, setShowPlan] = useState(true)
   const [copyState, setCopyState] = useState<CopyState>("idle")
   const [copyError, setCopyError] = useState<string | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -37,6 +44,13 @@ export function SharePage({ plugins }: SharePageProps) {
     if (!selected?.data) return []
     return buildShareableLines(selected.data.lines, selected.meta.lines)
   }, [selected])
+
+  const groupedLines = useMemo(() => {
+    return CHECKLIST_GROUPS.map((group) => ({
+      label: group.label,
+      entries: shareableLines.filter((entry) => entry.scope === group.scope),
+    })).filter((group) => group.entries.length > 0)
+  }, [shareableLines])
 
   useEffect(() => {
     if (seededForRef.current === selectedId) return
@@ -97,19 +111,26 @@ export function SharePage({ plugins }: SharePageProps) {
         <p className="text-sm text-muted-foreground">No data yet for this provider.</p>
       ) : (
         <>
-          <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto pr-1">
-            {shareableLines.map((entry) => (
-              <label
-                key={entry.line.label}
-                className="flex items-center gap-1.5 rounded-md border px-1.5 py-1 text-xs"
-              >
-                <Checkbox
-                  aria-label={entry.line.label}
-                  checked={checkedLabels.has(entry.line.label)}
-                  onCheckedChange={(checked) => toggleLabel(entry.line.label, checked === true)}
-                />
-                {entry.line.label}
-              </label>
+          <div className="flex max-h-40 flex-col gap-2 overflow-y-auto pr-1">
+            {groupedLines.map((group) => (
+              <div key={group.label} className="flex flex-col gap-1">
+                <span className="text-[10px] font-medium uppercase text-muted-foreground">{group.label}</span>
+                <div className="flex flex-wrap gap-1">
+                  {group.entries.map((entry) => (
+                    <label
+                      key={entry.line.label}
+                      className="flex items-center gap-1.5 rounded-md border px-1.5 py-1 text-xs"
+                    >
+                      <Checkbox
+                        aria-label={entry.line.label}
+                        checked={checkedLabels.has(entry.line.label)}
+                        onCheckedChange={(checked) => toggleLabel(entry.line.label, checked === true)}
+                      />
+                      {entry.line.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
 
@@ -130,6 +151,16 @@ export function SharePage({ plugins }: SharePageProps) {
               />
               Watermark
             </label>
+            {selected.data.plan && (
+              <label className="flex items-center gap-1.5 text-xs">
+                <Checkbox
+                  aria-label="Plan"
+                  checked={showPlan}
+                  onCheckedChange={(checked) => setShowPlan(checked === true)}
+                />
+                Plan
+              </label>
+            )}
           </div>
 
           <div ref={cardRef}>
@@ -137,6 +168,7 @@ export function SharePage({ plugins }: SharePageProps) {
               providerName={selected.meta.name}
               providerIconUrl={selected.meta.iconUrl}
               brandColor={selected.meta.brandColor}
+              plan={showPlan ? selected.data.plan : undefined}
               lines={checkedLines}
               theme={theme}
               showWatermark={showWatermark}

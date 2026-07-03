@@ -147,4 +147,59 @@ describe("SharePage", () => {
     const container = chip?.parentElement
     expect(container).toHaveClass("flex-wrap")
   })
+
+  it("groups the checklist into Usage/Details/Models sections", () => {
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    expect(screen.getByText("Usage")).toBeInTheDocument()
+    expect(screen.getByText("Details")).toBeInTheDocument()
+    expect(screen.getByText("Models")).toBeInTheDocument()
+  })
+
+  it("omits a section with no lines for the current provider", () => {
+    const noModelsPlugin = makePlugin({
+      data: {
+        providerId: "claude",
+        displayName: "Claude",
+        iconUrl: "/claude.svg",
+        lines: [
+          { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
+        ],
+      },
+    })
+    render(<SharePage plugins={[noModelsPlugin]} />)
+
+    expect(screen.getByText("Usage")).toBeInTheDocument()
+    expect(screen.queryByText("Details")).not.toBeInTheDocument()
+    expect(screen.queryByText("Models")).not.toBeInTheDocument()
+  })
+
+  it("shows the plan toggle and passes the plan to the card only when data has one", async () => {
+    const user = userEvent.setup()
+    const withPlan = makePlugin({
+      data: {
+        providerId: "claude",
+        displayName: "Claude",
+        iconUrl: "/claude.svg",
+        plan: "Max 5x",
+        lines: [
+          { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
+        ],
+      },
+    })
+    render(<SharePage plugins={[withPlan]} />)
+
+    expect(screen.getByRole("checkbox", { name: "Plan" })).toBeChecked()
+    let lastCall = shareCardMock.mock.calls.at(-1)?.[0] as { plan?: string }
+    expect(lastCall.plan).toBe("Max 5x")
+
+    await user.click(screen.getByRole("checkbox", { name: "Plan" }))
+    lastCall = shareCardMock.mock.calls.at(-1)?.[0] as { plan?: string }
+    expect(lastCall.plan).toBeUndefined()
+  })
+
+  it("hides the plan toggle when the provider has no plan", () => {
+    render(<SharePage plugins={[makePlugin()]} />)
+    expect(screen.queryByRole("checkbox", { name: "Plan" })).not.toBeInTheDocument()
+  })
 })
