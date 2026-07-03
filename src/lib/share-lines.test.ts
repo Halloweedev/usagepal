@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildShareableLines, matchModelCostPeriod, MODEL_COST_PERIODS } from "@/lib/share-lines"
+import { buildShareableLines } from "@/lib/share-lines"
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 
 const MANIFEST_LINES: ManifestLine[] = [
@@ -54,28 +54,14 @@ describe("buildShareableLines", () => {
     ])
   })
 
-  it("classifies undeclared period-suffixed model-cost lines as detail, unchecked by default", () => {
+  it("treats a merged model-cost line (undeclared, no suffix) as model-breakdown, checked by default", () => {
     const dataLines: MetricLine[] = [
       ...DATA_LINES,
-      { type: "text", label: "claude-opus-4-8 · Today", value: "$3.00" },
+      { type: "text", label: "claude-opus-4-8", value: "86.7% · Today $3.00 · 7d $7.00 · 30d $9.00" },
     ]
     const result = buildShareableLines(dataLines, MANIFEST_LINES)
-    const costLine = result.find((entry) => entry.line.label === "claude-opus-4-8 · Today")!
-    expect(costLine.scope).toBe("detail")
-    expect(costLine.defaultChecked).toBe(false)
-  })
-})
-
-describe("matchModelCostPeriod", () => {
-  it("finds the right period for each suffix, in Today/7d/30d order", () => {
-    expect(MODEL_COST_PERIODS.map((period) => period.label)).toEqual(["Today", "7d", "30d"])
-    expect(matchModelCostPeriod("claude-opus-4-8 · Today")?.label).toBe("Today")
-    expect(matchModelCostPeriod("claude-opus-4-8 · 7d")?.label).toBe("7d")
-    expect(matchModelCostPeriod("claude-opus-4-8 · 30d")?.label).toBe("30d")
-  })
-
-  it("returns undefined for a label with no period suffix", () => {
-    expect(matchModelCostPeriod("claude-opus-4-8")).toBeUndefined()
-    expect(matchModelCostPeriod("Session")).toBeUndefined()
+    const merged = result.find((entry) => entry.line.label === "claude-opus-4-8")!
+    expect(merged.scope).toBe("modelBreakdown")
+    expect(merged.defaultChecked).toBe(true)
   })
 })
