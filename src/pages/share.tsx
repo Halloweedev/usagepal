@@ -80,8 +80,8 @@ export function SharePage({ plugins }: SharePageProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <h2 className="text-lg font-semibold">Share Usage</h2>
+    <div className="flex flex-col gap-2">
+      <h2 className="text-sm font-semibold">Share Usage</h2>
 
       <Tabs value={selectedId ?? undefined} onValueChange={(value) => setSelectedId(String(value))}>
         <TabsList>
@@ -97,9 +97,9 @@ export function SharePage({ plugins }: SharePageProps) {
         <p className="text-sm text-muted-foreground">No data yet for this provider.</p>
       ) : (
         <>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex max-h-28 flex-col gap-1 overflow-y-auto pr-1">
             {shareableLines.map((entry) => (
-              <label key={entry.line.label} className="flex items-center gap-2 text-sm">
+              <label key={entry.line.label} className="flex items-center gap-1.5 text-xs">
                 <Checkbox
                   aria-label={entry.line.label}
                   checked={checkedLabels.has(entry.line.label)}
@@ -110,22 +110,24 @@ export function SharePage({ plugins }: SharePageProps) {
             ))}
           </div>
 
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              aria-label="Light card"
-              checked={theme === "light"}
-              onCheckedChange={(checked) => setTheme(checked === true ? "light" : "dark")}
-            />
-            Light card
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              aria-label="Watermark"
-              checked={showWatermark}
-              onCheckedChange={(checked) => setShowWatermark(checked === true)}
-            />
-            Watermark
-          </label>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs">
+              <Checkbox
+                aria-label="Light card"
+                checked={theme === "light"}
+                onCheckedChange={(checked) => setTheme(checked === true ? "light" : "dark")}
+              />
+              Light card
+            </label>
+            <label className="flex items-center gap-1.5 text-xs">
+              <Checkbox
+                aria-label="Watermark"
+                checked={showWatermark}
+                onCheckedChange={(checked) => setShowWatermark(checked === true)}
+              />
+              Watermark
+            </label>
+          </div>
 
           <div ref={cardRef}>
             <ShareCard

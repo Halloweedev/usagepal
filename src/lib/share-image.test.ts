@@ -24,7 +24,7 @@ describe("copyCardImage", () => {
     const node = document.createElement("div")
     await copyCardImage(node)
 
-    expect(toBlobMock).toHaveBeenCalledWith(node, { pixelRatio: 3 })
+    expect(toBlobMock).toHaveBeenCalledWith(node, { pixelRatio: 4 })
     expect(writeImageMock).toHaveBeenCalledTimes(1)
     const written = writeImageMock.mock.calls[0]![0] as Uint8Array
     expect(Array.from(written)).toEqual([1, 2, 3, 4])

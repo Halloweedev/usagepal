@@ -1,7 +1,7 @@
 import { toBlob } from "html-to-image"
 import { writeImage } from "@tauri-apps/plugin-clipboard-manager"
 
-const DEFAULT_PIXEL_RATIO = 3
+const DEFAULT_PIXEL_RATIO = 4
 
 /**
  * Rasterizes `node` to a PNG and writes it to the system clipboard as a raw

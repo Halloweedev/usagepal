@@ -57,7 +57,7 @@ function ProgressRow({
   const percent = line.limit > 0 ? clamp01(line.used / line.limit) * 100 : 0
   return (
     <div data-testid="share-card-line-progress" className="flex flex-col gap-0.5">
-      <div className="flex items-center justify-between text-xs">
+      <div className="flex items-center justify-between text-[10px]">
         <span>{line.label}</span>
         <span className={styles.subtext}>{progressValueLabel(line, percent)}</span>
       </div>
@@ -73,7 +73,7 @@ function ProgressRow({
 
 function TextRow({ line }: { line: Extract<MetricLine, { type: "text" }> }) {
   return (
-    <div data-testid="share-card-line-text" className="flex items-center justify-between text-xs">
+    <div data-testid="share-card-line-text" className="flex items-center justify-between text-[10px]">
       <span>{line.label}</span>
       <span>{line.value}</span>
     </div>
@@ -94,8 +94,8 @@ function BarChartRow({
 
   return (
     <div data-testid="share-card-line-barchart" className="flex flex-col gap-0.5">
-      <span className="text-xs">{line.label}</span>
-      <div className="flex h-6 items-end gap-px">
+      <span className="text-[10px]">{line.label}</span>
+      <div className="flex h-5 items-end gap-px">
         {valid.map((point, index) => (
           <div
             key={`${point.label}-${index}`}
@@ -124,13 +124,27 @@ export function ShareCard({
   return (
     <div
       data-testid="share-card"
-      className={cn("flex w-[320px] flex-col gap-2.5 rounded-xl border p-3", styles.bg, styles.text, styles.border)}
+      className={cn("flex w-[240px] flex-col gap-1.5 rounded-xl border p-2.5", styles.bg, styles.text, styles.border)}
     >
-      <div className="flex items-center gap-1.5">
-        <img src={providerIconUrl} alt="" className="size-4" />
-        <span className="text-sm font-semibold">{providerName}</span>
+      <div className="flex items-center gap-1">
+        <span
+          aria-hidden="true"
+          className={cn("inline-block size-3.5", styles.text)}
+          style={{
+            backgroundColor: "currentColor",
+            WebkitMaskImage: `url(${providerIconUrl})`,
+            WebkitMaskSize: "contain",
+            WebkitMaskRepeat: "no-repeat",
+            WebkitMaskPosition: "center",
+            maskImage: `url(${providerIconUrl})`,
+            maskSize: "contain",
+            maskRepeat: "no-repeat",
+            maskPosition: "center",
+          }}
+        />
+        <span className="text-xs font-semibold">{providerName}</span>
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1">
         {lines.map((line, index) => {
           if (line.type === "progress") {
             return <ProgressRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
@@ -145,7 +159,7 @@ export function ShareCard({
         })}
       </div>
       {showWatermark && (
-        <div data-testid="share-card-watermark" className={cn("text-center text-xs", styles.subtext)}>
+        <div data-testid="share-card-watermark" className={cn("text-center text-[10px]", styles.subtext)}>
           Shared via UsagePal
         </div>
       )}
