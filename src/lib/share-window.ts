@@ -4,7 +4,7 @@ import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import { SHARE_PLUGINS_UPDATED, SHARE_READY } from "@/lib/share-window-events"
 
 export const SHARE_WINDOW_LABEL = "share"
-export const SHARE_WINDOW_WIDTH = 640
+export const SHARE_WINDOW_WIDTH = 920
 
 /**
  * Opens (or focuses) the dedicated share pop-out window and seeds it with the

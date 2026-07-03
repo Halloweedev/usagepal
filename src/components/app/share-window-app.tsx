@@ -28,7 +28,7 @@ export function ShareWindowApp() {
   return (
     <div ref={containerRef} className="bg-background p-6" data-testid="share-window-root">
       <div
-        className="rounded-xl border bg-card p-4 shadow-sm"
+        className="rounded-xl border bg-card p-6 shadow-sm"
         style={
           maxContentHeightPx
             ? { maxHeight: `${maxContentHeightPx}px`, overflowY: "auto" }
