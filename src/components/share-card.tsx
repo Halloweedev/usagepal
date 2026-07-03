@@ -56,12 +56,12 @@ function ProgressRow({
 }) {
   const percent = line.limit > 0 ? clamp01(line.used / line.limit) * 100 : 0
   return (
-    <div data-testid="share-card-line-progress" className="flex flex-col gap-1">
-      <div className="flex items-center justify-between text-sm">
+    <div data-testid="share-card-line-progress" className="flex flex-col gap-0.5">
+      <div className="flex items-center justify-between text-xs">
         <span>{line.label}</span>
         <span className={styles.subtext}>{progressValueLabel(line, percent)}</span>
       </div>
-      <div className={cn("h-1.5 w-full overflow-hidden rounded-full", styles.track)}>
+      <div className={cn("h-1 w-full overflow-hidden rounded-full", styles.track)}>
         <div
           className="h-full rounded-full"
           style={{ width: `${percent}%`, backgroundColor: brandColor ?? "currentColor" }}
@@ -73,7 +73,7 @@ function ProgressRow({
 
 function TextRow({ line }: { line: Extract<MetricLine, { type: "text" }> }) {
   return (
-    <div data-testid="share-card-line-text" className="flex items-center justify-between text-sm">
+    <div data-testid="share-card-line-text" className="flex items-center justify-between text-xs">
       <span>{line.label}</span>
       <span>{line.value}</span>
     </div>
@@ -93,9 +93,9 @@ function BarChartRow({
   const maxValue = Math.max(1, ...valid.map((point) => point.value))
 
   return (
-    <div data-testid="share-card-line-barchart" className="flex flex-col gap-1">
-      <span className="text-sm">{line.label}</span>
-      <div className="flex h-10 items-end gap-px">
+    <div data-testid="share-card-line-barchart" className="flex flex-col gap-0.5">
+      <span className="text-xs">{line.label}</span>
+      <div className="flex h-6 items-end gap-px">
         {valid.map((point, index) => (
           <div
             key={`${point.label}-${index}`}
@@ -124,13 +124,13 @@ export function ShareCard({
   return (
     <div
       data-testid="share-card"
-      className={cn("flex w-[320px] flex-col gap-4 rounded-xl border p-5", styles.bg, styles.text, styles.border)}
+      className={cn("flex w-[320px] flex-col gap-2.5 rounded-xl border p-3", styles.bg, styles.text, styles.border)}
     >
-      <div className="flex items-center gap-2">
-        <img src={providerIconUrl} alt="" className="size-6" />
-        <span className="text-base font-semibold">{providerName}</span>
+      <div className="flex items-center gap-1.5">
+        <img src={providerIconUrl} alt="" className="size-4" />
+        <span className="text-sm font-semibold">{providerName}</span>
       </div>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
         {lines.map((line, index) => {
           if (line.type === "progress") {
             return <ProgressRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
