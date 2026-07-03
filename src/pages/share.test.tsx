@@ -142,7 +142,7 @@ describe("SharePage", () => {
 
     const sessionCheckbox = screen.getByRole("checkbox", { name: "Session" })
     const chip = sessionCheckbox.closest("label")
-    expect(chip).toHaveClass("rounded-md", "border")
+    expect(chip).toHaveClass("rounded-lg", "border")
 
     const container = chip?.parentElement
     expect(container).toHaveClass("flex-wrap")
