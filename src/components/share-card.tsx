@@ -7,6 +7,7 @@ export type ShareCardProps = {
   providerName: string
   providerIconUrl: string
   brandColor?: string
+  plan?: string
   lines: MetricLine[]
   theme: ShareCardTheme
   showWatermark: boolean
@@ -115,6 +116,7 @@ export function ShareCard({
   providerName,
   providerIconUrl,
   brandColor,
+  plan,
   lines,
   theme,
   showWatermark,
@@ -143,6 +145,14 @@ export function ShareCard({
           }}
         />
         <span className="text-xs font-semibold">{providerName}</span>
+        {plan && (
+          <span
+            data-testid="share-card-plan"
+            className={cn("ml-auto rounded-full border px-1.5 py-0.5 text-[9px]", styles.subtext, styles.border)}
+          >
+            {plan}
+          </span>
+        )}
       </div>
       <div className="flex flex-col gap-1">
         {lines.map((line, index) => {
