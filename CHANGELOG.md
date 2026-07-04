@@ -1,40 +1,70 @@
 # Changelog
 
-## v0.7.27-beta.1
+## v0.7.27
 
 ### New Features
-- **Share Usage**: Export and share provider usage as images with a dedicated Share screen
-  - Add Share icon to sidebar and route Share screen into the app
-  - Open Share screen in a dedicated pop-out window with two-column layout
-  - Add toggleable plan badge and group checklist by Usage/Details/Models
-  - Export share card to clipboard as PNG
-  - Classify provider lines for the share screen checklist
-- **Codex**: Add banked reset grants tracking with expiry tooltips
-  - Track grants locally in `grants.json` when reset count increases
-  - Show grouped expiry dates on hover (e.g., "3 expire in 15d")
-  - Display all expiries sorted soonest-first
-- **Per-Model Cost Breakdowns**: Add detailed usage tracking for Codex and Claude
-  - Request per-model breakdowns via `ccusage --breakdown`
-  - Add per-model, per-period cost lines with friendly model names
-  - Prettify raw model IDs into readable display names
+- Rebrand app to UsagePal with new logo, dock/tray icons, and sidebar styling by @Halloweedev
+- Add ClinePass provider plugin with Session/Weekly/Monthly usage limits and balance tracking by @Halloweedev
+- Add Share Usage screen with PNG clipboard export, checklist, and plan badge by @Halloweedev
+- Add per-model, per-period cost breakdown lines for Claude and Codex by @Halloweedev
+- Add banked reset grants tracking with expiry tooltips for Codex by @Halloweedev
+- Prettify raw model IDs into friendly display names for Claude and Codex by @Halloweedev
 
 ### Bug Fixes
-- **Share**: Fix browser-dev crash, dropped badge lines, and pop-out window lifecycle
-- **Share**: Make provider tabs' height override actually take effect
-- **Share**: Compact card further and fix invisible dark-mode icon
-- **Share**: Shrink share card so panel doesn't need to scroll
-- **Share**: Stop background refreshes from resetting share checklist
+- Fix invisible dark-mode share card icon and dropped badge lines by @Halloweedev
+- Stop background refreshes from resetting the share checklist by @Halloweedev
+- Regenerate app and tray icons from original source files by @Halloweedev
 
 ### Refactor
-- Merge model cost into existing % lines (Codex, Claude)
-- Remove period quick-toggle buttons, use chip-style checklist
-- Drop period-suffix classifier after cost merge
-- Simplify share routing and remove pop-out window
+- Merge model cost into the existing percentage line for Claude and Codex by @Halloweedev
+- Simplify share routing and restyle the controls panel to match the app's design system by @Halloweedev
 
-### Style
-- Resize export card for bigger, more legible shared images
-- Restyle controls panel to match app's design system
-- Widen pop-out window for larger two-column layout
+### Chores
+- Bump version to 0.7.27-beta.1 by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.26...v0.7.27](https://github.com/Halloweedev/usagepal/compare/v0.7.26...v0.7.27)
+
+- [00e8c24](https://github.com/Halloweedev/usagepal/commit/00e8c24) feat: add ClinePass provider plugin by @Halloweedev
+- [3b0af17](https://github.com/Halloweedev/usagepal/commit/3b0af17) feat: rebrand app icons and sidebar to UsagePal by @Halloweedev
+- [3b27c1b](https://github.com/Halloweedev/usagepal/commit/3b27c1b) fix: regenerate app and tray icons from original source files by @Halloweedev
+- [5e0bd9f](https://github.com/Halloweedev/usagepal/commit/5e0bd9f) style: update app and tray icons by @Halloweedev
+- [4fdafc8](https://github.com/Halloweedev/usagepal/commit/4fdafc8) chore: bump version to 0.7.27-beta.1 by @Halloweedev
+- [6a21e90](https://github.com/Halloweedev/usagepal/commit/6a21e90) refactor(share): simplify share routing and remove pop-out window by @Halloweedev
+- [807e508](https://github.com/Halloweedev/usagepal/commit/807e508) feat(codex): add banked reset grants tracking with expiry tooltips by @Halloweedev
+- [6f7b5ff](https://github.com/Halloweedev/usagepal/commit/6f7b5ff) fix(share): make the provider tabs' height override actually take effect by @Halloweedev
+- [7d70ea6](https://github.com/Halloweedev/usagepal/commit/7d70ea6) style(share): widen the pop-out window by @Halloweedev
+- [79ca37d](https://github.com/Halloweedev/usagepal/commit/79ca37d) style(share): restyle the controls panel by @Halloweedev
+- [e677fb1](https://github.com/Halloweedev/usagepal/commit/e677fb1) style(share): resize the export card by @Halloweedev
+- [03ff011](https://github.com/Halloweedev/usagepal/commit/03ff011) fix(share): fix browser-dev crash, dropped badge lines, and pop-out window by @Halloweedev
+- [ea21b58](https://github.com/Halloweedev/usagepal/commit/ea21b58) feat(share): two-column pop-out layout with dynamic window height by @Halloweedev
+- [eb40e1b](https://github.com/Halloweedev/usagepal/commit/eb40e1b) feat(share): open the share screen in a dedicated pop-out window by @Halloweedev
+- [9eb3af1](https://github.com/Halloweedev/usagepal/commit/9eb3af1) feat(share): add share pop-out window config, capabilities, and design by @Halloweedev
+- [cb61342](https://github.com/Halloweedev/usagepal/commit/cb61342) feat(share): group the checklist by Usage/Details/Models, add a plan badge by @Halloweedev
+- [194196f](https://github.com/Halloweedev/usagepal/commit/194196f) feat(share): add a toggleable plan badge to the share card by @Halloweedev
+- [1398da3](https://github.com/Halloweedev/usagepal/commit/1398da3) feat(codex): prettify raw model ids into friendly display names by @Halloweedev
+- [8bb35dd](https://github.com/Halloweedev/usagepal/commit/8bb35dd) feat(claude): prettify raw model ids into friendly display names by @Halloweedev
+- [40072ca](https://github.com/Halloweedev/usagepal/commit/40072ca) refactor(share): remove period quick-toggle buttons, chip-style checklist by @Halloweedev
+- [e904249](https://github.com/Halloweedev/usagepal/commit/e904249) revert(share): drop the period-suffix classifier by @Halloweedev
+- [39d0b30](https://github.com/Halloweedev/usagepal/commit/39d0b30) refactor(codex): merge model cost into the existing % line by @Halloweedev
+- [313d294](https://github.com/Halloweedev/usagepal/commit/313d294) refactor(claude): merge model cost into the existing % line by @Halloweedev
+- [1bd15a1](https://github.com/Halloweedev/usagepal/commit/1bd15a1) feat(share): add period quick-toggle buttons for model-cost lines by @Halloweedev
+- [5992609](https://github.com/Halloweedev/usagepal/commit/5992609) feat(share): classify period-tagged model-cost lines by @Halloweedev
+- [1d95fbd](https://github.com/Halloweedev/usagepal/commit/1d95fbd) feat(codex): add per-model, per-period cost breakdown lines by @Halloweedev
+- [8825d69](https://github.com/Halloweedev/usagepal/commit/8825d69) feat(claude): add per-model, per-period cost breakdown lines by @Halloweedev
+- [955925f](https://github.com/Halloweedev/usagepal/commit/955925f) feat(ccusage): request per-model breakdowns via --breakdown by @Halloweedev
+- [1cc5bc0](https://github.com/Halloweedev/usagepal/commit/1cc5bc0) fix(share): compact the card further and fix invisible dark-mode icon by @Halloweedev
+- [e3ba098](https://github.com/Halloweedev/usagepal/commit/e3ba098) fix(share): shrink the share card so the panel doesn't need to scroll by @Halloweedev
+- [538fd33](https://github.com/Halloweedev/usagepal/commit/538fd33) fix(share): stop background refreshes from resetting the share checklist by @Halloweedev
+- [77c512c](https://github.com/Halloweedev/usagepal/commit/77c512c) feat(share): wire the Share screen into the app router by @Halloweedev
+- [e29d953](https://github.com/Halloweedev/usagepal/commit/e29d953) feat(share): add Share icon to the sidebar, above Settings by @Halloweedev
+- [77e88f5](https://github.com/Halloweedev/usagepal/commit/77e88f5) feat(share): add the Share Usage page by @Halloweedev
+- [9641581](https://github.com/Halloweedev/usagepal/commit/9641581) feat(share): add the ShareCard presentational component by @Halloweedev
+- [e977c6e](https://github.com/Halloweedev/usagepal/commit/e977c6e) feat(share): export the share card to the clipboard as a PNG by @Halloweedev
+- [d965b6a](https://github.com/Halloweedev/usagepal/commit/d965b6a) feat(share): classify provider lines for the Share screen checklist by @Halloweedev
 
 ## v0.6.28
 
