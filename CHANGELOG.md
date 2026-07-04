@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.28
+
+### Bug Fixes
+- Fix low-quality app icon — regenerated icon.icns from 1024×1024 source with proper anti-aliasing, shadow, and 103× more pixel detail at Retina resolution by @Halloweedev
+
+---
+
+**Full Changelog**: [v0.7.27...v0.7.28](https://github.com/Halloweedev/usagepal/compare/v0.7.27...v0.7.28)
+
 ## v0.7.27
 
 ### New Features
