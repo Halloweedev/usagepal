@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "cline-pass",
+  "name": "ClinePass",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#000000",
+  "links": [
+    { "label": "Dashboard", "url": "https://app.cline.bot/dashboard/subscription" },
+    { "label": "API Keys", "url": "https://app.cline.bot/dashboard" }
+  ],
+  "lines": [
+    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Weekly", "scope": "overview", "period": "weekly" },
+    { "type": "progress", "label": "Monthly", "scope": "overview" },
+    { "type": "text", "label": "Balance", "scope": "overview" }
+  ]
+}

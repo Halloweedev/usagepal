@@ -13,7 +13,7 @@ use std::process::Command;
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-const WHITELISTED_ENV_VARS: [&str; 18] = [
+const WHITELISTED_ENV_VARS: [&str; 19] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -32,6 +32,7 @@ const WHITELISTED_ENV_VARS: [&str; 18] = [
     "PI_CODING_AGENT_DIR",
     "OPENROUTER_API_KEY",
     "OPENROUTER_KEY",
+    "CLINE_API_KEY",
 ];
 const MIN_BLOCKING_TIMEOUT: Duration = Duration::from_millis(1);
 
@@ -104,8 +105,11 @@ const SENSITIVE_JSON_KEYS: &[&str] = &[
     "orgId",
     "account_display_name",
     "accountDisplayName",
+    "displayName",
     "payment_id",
     "paymentId",
+    "subscription_id",
+    "subscriptionId",
     "profile_arn",
     "profileArn",
     "email",
@@ -3843,6 +3847,28 @@ mod tests {
         assert!(
             redacted.contains("\"name\": \"[REDACTED]\""),
             "name should show [REDACTED], got: {}",
+            redacted
+        );
+    }
+
+    #[test]
+    fn redact_body_redacts_display_name_and_subscription_id() {
+        let body = r#"{"displayName":"Nicolas Demanez","subscriptionId":"sub_abc123def456","plan":{"displayName":"ClinePass"}}"#;
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("Nicolas Demanez"),
+            "displayName should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("sub_abc123def456"),
+            "subscriptionId should be redacted, got: {}",
+            redacted
+        );
+        // The plan displayName "ClinePass" is 9 chars (<=12) → [REDACTED]
+        assert!(
+            !redacted.contains("ClinePass"),
+            "plan displayName should also be redacted, got: {}",
             redacted
         );
     }
