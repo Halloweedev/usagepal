@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.7.27-beta.1
+
+### New Features
+- **Share Usage**: Export and share provider usage as images with a dedicated Share screen
+  - Add Share icon to sidebar and route Share screen into the app
+  - Open Share screen in a dedicated pop-out window with two-column layout
+  - Add toggleable plan badge and group checklist by Usage/Details/Models
+  - Export share card to clipboard as PNG
+  - Classify provider lines for the share screen checklist
+- **Codex**: Add banked reset grants tracking with expiry tooltips
+  - Track grants locally in `grants.json` when reset count increases
+  - Show grouped expiry dates on hover (e.g., "3 expire in 15d")
+  - Display all expiries sorted soonest-first
+- **Per-Model Cost Breakdowns**: Add detailed usage tracking for Codex and Claude
+  - Request per-model breakdowns via `ccusage --breakdown`
+  - Add per-model, per-period cost lines with friendly model names
+  - Prettify raw model IDs into readable display names
+
+### Bug Fixes
+- **Share**: Fix browser-dev crash, dropped badge lines, and pop-out window lifecycle
+- **Share**: Make provider tabs' height override actually take effect
+- **Share**: Compact card further and fix invisible dark-mode icon
+- **Share**: Shrink share card so panel doesn't need to scroll
+- **Share**: Stop background refreshes from resetting share checklist
+
+### Refactor
+- Merge model cost into existing % lines (Codex, Claude)
+- Remove period quick-toggle buttons, use chip-style checklist
+- Drop period-suffix classifier after cost merge
+- Simplify share routing and remove pop-out window
+
+### Style
+- Resize export card for bigger, more legible shared images
+- Restyle controls panel to match app's design system
+- Widen pop-out window for larger two-column layout
+
 ## v0.6.28
 
 ### New Features
