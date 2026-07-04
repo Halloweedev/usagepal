@@ -193,7 +193,7 @@ describe("ShareCard", () => {
     expect(mainCard).toContainElement(watermark)
     expect(surface).not.toContainElement(watermark)
     expect(surface.compareDocumentPosition(watermark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(watermark.querySelector("span[aria-hidden]")).toBeTruthy()
+    expect(watermark.querySelector("svg[aria-hidden='true']")).toBeTruthy()
     expect(watermark).toHaveTextContent("Shared via UsagePal")
   })
 

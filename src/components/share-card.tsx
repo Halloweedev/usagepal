@@ -3,6 +3,7 @@ import type { MetricLine } from "@/lib/plugin-types"
 import type { ModelBreakdownParsed, ModelDisplayOptions } from "@/lib/model-breakdown-format"
 import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
+import { Logo } from "@/components/logo"
 
 export type ShareCardTheme = "dark" | "light"
 
@@ -305,20 +306,7 @@ export function ShareCard({
           data-testid="share-card-watermark"
           className={cn("flex items-center justify-center gap-1.5 pb-1 pt-2.5 text-xs", styles.subtext)}
         >
-          <span
-            aria-hidden="true"
-            className="inline-block size-3.5 bg-current"
-            style={{
-              WebkitMaskImage: "url(/favicon.svg)",
-              WebkitMaskSize: "contain",
-              WebkitMaskRepeat: "no-repeat",
-              WebkitMaskPosition: "center",
-              maskImage: "url(/favicon.svg)",
-              maskSize: "contain",
-              maskRepeat: "no-repeat",
-              maskPosition: "center",
-            }}
-          />
+          <Logo aria-hidden="true" className="size-3.5 shrink-0" />
           Shared via UsagePal
         </div>
       )}

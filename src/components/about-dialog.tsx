@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Logo } from "./logo";
 
 interface AboutDialogProps {
   version: string;
@@ -42,11 +43,7 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
       onClick={handleBackdropClick}
     >
       <div className="bg-card rounded-lg border shadow-xl p-6 max-w-xs w-full mx-4 text-center animate-in fade-in zoom-in-95 duration-200">
-        <img
-          src="/icon.png"
-          alt="UsagePal"
-          className="w-16 h-16 mx-auto mb-3 rounded-xl"
-        />
+        <Logo className="w-16 h-16 mx-auto mb-3 text-foreground" />
 
         <h2 className="text-xl font-semibold mb-1">UsagePal</h2>
 
