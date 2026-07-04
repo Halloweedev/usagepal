@@ -31,12 +31,3 @@ export function parseModelBreakdownValue(value: string): ModelBreakdownParsed | 
 
   return parsed
 }
-
-export function formatModelBreakdownValue(parsed: ModelBreakdownParsed, options: ModelDisplayOptions): string {
-  const segments: string[] = []
-  if (options.showPercent) segments.push(parsed.percent)
-  if (options.showToday && parsed.today) segments.push("Today " + parsed.today)
-  if (options.showSevenDay && parsed.sevenDay) segments.push("7d " + parsed.sevenDay)
-  if (options.showThirtyDay && parsed.thirtyDay) segments.push("30d " + parsed.thirtyDay)
-  return segments.join(" · ")
-}

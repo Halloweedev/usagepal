@@ -1,6 +1,7 @@
+import { Fragment } from "react"
 import type { MetricLine } from "@/lib/plugin-types"
-import type { ModelDisplayOptions } from "@/lib/model-breakdown-format"
-import { formatModelBreakdownValue, parseModelBreakdownValue } from "@/lib/model-breakdown-format"
+import type { ModelBreakdownParsed, ModelDisplayOptions } from "@/lib/model-breakdown-format"
+import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
 
 export type ShareCardTheme = "dark" | "light"
@@ -18,6 +19,7 @@ export type ShareCardProps = {
 }
 
 type ThemeStyle = {
+  frame: string
   bg: string
   text: string
   subtext: string
@@ -27,6 +29,7 @@ type ThemeStyle = {
 
 const THEME_STYLES: Record<ShareCardTheme, ThemeStyle> = {
   dark: {
+    frame: "bg-neutral-900",
     bg: "bg-neutral-950",
     text: "text-white",
     subtext: "text-white/60",
@@ -34,6 +37,7 @@ const THEME_STYLES: Record<ShareCardTheme, ThemeStyle> = {
     border: "border-white/10",
   },
   light: {
+    frame: "bg-neutral-100",
     bg: "bg-white",
     text: "text-neutral-900",
     subtext: "text-neutral-500",
@@ -99,22 +103,71 @@ function BadgeRow({ line, styles }: { line: Extract<MetricLine, { type: "badge" 
   )
 }
 
-function ModelBreakdownRow({
-  line,
+type ModelRow = {
+  line: Extract<MetricLine, { type: "text" }>
+  parsed: ModelBreakdownParsed
+}
+
+type ModelColumn = {
+  key: string
+  header: string
+  value: (parsed: ModelBreakdownParsed) => string | undefined
+}
+
+/**
+ * Model breakdown as an aligned table — one row per model, one right-aligned
+ * column per enabled metric — instead of a per-model blurb line, so values
+ * are comparable at a glance.
+ */
+function ModelBreakdownTable({
+  rows,
   styles,
   modelDisplay,
 }: {
-  line: Extract<MetricLine, { type: "text" }>
+  rows: ModelRow[]
   styles: ThemeStyle
   modelDisplay: ModelDisplayOptions
 }) {
-  const parsed = parseModelBreakdownValue(line.value)
-  const displayValue = parsed ? formatModelBreakdownValue(parsed, modelDisplay) : line.value
+  const columns: ModelColumn[] = [
+    modelDisplay.showPercent && { key: "percent", header: "%", value: (parsed: ModelBreakdownParsed) => parsed.percent },
+    modelDisplay.showToday && { key: "today", header: "Today", value: (parsed: ModelBreakdownParsed) => parsed.today },
+    modelDisplay.showSevenDay && { key: "sevenDay", header: "7d", value: (parsed: ModelBreakdownParsed) => parsed.sevenDay },
+    modelDisplay.showThirtyDay && { key: "thirtyDay", header: "30d", value: (parsed: ModelBreakdownParsed) => parsed.thirtyDay },
+  ].filter((column): column is ModelColumn => Boolean(column))
 
   return (
-    <div data-testid="share-card-line-model-breakdown" className="flex flex-col gap-1">
-      <span className="whitespace-nowrap text-sm">{line.label}</span>
-      {displayValue && <span className={cn("text-xs", styles.subtext)}>{displayValue}</span>}
+    <div
+      data-testid="share-card-models"
+      className="grid items-baseline gap-x-3 gap-y-1.5"
+      style={{ gridTemplateColumns: `minmax(0, 1fr) repeat(${columns.length}, max-content)` }}
+    >
+      <span className={cn("text-[10px] font-medium uppercase tracking-wider", styles.subtext)}>Model</span>
+      {columns.map((column) => (
+        <span
+          key={column.key}
+          className={cn("text-right text-[10px] font-medium uppercase tracking-wider", styles.subtext)}
+        >
+          {column.header}
+        </span>
+      ))}
+      {rows.map(({ line, parsed }) => (
+        <Fragment key={line.label}>
+          <span data-testid="share-card-line-model-breakdown" className="truncate text-sm">
+            {line.label}
+          </span>
+          {columns.map((column) => {
+            const value = column.value(parsed)
+            return (
+              <span
+                key={column.key}
+                className={cn("text-right text-xs tabular-nums", value ? undefined : styles.subtext)}
+              >
+                {value ?? "–"}
+              </span>
+            )
+          })}
+        </Fragment>
+      ))}
     </div>
   )
 }
@@ -131,21 +184,20 @@ function BarChartRow({
   const valid = line.points.filter((point) => Number.isFinite(point.value) && point.value >= 0)
   const maxValue = Math.max(1, ...valid.map((point) => point.value))
 
+  // Deliberately unlabeled: in a usage card the trend bars read on their own,
+  // and a floating title made the row feel unbalanced.
   return (
-    <div data-testid="share-card-line-barchart" className="flex flex-col gap-1">
-      <span className="text-sm">{line.label}</span>
-      <div className="flex h-8 items-end gap-px">
-        {valid.map((point, index) => (
-          <div
-            key={`${point.label}-${index}`}
-            className={cn("min-w-[2px] flex-1 rounded-[1px]", styles.track)}
-            style={{
-              height: `${Math.max(8, clamp01(point.value / maxValue) * 100)}%`,
-              backgroundColor: brandColor ?? "currentColor",
-            }}
-          />
-        ))}
-      </div>
+    <div data-testid="share-card-line-barchart" className="flex h-8 items-end gap-px">
+      {valid.map((point, index) => (
+        <div
+          key={`${point.label}-${index}`}
+          className={cn("min-w-[2px] flex-1 rounded-[1px]", styles.track)}
+          style={{
+            height: `${Math.max(8, clamp01(point.value / maxValue) * 100)}%`,
+            backgroundColor: brandColor ?? "currentColor",
+          }}
+        />
+      ))}
     </div>
   )
 }
@@ -169,12 +221,35 @@ export function ShareCard({
     showThirtyDay: true,
   }
 
+  // Model breakdown lines render together as a table after the other lines;
+  // a model-classified line that doesn't parse falls back to a plain text row.
+  const modelRows: ModelRow[] = []
+  const otherLines: MetricLine[] = []
+  for (const line of lines) {
+    if (line.type === "text" && modelBreakdownLabels?.has(line.label)) {
+      const parsed = parseModelBreakdownValue(line.value)
+      if (parsed) {
+        modelRows.push({ line, parsed })
+        continue
+      }
+    }
+    otherLines.push(line)
+  }
+
   return (
+    // Main card: frames the info card and carries the branded footer. Kept
+    // full-bleed (square, opaque, no outer border): hosts like Threads fill
+    // PNG transparency with their own background, so rounded outer corners
+    // export as visible artifacts.
     <div
       data-testid="share-card"
-      className={cn("flex w-[440px] flex-col gap-4 rounded-xl border p-5", styles.bg, styles.text, styles.border)}
+      className={cn("flex w-[440px] flex-col p-2", styles.frame, styles.text)}
     >
-      <div className="flex items-center gap-2">
+      <div
+        data-testid="share-card-surface"
+        className={cn("flex flex-col gap-4 rounded-xl border p-5", styles.bg, styles.border)}
+      >
+        <div className="flex items-center gap-2">
         <span
           aria-hidden="true"
           className={cn("inline-block size-5", styles.text)}
@@ -200,37 +275,50 @@ export function ShareCard({
           </span>
         )}
       </div>
-      <div className="flex flex-col gap-3">
-        {lines.map((line, index) => {
-          if (line.type === "progress") {
-            return <ProgressRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
-          }
-          if (line.type === "text") {
-            const isModelBreakdown = modelBreakdownLabels?.has(line.label)
-            const parsed = isModelBreakdown ? parseModelBreakdownValue(line.value) : null
-            if (isModelBreakdown && parsed) {
-              return (
-                <ModelBreakdownRow
-                  key={`${line.label}-${index}`}
-                  line={line}
-                  styles={styles}
-                  modelDisplay={displayOptions}
-                />
-              )
+      {otherLines.length > 0 && (
+        <div className="flex flex-col gap-3">
+          {otherLines.map((line, index) => {
+            if (line.type === "progress") {
+              return <ProgressRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
             }
-            return <TextRow key={`${line.label}-${index}`} line={line} />
-          }
-          if (line.type === "barChart") {
-            return <BarChartRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
-          }
-          if (line.type === "badge") {
-            return <BadgeRow key={`${line.label}-${index}`} line={line} styles={styles} />
-          }
-          return null
-        })}
+            if (line.type === "text") {
+              return <TextRow key={`${line.label}-${index}`} line={line} />
+            }
+            if (line.type === "barChart") {
+              return <BarChartRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
+            }
+            if (line.type === "badge") {
+              return <BadgeRow key={`${line.label}-${index}`} line={line} styles={styles} />
+            }
+            return null
+          })}
+        </div>
+      )}
+      {modelRows.length > 0 && (
+        <div data-testid="share-card-models-section">
+          <ModelBreakdownTable rows={modelRows} styles={styles} modelDisplay={displayOptions} />
+        </div>
+      )}
       </div>
       {showWatermark && (
-        <div data-testid="share-card-watermark" className={cn("text-center text-xs", styles.subtext)}>
+        <div
+          data-testid="share-card-watermark"
+          className={cn("flex items-center justify-center gap-1.5 pb-1 pt-2.5 text-xs", styles.subtext)}
+        >
+          <span
+            aria-hidden="true"
+            className="inline-block size-3.5 bg-current"
+            style={{
+              WebkitMaskImage: "url(/favicon.svg)",
+              WebkitMaskSize: "contain",
+              WebkitMaskRepeat: "no-repeat",
+              WebkitMaskPosition: "center",
+              maskImage: "url(/favicon.svg)",
+              maskSize: "contain",
+              maskRepeat: "no-repeat",
+              maskPosition: "center",
+            }}
+          />
           Shared via UsagePal
         </div>
       )}

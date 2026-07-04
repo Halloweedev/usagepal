@@ -120,8 +120,7 @@ describe("AppContent", () => {
     expect(props.onRetryPlugin).toHaveBeenCalledWith("codex")
   })
 
-  it("renders inline share page for share view in browser dev (no Tauri)", () => {
-    isTauriMock.mockReturnValue(false)
+  it("renders the share page inside the panel for the share view", () => {
     useAppUiStore.getState().setActiveView("share")
     render(<AppContent {...createProps()} />)
 
@@ -129,13 +128,11 @@ describe("AppContent", () => {
     expect(sharePageMock).toHaveBeenCalledWith(expect.objectContaining({ plugins: [] }))
   })
 
-  it("does not render inline share page under Tauri (pop-out window owns it)", () => {
+  it("renders the share page under Tauri too (no separate pop-out window)", () => {
     isTauriMock.mockReturnValue(true)
     useAppUiStore.getState().setActiveView("share")
     render(<AppContent {...createProps()} />)
 
-    expect(screen.queryByTestId("share-page")).not.toBeInTheDocument()
-    expect(sharePageMock).not.toHaveBeenCalled()
-    expect(screen.getByTestId("provider-detail-page")).toBeInTheDocument()
+    expect(screen.getByTestId("share-page")).toBeInTheDocument()
   })
 })

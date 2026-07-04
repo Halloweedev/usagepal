@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef } from "react"
 import { useShallow } from "zustand/react/shallow"
-import { isTauri } from "@tauri-apps/api/core"
-import { emit, listen } from "@tauri-apps/api/event"
 import { AppShell } from "@/components/app/app-shell"
 import { useAppPluginViews } from "@/hooks/app/use-app-plugin-views"
 import { useProbe } from "@/hooks/app/use-probe"
@@ -14,8 +12,6 @@ import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-action
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
 import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
-import { openShareWindow } from "@/lib/share-window"
-import { SHARE_PLUGINS_UPDATED, SHARE_READY } from "@/lib/share-window-events"
 import { type PluginContextAction } from "@/components/side-nav"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
@@ -204,61 +200,9 @@ export function MainApp() {
     pluginSettingsRef.current = pluginSettings
   }, [pluginSettings])
 
-  const displayPluginsRef = useRef(displayPlugins)
-  useEffect(() => {
-    displayPluginsRef.current = displayPlugins
-  }, [displayPlugins])
-
-  // Tracks whether the pop-out share window is (believed to be) open, so we only
-  // push updates when someone is listening.
-  const shareWindowOpenRef = useRef(false)
-
   const handleShareClick = useCallback(() => {
-    // Browser dev (no Tauri) has no second window; fall back to the inline view.
-    if (!isTauri()) {
-      setActiveView("share")
-      return
-    }
-    shareWindowOpenRef.current = true
-    void openShareWindow(displayPluginsRef.current, () => {
-      shareWindowOpenRef.current = false
-    })
+    setActiveView("share")
   }, [setActiveView])
-
-  // Respond to the share window's ready handshake with the current snapshot.
-  useEffect(() => {
-    if (!isTauri()) return
-    let cancelled = false
-    let unlisten: (() => void) | undefined
-
-    listen(SHARE_READY, () => {
-      shareWindowOpenRef.current = true
-      emit(SHARE_PLUGINS_UPDATED, displayPluginsRef.current).catch((error) => {
-        console.error("Failed to respond to share:ready:", error)
-      })
-    })
-      .then((fn) => {
-        if (cancelled) fn()
-        else unlisten = fn
-      })
-      .catch((error) => {
-        console.error("Failed to listen for share:ready:", error)
-      })
-
-    return () => {
-      cancelled = true
-      unlisten?.()
-    }
-  }, [])
-
-  // Keep the open share window in sync as plugin data refreshes.
-  useEffect(() => {
-    if (!isTauri()) return
-    if (!shareWindowOpenRef.current) return
-    emit(SHARE_PLUGINS_UPDATED, displayPlugins).catch((error) => {
-      console.error("Failed to sync share plugins:", error)
-    })
-  }, [displayPlugins])
 
   const handlePluginContextAction = useCallback(
     (pluginId: string, action: PluginContextAction) => {

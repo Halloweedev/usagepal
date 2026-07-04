@@ -54,25 +54,45 @@ function makePlugin(overrides: Partial<DisplayPluginState> = {}): DisplayPluginS
   }
 }
 
+function lastCardProps<T>(): T {
+  return shareCardMock.mock.calls.at(-1)?.[0] as T
+}
+
 describe("SharePage", () => {
   beforeEach(() => {
     shareCardMock.mockReset()
     copyCardImageMock.mockReset()
   })
 
-  it("defaults to the first provider and pre-checks overview/barChart/model-breakdown lines", () => {
+  it("defaults to the first provider with the Summary preset (overview lines only)", () => {
     render(<SharePage plugins={[makePlugin()]} />)
 
-    expect(screen.getByRole("checkbox", { name: "Session" })).toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "Sonnet" })).not.toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "Usage Trend" })).toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "claude-sonnet-5" })).toBeChecked()
-
-    const lastCall = shareCardMock.mock.calls.at(-1)?.[0] as { lines: { label: string }[] }
-    expect(lastCall.lines.map((line) => line.label)).toEqual(["Session", "Usage Trend", "claude-sonnet-5"])
+    expect(screen.getByRole("radio", { name: "Summary" })).toHaveAttribute("aria-checked", "true")
+    const { lines } = lastCardProps<{ lines: { label: string }[] }>()
+    expect(lines.map((line) => line.label)).toEqual(["Session"])
   })
 
-  it("rebuilds the checklist to the new provider's defaults when switching providers", async () => {
+  it("applies the Detailed preset (overview + detail lines)", async () => {
+    const user = userEvent.setup()
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    await user.click(screen.getByRole("radio", { name: "Detailed" }))
+
+    const { lines } = lastCardProps<{ lines: { label: string }[] }>()
+    expect(lines.map((line) => line.label)).toEqual(["Session", "Sonnet", "Usage Trend"])
+  })
+
+  it("applies the Models preset (overview + model breakdown lines)", async () => {
+    const user = userEvent.setup()
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    await user.click(screen.getByRole("radio", { name: "Models" }))
+
+    const { lines } = lastCardProps<{ lines: { label: string }[] }>()
+    expect(lines.map((line) => line.label)).toEqual(["Session", "claude-sonnet-5"])
+  })
+
+  it("keeps the active preset when switching providers", async () => {
     const user = userEvent.setup()
     const second = makePlugin({
       meta: {
@@ -80,156 +100,109 @@ describe("SharePage", () => {
         name: "Codex",
         iconUrl: "/codex.svg",
         brandColor: "#74AA9C",
-        lines: [{ type: "progress", label: "Weekly", scope: "overview" }],
+        lines: [
+          { type: "progress", label: "Weekly", scope: "overview" },
+          { type: "progress", label: "Daily", scope: "detail" },
+        ],
         primaryCandidates: ["Weekly"],
       },
       data: {
         providerId: "codex",
         displayName: "Codex",
         iconUrl: "/codex.svg",
-        lines: [{ type: "progress", label: "Weekly", used: 5, limit: 100, format: { kind: "percent" } }],
+        lines: [
+          { type: "progress", label: "Weekly", used: 5, limit: 100, format: { kind: "percent" } },
+          { type: "progress", label: "Daily", used: 2, limit: 100, format: { kind: "percent" } },
+        ],
       },
     })
 
     render(<SharePage plugins={[makePlugin(), second]} />)
 
-    await user.click(screen.getByRole("tab", { name: "Codex" }))
+    await user.click(screen.getByRole("radio", { name: "Detailed" }))
+    await user.click(screen.getByRole("radio", { name: "Codex" }))
 
-    expect(screen.getByRole("checkbox", { name: "Weekly" })).toBeChecked()
-    expect(screen.queryByRole("checkbox", { name: "Sonnet" })).not.toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: "Detailed" })).toHaveAttribute("aria-checked", "true")
+    const { lines } = lastCardProps<{ lines: { label: string }[] }>()
+    expect(lines.map((line) => line.label)).toEqual(["Weekly", "Daily"])
   })
 
-  it("updates the lines passed to the card when a checkbox is toggled", async () => {
+  it("renders providers as an icon radiogroup only when there are several", () => {
+    const { rerender } = render(<SharePage plugins={[makePlugin()]} />)
+    expect(screen.queryByRole("radiogroup", { name: "Provider" })).not.toBeInTheDocument()
+
+    rerender(
+      <SharePage
+        plugins={[
+          makePlugin(),
+          makePlugin({
+            meta: { ...makePlugin().meta, id: "codex", name: "Codex" },
+          }),
+        ]}
+      />
+    )
+    expect(screen.getByRole("radiogroup", { name: "Provider" })).toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: "Codex" })).toBeInTheDocument()
+  })
+
+  it("switches the card theme via the Dark/Light radiogroup", async () => {
     const user = userEvent.setup()
     render(<SharePage plugins={[makePlugin()]} />)
 
+    expect(lastCardProps<{ theme: string }>().theme).toBe("dark")
+
+    await user.click(screen.getByRole("radio", { name: "Light" }))
+
+    expect(lastCardProps<{ theme: string }>().theme).toBe("light")
+  })
+
+  it("hides the per-line checklist behind a collapsed Customize section", async () => {
+    const user = userEvent.setup()
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    expect(screen.queryByTestId("share-customize")).not.toBeInTheDocument()
+    expect(screen.queryByRole("checkbox", { name: "Session" })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Customize" }))
+
+    expect(screen.getByTestId("share-customize")).toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Session" })).toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Sonnet" })).not.toBeChecked()
+  })
+
+  it("clears the preset selection when a line is toggled manually", async () => {
+    const user = userEvent.setup()
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    await user.click(screen.getByRole("button", { name: "Customize" }))
     await user.click(screen.getByRole("checkbox", { name: "Sonnet" }))
 
-    const lastCall = shareCardMock.mock.calls.at(-1)?.[0] as { lines: { label: string }[] }
-    expect(lastCall.lines.map((line) => line.label)).toContain("Sonnet")
+    expect(screen.getByRole("radio", { name: "Summary" })).toHaveAttribute("aria-checked", "false")
+    const { lines } = lastCardProps<{ lines: { label: string }[] }>()
+    expect(lines.map((line) => line.label)).toContain("Sonnet")
   })
 
-  it("shows a no-data message when the selected provider has no data yet", () => {
-    render(<SharePage plugins={[makePlugin({ data: null, loading: true })]} />)
-
-    expect(screen.getByText("No data yet for this provider.")).toBeInTheDocument()
-    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
-  })
-
-  it("copies the rendered card image on click and shows a success message", async () => {
+  it("groups the customize checklist into Usage/Details/Models sections", async () => {
     const user = userEvent.setup()
-    copyCardImageMock.mockResolvedValue(undefined)
     render(<SharePage plugins={[makePlugin()]} />)
 
-    await user.click(screen.getByRole("button", { name: "Copy Image" }))
-
-    expect(copyCardImageMock).toHaveBeenCalledTimes(1)
-    expect(await screen.findByText("Copied to clipboard.")).toBeInTheDocument()
-  })
-
-  it("shows an error message when copying fails", async () => {
-    const user = userEvent.setup()
-    copyCardImageMock.mockRejectedValue(new Error("clipboard denied"))
-    render(<SharePage plugins={[makePlugin()]} />)
-
-    await user.click(screen.getByRole("button", { name: "Copy Image" }))
-
-    expect(await screen.findByText("clipboard denied")).toBeInTheDocument()
-  })
-
-  it("renders checklist rows as bordered chips inside a wrapping container", () => {
-    render(<SharePage plugins={[makePlugin()]} />)
-
-    const sessionCheckbox = screen.getByRole("checkbox", { name: "Session" })
-    const chip = sessionCheckbox.closest("label")
-    expect(chip).toHaveClass("rounded-lg", "border")
-
-    const container = chip?.parentElement
-    expect(container).toHaveClass("flex-wrap")
-  })
-
-  it("groups the checklist into Usage/Details/Models sections", () => {
-    render(<SharePage plugins={[makePlugin()]} />)
+    await user.click(screen.getByRole("button", { name: "Customize" }))
 
     expect(screen.getByText("Usage")).toBeInTheDocument()
     expect(screen.getByText("Details")).toBeInTheDocument()
-    expect(screen.getByText("Models")).toBeInTheDocument()
+    // "Models" appears both as the preset radio and the group label.
+    expect(screen.getAllByText("Models").length).toBeGreaterThan(1)
   })
 
-  it("omits a section with no lines for the current provider", () => {
-    const noModelsPlugin = makePlugin({
-      data: {
-        providerId: "claude",
-        displayName: "Claude",
-        iconUrl: "/claude.svg",
-        lines: [
-          { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
-        ],
-      },
-    })
-    render(<SharePage plugins={[noModelsPlugin]} />)
-
-    expect(screen.getByText("Usage")).toBeInTheDocument()
-    expect(screen.queryByText("Details")).not.toBeInTheDocument()
-    expect(screen.queryByText("Models")).not.toBeInTheDocument()
-  })
-
-  it("shows the plan toggle and passes the plan to the card only when data has one", async () => {
+  it("shows Model Details toggles in Customize only when a model line is checked", async () => {
     const user = userEvent.setup()
-    const withPlan = makePlugin({
-      data: {
-        providerId: "claude",
-        displayName: "Claude",
-        iconUrl: "/claude.svg",
-        plan: "Max 5x",
-        lines: [
-          { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
-        ],
-      },
-    })
-    render(<SharePage plugins={[withPlan]} />)
-
-    expect(screen.getByRole("checkbox", { name: "Plan" })).toBeChecked()
-    let lastCall = shareCardMock.mock.calls.at(-1)?.[0] as { plan?: string }
-    expect(lastCall.plan).toBe("Max 5x")
-
-    await user.click(screen.getByRole("checkbox", { name: "Plan" }))
-    lastCall = shareCardMock.mock.calls.at(-1)?.[0] as { plan?: string }
-    expect(lastCall.plan).toBeUndefined()
-  })
-
-  it("hides the plan toggle when the provider has no plan", () => {
-    render(<SharePage plugins={[makePlugin()]} />)
-    expect(screen.queryByRole("checkbox", { name: "Plan" })).not.toBeInTheDocument()
-  })
-
-  it("renders controls on the left and the card preview on the right", () => {
     render(<SharePage plugins={[makePlugin()]} />)
 
-    const page = screen.getByTestId("share-page")
-    const controls = screen.getByTestId("share-page-controls")
-    const preview = screen.getByTestId("share-page-preview")
-
-    expect(page).toContainElement(controls)
-    expect(page).toContainElement(preview)
-    expect(controls.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.getByTestId("share-card-mock").closest("[data-testid='share-page-preview']")).toBeTruthy()
-    expect(screen.getByRole("button", { name: "Copy Image" }).closest("[data-testid='share-page-controls']")).toBeTruthy()
-  })
-
-  it("shows Model Details toggles when a model line is checked", () => {
-    render(<SharePage plugins={[makePlugin()]} />)
+    await user.click(screen.getByRole("radio", { name: "Models" }))
+    await user.click(screen.getByRole("button", { name: "Customize" }))
 
     expect(screen.getByTestId("share-model-details-section")).toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "Usage %" })).toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "Today" })).toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "7 Days" })).toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "30 Days" })).toBeChecked()
-  })
-
-  it("hides Model Details when no model lines are checked", async () => {
-    const user = userEvent.setup()
-    render(<SharePage plugins={[makePlugin()]} />)
 
     await user.click(screen.getByRole("checkbox", { name: "claude-sonnet-5" }))
 
@@ -255,20 +228,108 @@ describe("SharePage", () => {
     })
     render(<SharePage plugins={[withMergedModel]} />)
 
+    await user.click(screen.getByRole("radio", { name: "Models" }))
+    await user.click(screen.getByRole("button", { name: "Customize" }))
     await user.click(screen.getByRole("checkbox", { name: "7 Days" }))
 
-    const lastCall = shareCardMock.mock.calls.at(-1)?.[0] as {
+    const props = lastCardProps<{
       modelDisplay?: { showSevenDay: boolean }
       modelBreakdownLabels?: Set<string>
-    }
-    expect(lastCall.modelDisplay?.showSevenDay).toBe(false)
-    expect(lastCall.modelBreakdownLabels?.has("Opus 4.8")).toBe(true)
+    }>()
+    expect(props.modelDisplay?.showSevenDay).toBe(false)
+    expect(props.modelBreakdownLabels?.has("Opus 4.8")).toBe(true)
   })
 
-  it("renders Card section with organized toggle grid", () => {
+  it("shows the plan toggle in Customize and passes the plan to the card only when data has one", async () => {
+    const user = userEvent.setup()
+    const withPlan = makePlugin({
+      data: {
+        providerId: "claude",
+        displayName: "Claude",
+        iconUrl: "/claude.svg",
+        plan: "Max 5x",
+        lines: [
+          { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
+        ],
+      },
+    })
+    render(<SharePage plugins={[withPlan]} />)
+
+    expect(lastCardProps<{ plan?: string }>().plan).toBe("Max 5x")
+
+    await user.click(screen.getByRole("button", { name: "Customize" }))
+    await user.click(screen.getByRole("checkbox", { name: "Plan" }))
+
+    expect(lastCardProps<{ plan?: string }>().plan).toBeUndefined()
+  })
+
+  it("hides the plan toggle when the provider has no plan", async () => {
+    const user = userEvent.setup()
     render(<SharePage plugins={[makePlugin()]} />)
 
-    expect(screen.getByText("Card")).toBeInTheDocument()
-    expect(screen.getByRole("checkbox", { name: "Light Card" }).closest(".grid")).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Customize" }))
+
+    expect(screen.queryByRole("checkbox", { name: "Plan" })).not.toBeInTheDocument()
+  })
+
+  it("renders the preview above the option controls", () => {
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    const preview = screen.getByTestId("share-page-preview")
+    const contentControl = screen.getByRole("radio", { name: "Summary" })
+
+    expect(preview.compareDocumentPosition(contentControl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("scales the preview down while leaving the exported card node unscaled", () => {
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    const preview = screen.getByTestId("share-page-preview")
+    const scaled = preview.querySelector("[style*='scale']")
+    expect(scaled).toBeInTheDocument()
+    const cardWrapper = screen.getByTestId("share-card-mock").parentElement
+    expect(cardWrapper?.getAttribute("style") ?? "").not.toContain("scale")
+  })
+
+  it("copies the rendered card image on click and shows a success message", async () => {
+    const user = userEvent.setup()
+    copyCardImageMock.mockResolvedValue(undefined)
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    await user.click(screen.getByRole("button", { name: "Copy Image" }))
+
+    expect(copyCardImageMock).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText("Copied to clipboard.")).toBeInTheDocument()
+  })
+
+  it("shows an error message when copying fails", async () => {
+    const user = userEvent.setup()
+    copyCardImageMock.mockRejectedValue(new Error("clipboard denied"))
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    await user.click(screen.getByRole("button", { name: "Copy Image" }))
+
+    expect(await screen.findByText("clipboard denied")).toBeInTheDocument()
+  })
+
+  it("reserves a fixed-height status line so copy feedback does not shift the layout", async () => {
+    const user = userEvent.setup()
+    copyCardImageMock.mockResolvedValue(undefined)
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    const statusBefore = screen.getByTestId("share-page").querySelector("p[aria-live='polite']")
+    expect(statusBefore).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Copy Image" }))
+
+    const status = await screen.findByText("Copied to clipboard.")
+    expect(status).toBe(statusBefore)
+  })
+
+  it("shows a no-data message when the selected provider has no data yet", () => {
+    render(<SharePage plugins={[makePlugin({ data: null, loading: true })]} />)
+
+    expect(screen.getByText("No data yet for this provider.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Copy Image" })).not.toBeInTheDocument()
   })
 })

@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatModelBreakdownValue, parseModelBreakdownValue } from "@/lib/model-breakdown-format"
-
-const ALL_ON = { showPercent: true, showToday: true, showSevenDay: true, showThirtyDay: true }
+import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
 
 describe("parseModelBreakdownValue", () => {
   it("parses a full merged line", () => {
@@ -43,33 +41,5 @@ describe("parseModelBreakdownValue", () => {
       thirtyDay: "$0.30",
     })
     expect(parseModelBreakdownValue("<0.1%")).toEqual({ percent: "<0.1%" })
-  })
-})
-
-describe("formatModelBreakdownValue", () => {
-  const full = parseModelBreakdownValue("86.7% · Today $3.00 · 7d $7.00 · 30d $9.00")!
-
-  it("round-trips a full merged line when all toggles are on", () => {
-    expect(formatModelBreakdownValue(full, ALL_ON)).toBe("86.7% · Today $3.00 · 7d $7.00 · 30d $9.00")
-  })
-
-  it("omits disabled segments", () => {
-    expect(formatModelBreakdownValue(full, { ...ALL_ON, showToday: false })).toBe(
-      "86.7% · 7d $7.00 · 30d $9.00"
-    )
-    expect(formatModelBreakdownValue(full, { ...ALL_ON, showPercent: false, showSevenDay: false })).toBe(
-      "Today $3.00 · 30d $9.00"
-    )
-  })
-
-  it("returns empty string when nothing is enabled", () => {
-    expect(
-      formatModelBreakdownValue(full, {
-        showPercent: false,
-        showToday: false,
-        showSevenDay: false,
-        showThirtyDay: false,
-      })
-    ).toBe("")
   })
 })

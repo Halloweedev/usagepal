@@ -1,5 +1,4 @@
 import { useShallow } from "zustand/react/shallow"
-import { isTauri } from "@tauri-apps/api/core"
 import { OverviewPage } from "@/pages/overview"
 import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
@@ -140,10 +139,7 @@ export function AppContent({
     )
   }
 
-  // The share screen lives in its own pop-out window under Tauri. In browser
-  // dev (`bun run dev` without Tauri) there is no second window, so keep the
-  // inline view as a fallback.
-  if (!isTauri() && activeView === "share") {
+  if (activeView === "share") {
     return <SharePage plugins={displayPlugins} />
   }
 
