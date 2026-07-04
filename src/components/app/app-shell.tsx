@@ -21,6 +21,7 @@ type AppShellProps = {
   onPluginContextAction: (pluginId: string, action: PluginContextAction) => void
   isPluginRefreshAvailable: (pluginId: string) => boolean
   onNavReorder: (orderedIds: string[]) => void
+  onShareClick: () => void
   appContentProps: AppContentActionProps
 }
 
@@ -34,6 +35,7 @@ export function AppShell({
   onPluginContextAction,
   isPluginRefreshAvailable,
   onNavReorder,
+  onShareClick,
   appContentProps,
 }: AppShellProps) {
   const {
@@ -79,6 +81,7 @@ export function AppShell({
           <SideNav
             activeView={activeView}
             onViewChange={setActiveView}
+            onShareClick={onShareClick}
             plugins={navPlugins}
             onPluginContextAction={onPluginContextAction}
             isPluginRefreshAvailable={isPluginRefreshAvailable}

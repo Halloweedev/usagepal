@@ -1,5 +1,5 @@
 import { useCallback } from "react"
-import { Settings } from "lucide-react"
+import { Settings, Share2 } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu"
 import {
@@ -43,6 +43,7 @@ interface NavPlugin {
 interface SideNavProps {
   activeView: ActiveView
   onViewChange: (view: ActiveView) => void
+  onShareClick?: () => void
   plugins: NavPlugin[]
   onPluginContextAction?: (pluginId: string, action: PluginContextAction) => void
   isPluginRefreshAvailable?: (pluginId: string) => boolean
@@ -141,6 +142,7 @@ function SortableNavPlugin({ plugin, isActive, isDark, onClick, onContextMenu }:
 export function SideNav({
   activeView,
   onViewChange,
+  onShareClick,
   plugins,
   onPluginContextAction,
   isPluginRefreshAvailable,
@@ -248,6 +250,15 @@ export function SideNav({
           </SortableContext>
         </DndContext>
       </div>
+
+      {/* Share */}
+      <NavButton
+        isActive={activeView === "share"}
+        onClick={() => onShareClick?.()}
+        aria-label="Share"
+      >
+        <Share2 className="size-6" />
+      </NavButton>
 
       {/* Settings */}
       <NavButton

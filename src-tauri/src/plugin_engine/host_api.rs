@@ -1058,6 +1058,7 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                     var line = { type: "text", label: opts.label, value: opts.value };
                     if (opts.color) line.color = opts.color;
                     if (opts.subtitle) line.subtitle = opts.subtitle;
+                    if (opts.resetExpiry) line.resetExpiry = opts.resetExpiry;
                     return line;
                 },
                 progress: function(opts) {
@@ -2037,6 +2038,7 @@ fn append_ccusage_common_args(
     args.extend([
         "daily".to_string(),
         "--json".to_string(),
+        "--breakdown".to_string(),
         "--order".to_string(),
         "desc".to_string(),
     ]);
@@ -3886,6 +3888,7 @@ mod tests {
                 "claude",
                 "daily",
                 "--json",
+                "--breakdown",
                 "--order",
                 "desc",
                 "--since",
@@ -3910,6 +3913,7 @@ mod tests {
                 "claude",
                 "daily",
                 "--json",
+                "--breakdown",
                 "--order",
                 "desc",
                 "--since",
@@ -3934,6 +3938,7 @@ mod tests {
                 "claude",
                 "daily",
                 "--json",
+                "--breakdown",
                 "--order",
                 "desc",
                 "--since",
@@ -3960,6 +3965,7 @@ mod tests {
                 "claude",
                 "daily",
                 "--json",
+                "--breakdown",
                 "--order",
                 "desc",
                 "--since",
@@ -3983,6 +3989,7 @@ mod tests {
                 "claude",
                 "daily",
                 "--json",
+                "--breakdown",
                 "--order",
                 "desc",
                 "--since",
@@ -4019,6 +4026,7 @@ mod tests {
                 "codex",
                 "daily",
                 "--json",
+                "--breakdown",
                 "--order",
                 "desc",
                 "--since",
@@ -4045,6 +4053,7 @@ mod tests {
                 "codex",
                 "daily",
                 "--json",
+                "--breakdown",
                 "--order",
                 "desc",
                 "--since",
@@ -4068,6 +4077,7 @@ mod tests {
                 "codex",
                 "daily",
                 "--json",
+                "--breakdown",
                 "--order",
                 "desc",
                 "--since",
@@ -4101,6 +4111,7 @@ mod tests {
                 "ccusage@18.0.11",
                 "daily",
                 "--json",
+                "--breakdown",
                 "--order",
                 "desc",
                 "--since",
@@ -4126,6 +4137,7 @@ mod tests {
                 "ccusage-codex",
                 "daily",
                 "--json",
+                "--breakdown",
                 "--order",
                 "desc",
                 "--since",

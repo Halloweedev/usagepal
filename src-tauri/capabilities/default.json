@@ -18,6 +18,7 @@
     "global-shortcut:default",
     "autostart:default",
     "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-write-image",
     "core:menu:default",
     "keylight:default",
     "notification:default"

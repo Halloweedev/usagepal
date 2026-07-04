@@ -10,7 +10,7 @@ export type BarChartPoint = {
 }
 
 export type MetricLine =
-  | { type: "text"; label: string; value: string; color?: string; subtitle?: string }
+  | { type: "text"; label: string; value: string; color?: string; subtitle?: string; resetExpiry?: string | string[] }
   | {
       type: "progress"
       label: string

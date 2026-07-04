@@ -366,6 +366,91 @@
   // Period durations in milliseconds
   var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+  var BANKED_RESET_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
+  var GRANTS_FILE = "grants.json"
+
+  function readGrantsFile(ctx) {
+    try {
+      var path = ctx.app.pluginDataDir + "/" + GRANTS_FILE
+      if (!ctx.host.fs.exists(path)) return null
+      var text = ctx.host.fs.readText(path)
+      return JSON.parse(text)
+    } catch (e) {
+      return null
+    }
+  }
+
+  function writeGrantsFile(ctx, data) {
+    try {
+      ctx.host.fs.writeText(
+        ctx.app.pluginDataDir + "/" + GRANTS_FILE,
+        JSON.stringify(data)
+      )
+    } catch (e) {
+      ctx.host.log.warn("failed to persist banked reset grants: " + String(e))
+    }
+  }
+
+  function formatBankedExpiry(nowMs, expiresAtMs) {
+    if (expiresAtMs <= nowMs) return "expired"
+    var totalSec = Math.round((expiresAtMs - nowMs) / 1000)
+    var d = Math.floor(totalSec / 86400)
+    var h = Math.floor((totalSec % 86400) / 3600)
+    var m = Math.floor((totalSec % 3600) / 60)
+    if (d > 0) return "in " + d + "d " + h + "h"
+    if (h > 0) return "in " + h + "h " + m + "m"
+    if (m > 0) return "in " + m + "m"
+    return "soon"
+  }
+
+  function updateBankedResetGrants(ctx, nowSec, availableCount) {
+    var stored = readGrantsFile(ctx) || { grants: [] }
+    var storedGrants = Array.isArray(stored.grants) ? stored.grants : []
+    var nowMs = nowSec * 1000
+
+    // Prune expired grants
+    var unexpired = []
+    for (var i = 0; i < storedGrants.length; i++) {
+      if (typeof storedGrants[i].issuedAt === "number" &&
+          storedGrants[i].issuedAt + BANKED_RESET_LIFETIME_MS > nowMs) {
+        unexpired.push(storedGrants[i])
+      }
+    }
+    storedGrants = unexpired
+
+    var storedCount = storedGrants.length
+    var changed = false
+
+    if (availableCount > storedCount) {
+      // New grants observed — record them
+      var newCount = availableCount - storedCount
+      for (var j = 0; j < newCount; j++) {
+        storedGrants.push({ issuedAt: nowMs })
+      }
+      changed = true
+    } else if (availableCount < storedCount) {
+      // Count decreased — remove oldest (most likely consumed or expired)
+      storedGrants = storedGrants.slice(storedCount - availableCount)
+      changed = true
+    }
+
+    // Collect all expiry timestamps (soonest first)
+    var expiries = []
+    for (var k = 0; k < storedGrants.length; k++) {
+      var expMs = storedGrants[k].issuedAt + BANKED_RESET_LIFETIME_MS
+      if (expMs > nowMs) {
+        expiries.push(expMs)
+      }
+    }
+    expiries.sort(function(a, b) { return a - b })
+
+    if (changed) {
+      writeGrantsFile(ctx, { grants: storedGrants })
+    }
+
+    return expiries
+  }
 
   function queryTokenUsage(ctx) {
     if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
@@ -472,7 +557,7 @@
     const parts = []
     if (data.costUSD != null) parts.push("$" + data.costUSD.toFixed(2))
     if (data.tokens > 0 || (includeZeroTokens && data.tokens === 0)) {
-      parts.push(fmtTokens(data.tokens) + " tokens")
+      parts.push(fmtTokens(data.tokens))
     }
     return parts.join(" · ")
   }
@@ -543,15 +628,74 @@
     return (rounded % 1 === 0 ? String(Math.round(rounded)) : String(rounded)) + "%"
   }
 
-  function pushModelUsageLines(lines, ctx, daily) {
+  function fmtModelCost(amount) {
+    if (amount < 1000) return "$" + amount.toFixed(2)
+    return "$" + Math.round(amount).toLocaleString("en-US")
+  }
+
+  function prettifyModelName(rawId) {
+    if (typeof rawId !== "string" || !rawId.startsWith("gpt-")) return rawId
+    const parts = rawId.slice("gpt-".length).split("-")
+    const version = parts[0]
+    if (!/^\d+(\.\d+)?$/.test(version)) return rawId
+    const suffixWords = parts.slice(1).map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    return ["GPT-" + version].concat(suffixWords).join(" ")
+  }
+
+  function pushModelUsageLines(lines, ctx, daily, now) {
     const models = collectModelUsage(daily)
+    const todayKey = dayKeyFromDate(now)
+    const recentKeys = recentDayKeys(now, 7)
+    const costTotals = collectModelCosts(daily, todayKey, recentKeys)
     for (let i = 0; i < models.length; i++) {
       const model = models[i]
+      let value = percentLabel(model.percent)
+      const segments = []
+      if (costTotals.Today[model.name]) segments.push("Today " + fmtModelCost(costTotals.Today[model.name]))
+      if (costTotals["7d"][model.name]) segments.push("7d " + fmtModelCost(costTotals["7d"][model.name]))
+      if (costTotals["30d"][model.name]) segments.push("30d " + fmtModelCost(costTotals["30d"][model.name]))
+      if (segments.length > 0) value += " · " + segments.join(" · ")
       lines.push(ctx.line.text({
-        label: model.name,
-        value: percentLabel(model.percent),
+        label: prettifyModelName(model.name),
+        value: value,
       }))
     }
+  }
+
+  function recentDayKeys(now, count) {
+    const keys = []
+    for (let i = 0; i < count; i++) {
+      const d = new Date(now.getTime())
+      d.setDate(d.getDate() - i)
+      keys.push(dayKeyFromDate(d))
+    }
+    return keys
+  }
+
+  function collectModelCosts(daily, todayKey, recentKeys) {
+    const recentSet = new Set(recentKeys)
+    const totals = { Today: {}, "7d": {}, "30d": {} }
+    for (let i = 0; i < daily.length; i++) {
+      const day = daily[i]
+      const breakdowns = day && day.modelBreakdowns
+      if (!Array.isArray(breakdowns)) continue
+      const dayKey = dayKeyFromUsageDate(day.date)
+      const inToday = dayKey === todayKey
+      const in7d = recentSet.has(dayKey)
+      for (let j = 0; j < breakdowns.length; j++) {
+        const breakdown = breakdowns[j]
+        const name = String(
+          (breakdown && (breakdown.modelName || breakdown.name || breakdown.model)) || ""
+        ).trim()
+        if (!name) continue
+        const cost = Number(breakdown && breakdown.cost)
+        if (!Number.isFinite(cost) || cost <= 0) continue
+        totals["30d"][name] = (totals["30d"][name] || 0) + cost
+        if (in7d) totals["7d"][name] = (totals["7d"][name] || 0) + cost
+        if (inToday) totals.Today[name] = (totals.Today[name] || 0) + cost
+      }
+    }
+    return totals
   }
 
   function usageDayLabel(rawDate) {
@@ -574,7 +718,7 @@
         key: key,
         label: usageDayLabel(day.date),
         value: tokens,
-        valueLabel: fmtTokens(tokens) + " tokens",
+        valueLabel: fmtTokens(tokens),
       })
     }
     return points
@@ -834,9 +978,17 @@
           ? readNumber(data.rate_limit_reset_credits.available_count)
           : null
       if (resetCredits !== null && resetCredits >= 0) {
+        const resetCount = Math.floor(resetCredits)
+        const allExpiryMs = resetCount > 0
+          ? updateBankedResetGrants(ctx, nowSec, resetCount)
+          : []
+        const resetExpiry = allExpiryMs.length > 0
+          ? allExpiryMs.map(function(ms) { return ctx.util.toIso(ms / 1000) })
+          : null
         lines.push(ctx.line.text({
           label: "Rate Limit Resets",
-          value: Math.floor(resetCredits) + " available",
+          value: resetCount + " available",
+          resetExpiry: resetExpiry,
         }))
       }
 
@@ -908,7 +1060,7 @@
         }
 
         pushUsageChartLine(lines, ctx, tokenUsage.daily)
-        pushModelUsageLines(lines, ctx, tokenUsage.daily)
+        pushModelUsageLines(lines, ctx, tokenUsage.daily, now)
       }
 
       if (lines.length === 0) {

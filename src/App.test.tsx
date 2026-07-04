@@ -171,7 +171,12 @@ vi.mock("@tauri-apps/api/path", () => ({
 }))
 
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ setSize: state.setSizeMock }),
+  // Mirrors the real getCurrentWindow(), which reads window.__TAURI_INTERNALS__
+  // and throws outside a Tauri webview — callers must guard with isTauri() first.
+  getCurrentWindow: () => {
+    if (!state.isTauriMock()) throw new TypeError("Cannot read properties of undefined (reading 'metadata')")
+    return { setSize: state.setSizeMock }
+  },
   PhysicalSize: class {
     width: number
     height: number
@@ -408,6 +413,12 @@ describe("App", () => {
     expect(mq.addEventListener).toHaveBeenCalled()
 
     mmSpy.mockRestore()
+  })
+
+  it("renders the main app instead of crashing when running outside Tauri (browser dev)", async () => {
+    state.isTauriMock.mockReturnValue(false)
+    expect(() => render(<App />)).not.toThrow()
+    expect(await screen.findByText("Alpha")).toBeInTheDocument()
   })
 
   it("loads plugins, normalizes settings, and renders overview", async () => {

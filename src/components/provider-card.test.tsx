@@ -1029,6 +1029,62 @@ describe("ProviderCard", () => {
     expect(screen.getByText("Session")).toBeInTheDocument()
     expect(screen.getByText("Monthly")).toBeInTheDocument()
   })
+
+  it("declutters per-model rows: percent only, cost breakdown in the tooltip", () => {
+    render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        scopeFilter="all"
+        skeletonLines={[{ type: "text", label: "Today", scope: "detail" }]}
+        lines={[
+          { type: "text", label: "Today", value: "$92.56 · 94M tokens" },
+          { type: "text", label: "Opus 4.8", value: "83.4% · Today $1.22 · 7d $1100 · 30d $6424" },
+        ]}
+      />
+    )
+
+    // Model row shows only the percent...
+    expect(screen.getByText("Opus 4.8")).toBeInTheDocument()
+    expect(screen.getByText("83.4%")).toBeInTheDocument()
+    expect(screen.queryByText(/83\.4% ·/)).not.toBeInTheDocument()
+    // ...with costs moved into the (inline-mocked) tooltip content.
+    expect(screen.getByText("Today $1.22")).toBeInTheDocument()
+    expect(screen.getByText("7 days $1100")).toBeInTheDocument()
+    expect(screen.getByText("30 days $6424")).toBeInTheDocument()
+    // Manifest-declared text lines keep the classic full-value rendering.
+    expect(screen.getByText("$92.56 · 94M tokens")).toBeInTheDocument()
+  })
+
+  it("renders a percent-only model row without a tooltip", () => {
+    render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        scopeFilter="all"
+        skeletonLines={[]}
+        lines={[{ type: "text", label: "GPT-5.5", value: "100%" }]}
+      />
+    )
+
+    expect(screen.getByText("GPT-5.5")).toBeInTheDocument()
+    expect(screen.getByText("100%")).toBeInTheDocument()
+  })
+
+  it("keeps normal rendering for unmatched text lines that are not model-shaped", () => {
+    render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        scopeFilter="all"
+        skeletonLines={[]}
+        lines={[{ type: "text", label: "Note", value: "361M tokens" }]}
+      />
+    )
+
+    expect(screen.getByText("Note")).toBeInTheDocument()
+    expect(screen.getByText("361M tokens")).toBeInTheDocument()
+  })
 })
 
 describe("groupLinesByType", () => {

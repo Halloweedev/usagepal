@@ -1964,9 +1964,9 @@ describe("cursor spend history assembly", () => {
 
       const byLabel = Object.fromEntries(lines.map((l) => [l.label, l]))
       expect(byLabel["Today"].type).toBe("text")
-      expect(byLabel["Today"].value).toContain("1M tokens")
-      expect(byLabel["Yesterday"].value).toContain("2M tokens")
-      expect(byLabel["Last 30 Days"].value).toContain("3M tokens")
+      expect(byLabel["Today"].value).toContain("1M")
+      expect(byLabel["Yesterday"].value).toContain("2M")
+      expect(byLabel["Last 30 Days"].value).toContain("3M")
       expect(byLabel["Usage Trend"].type).toBe("barChart")
       expect(byLabel["Usage Trend"].note).toBe("Estimated at API rates.")
       expect(byLabel["Usage Trend"].points).toHaveLength(2)
@@ -1993,7 +1993,7 @@ describe("cursor spend history assembly", () => {
       plugin.__test.appendSpendHistory(ctx, lines, TOKEN, false)
 
       const byLabel = Object.fromEntries(lines.map((l) => [l.label, l]))
-      expect(byLabel["Today"].value).toContain("3M tokens")
+      expect(byLabel["Today"].value).toContain("3M")
     } finally {
       vi.useRealTimers()
       vi.unstubAllEnvs()

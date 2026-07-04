@@ -76,3 +76,44 @@ export function formatResetTooltipText({
     ? formatResetRelativeLabel(nowMs, resetsAtIso)
     : formatResetAbsoluteLabel(nowMs, resetsAtIso, timeFormatMode)
 }
+
+export function formatExpiryRelativeLabel(nowMs: number, expiresAtIso: string): string | null {
+  const expiresAtMs = parseResetTimestamp(expiresAtIso)
+  if (expiresAtMs === null) return null
+  const deltaMs = expiresAtMs - nowMs
+  if (deltaMs < RESET_SOON_THRESHOLD_MS) return "Expires soon"
+  const durationText = formatCompactDuration(deltaMs)
+  return durationText ? `Expires in ${durationText}` : null
+}
+
+export function formatExpiryAbsoluteLabel(
+  nowMs: number,
+  expiresAtIso: string,
+  timeFormatMode: TimeFormatMode = "auto",
+): string | null {
+  const expiresAtMs = parseResetTimestamp(expiresAtIso)
+  if (expiresAtMs === null) return null
+  if (expiresAtMs - nowMs <= 0) return "Expires soon"
+  const dayDiff = getLocalDayIndex(expiresAtMs) - getLocalDayIndex(nowMs)
+  const timeText = getTimeFormatter(timeFormatMode).format(expiresAtMs)
+  if (dayDiff <= 0) return `Expires today at ${timeText}`
+  if (dayDiff === 1) return `Expires tomorrow at ${timeText}`
+  const dateText = formatMonthDay(expiresAtMs)
+  return `Expires ${dateText} at ${timeText}`
+}
+
+export function formatExpiryTooltipText({
+  nowMs,
+  expiresAtIso,
+  visibleMode,
+  timeFormatMode = "auto",
+}: {
+  nowMs: number
+  expiresAtIso: string
+  visibleMode: ResetTimerDisplayMode
+  timeFormatMode?: TimeFormatMode
+}): string | null {
+  return visibleMode === "absolute"
+    ? formatExpiryRelativeLabel(nowMs, expiresAtIso)
+    : formatExpiryAbsoluteLabel(nowMs, expiresAtIso, timeFormatMode)
+}

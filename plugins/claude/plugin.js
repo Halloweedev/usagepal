@@ -606,7 +606,7 @@
     const parts = []
     if (data.costUSD != null) parts.push("$" + data.costUSD.toFixed(2))
     if (data.tokens > 0 || (includeZeroTokens && data.tokens === 0)) {
-      parts.push(fmtTokens(data.tokens) + " tokens")
+      parts.push(fmtTokens(data.tokens))
     }
     return parts.join(" \u00b7 ")
   }
@@ -696,15 +696,77 @@
     return (rounded % 1 === 0 ? String(Math.round(rounded)) : String(rounded)) + "%"
   }
 
-  function pushModelUsageLines(lines, ctx, daily) {
+  function fmtModelCost(amount) {
+    if (amount < 1000) return "$" + amount.toFixed(2)
+    return "$" + Math.round(amount).toLocaleString("en-US")
+  }
+
+  function prettifyModelName(rawId) {
+    if (typeof rawId !== "string" || !rawId.startsWith("claude-")) return rawId
+    const parts = rawId.slice("claude-".length).split("-")
+    if (parts.length < 2) return rawId
+    if (/^\d{8}$/.test(parts[parts.length - 1])) parts.pop()
+    if (parts.length < 2) return rawId
+    const family = parts[0]
+    const versionParts = parts.slice(1)
+    if (!/^[a-z]+$/.test(family) || !versionParts.every((p) => /^\d+$/.test(p))) return rawId
+    return family.charAt(0).toUpperCase() + family.slice(1) + " " + versionParts.join(".")
+  }
+
+  function pushModelUsageLines(lines, ctx, daily, now) {
     const models = collectModelUsage(daily)
+    const todayKey = dayKeyFromDate(now)
+    const recentKeys = recentDayKeys(now, 7)
+    const costTotals = collectModelCosts(daily, todayKey, recentKeys)
     for (let i = 0; i < models.length; i++) {
       const model = models[i]
+      let value = percentLabel(model.percent)
+      const segments = []
+      if (costTotals.Today[model.name]) segments.push("Today " + fmtModelCost(costTotals.Today[model.name]))
+      if (costTotals["7d"][model.name]) segments.push("7d " + fmtModelCost(costTotals["7d"][model.name]))
+      if (costTotals["30d"][model.name]) segments.push("30d " + fmtModelCost(costTotals["30d"][model.name]))
+      if (segments.length > 0) value += " · " + segments.join(" · ")
       lines.push(ctx.line.text({
-        label: model.name,
-        value: percentLabel(model.percent),
+        label: prettifyModelName(model.name),
+        value: value,
       }))
     }
+  }
+
+  function recentDayKeys(now, count) {
+    const keys = []
+    for (let i = 0; i < count; i++) {
+      const d = new Date(now.getTime())
+      d.setDate(d.getDate() - i)
+      keys.push(dayKeyFromDate(d))
+    }
+    return keys
+  }
+
+  function collectModelCosts(daily, todayKey, recentKeys) {
+    const recentSet = new Set(recentKeys)
+    const totals = { Today: {}, "7d": {}, "30d": {} }
+    for (let i = 0; i < daily.length; i++) {
+      const day = daily[i]
+      const breakdowns = day && day.modelBreakdowns
+      if (!Array.isArray(breakdowns)) continue
+      const dayKey = dayKeyFromUsageDate(day.date)
+      const inToday = dayKey === todayKey
+      const in7d = recentSet.has(dayKey)
+      for (let j = 0; j < breakdowns.length; j++) {
+        const breakdown = breakdowns[j]
+        const name = String(
+          (breakdown && (breakdown.modelName || breakdown.name || breakdown.model)) || ""
+        ).trim()
+        if (!name) continue
+        const cost = Number(breakdown && breakdown.cost)
+        if (!Number.isFinite(cost) || cost <= 0) continue
+        totals["30d"][name] = (totals["30d"][name] || 0) + cost
+        if (in7d) totals["7d"][name] = (totals["7d"][name] || 0) + cost
+        if (inToday) totals.Today[name] = (totals.Today[name] || 0) + cost
+      }
+    }
+    return totals
   }
 
   function usageDayLabel(rawDate) {
@@ -727,7 +789,7 @@
         key: key,
         label: usageDayLabel(day.date),
         value: tokens,
-        valueLabel: fmtTokens(tokens) + " tokens",
+        valueLabel: fmtTokens(tokens),
       })
     }
     return points
@@ -1017,7 +1079,7 @@
       }
 
       pushUsageChartLine(lines, ctx, usage.daily)
-      pushModelUsageLines(lines, ctx, usage.daily)
+      pushModelUsageLines(lines, ctx, usage.daily, now)
     }
 
     if (rateLimited) {

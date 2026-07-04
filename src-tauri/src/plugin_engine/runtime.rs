@@ -32,6 +32,8 @@ pub enum MetricLine {
         value: String,
         color: Option<String>,
         subtitle: Option<String>,
+        #[serde(rename = "resetExpiry")]
+        reset_expiry: Option<Vec<String>>,
     },
     Progress {
         label: String,
@@ -252,11 +254,22 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
         match line_type.as_str() {
             "text" => {
                 let value = line.get::<_, String>("value").unwrap_or_default();
+                // resetExpiry can be a single ISO string or an array of ISO strings
+                let reset_expiry = line
+                    .get::<_, Vec<String>>("resetExpiry")
+                    .ok()
+                    .or_else(|| {
+                        line.get::<_, String>("resetExpiry")
+                            .ok()
+                            .map(|s| vec![s])
+                    })
+                    .filter(|v| !v.is_empty());
                 out.push(MetricLine::Text {
                     label,
                     value,
                     color,
                     subtitle,
+                    reset_expiry,
                 });
             }
             "progress" => {

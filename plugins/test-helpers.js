@@ -98,6 +98,7 @@ export const makeCtx = () => {
       const line = { type: "text", label: opts.label, value: opts.value }
       if (opts.color) line.color = opts.color
       if (opts.subtitle) line.subtitle = opts.subtitle
+      if (opts.resetExpiry) line.resetExpiry = opts.resetExpiry
       return line
     },
     progress: (opts) => {
