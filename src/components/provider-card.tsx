@@ -12,12 +12,20 @@ import { PluginError } from "@/components/plugin-error"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode, type TimeFormatMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
+import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
 import { groupLinesByType } from "@/lib/group-lines-by-type"
 import { selectEscalatedLine } from "@/lib/metric-escalation"
 import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
 import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
 import { buildPaceDetailText, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
-import { formatResetAbsoluteLabel, formatResetRelativeLabel, formatResetTooltipText } from "@/lib/reset-tooltip"
+import {
+  formatExpiryAbsoluteLabel,
+  formatExpiryRelativeLabel,
+  formatExpiryTooltipText,
+  formatResetAbsoluteLabel,
+  formatResetRelativeLabel,
+  formatResetTooltipText,
+} from "@/lib/reset-tooltip"
 
 interface ProviderCardProps {
   name: string
@@ -117,6 +125,10 @@ export function ProviderCard({
     const remaining = REFRESH_COOLDOWN_MS - (Date.now() - lastManualRefreshAt)
     return remaining > 0 ? remaining : 0
   }, [lastManualRefreshAt])
+
+  // Runtime-generated per-model lines (not declared in the manifest) get a
+  // decluttered rendering: percent only, costs in a tooltip.
+  const manifestLabels = useMemo(() => new Set(skeletonLines.map((line) => line.label)), [skeletonLines])
 
   // Filter lines based on scope - match by label since runtime lines can differ from manifest
   const overviewLabels = new Set(
@@ -320,6 +332,7 @@ export function ProviderCard({
                     <MetricLineRenderer
                       key={`${line.label}-${gi}-${li}`}
                       line={line}
+                      isModelBreakdown={!manifestLabels.has(line.label)}
                       displayMode={displayMode}
                       resetTimerDisplayMode={resetTimerDisplayMode}
                       timeFormatMode={timeFormatMode}
@@ -335,6 +348,7 @@ export function ProviderCard({
                     <MetricLineRenderer
                       key={`${line.label}-${gi}-${li}`}
                       line={line}
+                      isModelBreakdown={!manifestLabels.has(line.label)}
                       displayMode={displayMode}
                       resetTimerDisplayMode={resetTimerDisplayMode}
                       timeFormatMode={timeFormatMode}
@@ -357,6 +371,7 @@ export function ProviderCard({
 
 function MetricLineRenderer({
   line,
+  isModelBreakdown = false,
   displayMode,
   resetTimerDisplayMode,
   timeFormatMode,
@@ -365,6 +380,7 @@ function MetricLineRenderer({
   refreshing,
 }: {
   line: MetricLine
+  isModelBreakdown?: boolean
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   timeFormatMode: TimeFormatMode
@@ -373,19 +389,125 @@ function MetricLineRenderer({
   refreshing?: boolean
 }) {
   if (line.type === "text") {
+    // Per-model rows: percent only on the right; the cost breakdown moves
+    // into a tooltip instead of a long truncated "· Today … · 7d …" string.
+    const modelParsed = isModelBreakdown ? parseModelBreakdownValue(line.value) : null
+    if (modelParsed) {
+      const details = [
+        modelParsed.today && `Today ${modelParsed.today}`,
+        modelParsed.sevenDay && `7 days ${modelParsed.sevenDay}`,
+        modelParsed.thirtyDay && `30 days ${modelParsed.thirtyDay}`,
+      ].filter((detail): detail is string => Boolean(detail))
+
+      return (
+        <div className="flex justify-between items-center h-[18px] gap-2" data-testid="model-breakdown-line">
+          <span className="text-xs text-muted-foreground min-w-0 truncate" title={line.label}>
+            {line.label}
+          </span>
+          {details.length > 0 ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={(props) => (
+                  <span
+                    {...props}
+                    className="text-xs text-muted-foreground tabular-nums"
+                    style={line.color ? { color: line.color } : undefined}
+                  >
+                    {modelParsed.percent}
+                  </span>
+                )}
+              />
+              <TooltipContent side="top" className="text-xs">
+                {details.map((detail) => (
+                  <div key={detail}>{detail}</div>
+                ))}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <span
+              className="text-xs text-muted-foreground tabular-nums"
+              style={line.color ? { color: line.color } : undefined}
+            >
+              {modelParsed.percent}
+            </span>
+          )}
+        </div>
+      )
+    }
+
+    // Normalize resetExpiry to array and compute expiry labels for text lines.
+    // Identical expiry timestamps are grouped so e.g. 3 grants expiring at the
+    // same moment render as "3 expire in 15d" rather than three repeated lines.
+    const resetExpiryIsoList = line.resetExpiry
+      ? Array.isArray(line.resetExpiry)
+        ? line.resetExpiry
+        : [line.resetExpiry]
+      : null
+    const resetExpiryInlineLabel =
+      resetExpiryIsoList && resetExpiryIsoList.length > 0
+        ? resetTimerDisplayMode === "absolute"
+          ? formatExpiryAbsoluteLabel(now, resetExpiryIsoList[0], timeFormatMode)
+          : formatExpiryRelativeLabel(now, resetExpiryIsoList[0])
+        : null
+    const resetExpiryTooltipLines: string[] = (() => {
+      if (!resetExpiryIsoList) return []
+      const groups = new Map<string, number>()
+      for (const iso of resetExpiryIsoList) {
+        groups.set(iso, (groups.get(iso) ?? 0) + 1)
+      }
+      const result: string[] = []
+      for (const [iso, count] of groups) {
+        const label = formatExpiryTooltipText({
+          nowMs: now,
+          expiresAtIso: iso,
+          visibleMode: resetTimerDisplayMode,
+          timeFormatMode,
+        })
+        if (!label) continue
+        result.push(count > 1 ? `${count} ${label.replace(/^Expires /, "expire ")}` : label)
+      }
+      return result
+    })()
+
     return (
       <div>
         <div className="flex justify-between items-center h-[18px] gap-2">
           <span className="text-xs text-muted-foreground min-w-0 truncate" title={line.label}>
             {line.label}
           </span>
-          <span
-            className="text-xs text-muted-foreground truncate flex-shrink-0 max-w-[45%] text-right"
-            style={line.color ? { color: line.color } : undefined}
-            title={line.value}
-          >
-            {line.value}
-          </span>
+          {resetExpiryIsoList && resetExpiryInlineLabel ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={(props) => (
+                  <span
+                    {...props}
+                    className="text-xs text-muted-foreground truncate flex-shrink-0 max-w-[45%] text-right cursor-default"
+                    style={line.color ? { color: line.color } : undefined}
+                  >
+                    {line.value}
+                  </span>
+                )}
+              />
+              <TooltipContent side="top">
+                <div>{resetExpiryInlineLabel}</div>
+                {resetExpiryTooltipLines.length > 0 && (
+                  <div className="text-muted-foreground text-xs mt-0.5">
+                    {resetExpiryTooltipLines.map((text, i) => (
+                      <div key={i}>{text}</div>
+                    ))}
+                  </div>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <span
+              className="text-xs text-muted-foreground truncate flex-shrink-0 max-w-[45%] text-right"
+              style={line.color ? { color: line.color } : undefined}
+              title={line.value}
+            >
+              {line.value}
+            </span>
+          )}
         </div>
         {line.subtitle && (
           <div className="text-[10px] text-muted-foreground text-right -mt-0.5">{line.subtitle}</div>

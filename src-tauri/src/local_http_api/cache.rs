@@ -409,6 +409,7 @@ mod tests {
                 value: "42%".to_string(),
                 color: None,
                 subtitle: None,
+                reset_expiry: None,
             }],
             icon_url: String::new(),
         }

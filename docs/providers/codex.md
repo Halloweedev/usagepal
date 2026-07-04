@@ -68,7 +68,9 @@ equivalent at `$0.04` per credit. For example, `820.6969075` renders as
 `$32.80 · 820 credits`. The credit balance is unbounded; the API does not provide a maximum.
 
 When available, UsagePal displays the on-demand reset count as the first detail text metric,
-for example `1 available`.
+for example `1 available`. Banked reset credits expire after 30 days from the date they are
+granted. UsagePal tracks grants locally in `{pluginDataDir}/grants.json` to compute the next
+expiry time, which appears on hover as a tooltip (e.g. `"Expires in 25d 3h"`).
 
 ## Authentication
 

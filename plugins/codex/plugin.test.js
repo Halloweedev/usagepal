@@ -416,12 +416,12 @@ describe("codex plugin", () => {
 
       const today = result.lines.find((l) => l.label === "Today")
       expect(today).toBeTruthy()
-      expect(today.value).toContain("150 tokens")
+      expect(today.value).toContain("150")
       expect(today.value).toContain("$0.75")
 
       const last30 = result.lines.find((l) => l.label === "Last 30 Days")
       expect(last30).toBeTruthy()
-      expect(last30.value).toContain("450 tokens")
+      expect(last30.value).toContain("450")
       expect(last30.value).toContain("$1.75")
 
       expect(ctx.host.ccusage.query).toHaveBeenCalled()
@@ -502,11 +502,9 @@ describe("codex plugin", () => {
     const todayLine = result.lines.find((l) => l.label === "Today")
     expect(todayLine).toBeTruthy()
     expect(todayLine.value).toContain("$0.00")
-    expect(todayLine.value).toContain("0 tokens")
     const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
     expect(yesterdayLine).toBeTruthy()
     expect(yesterdayLine.value).toContain("$0.00")
-    expect(yesterdayLine.value).toContain("0 tokens")
     expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
   })
 
@@ -541,7 +539,6 @@ describe("codex plugin", () => {
     const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
     expect(yesterdayLine).toBeTruthy()
     expect(yesterdayLine.value).toContain("$0.00")
-    expect(yesterdayLine.value).toContain("0 tokens")
   })
 
   it("shows empty Today when history exists but today is missing (regression)", async () => {
@@ -570,15 +567,13 @@ describe("codex plugin", () => {
     const todayLine = result.lines.find((l) => l.label === "Today")
     expect(todayLine).toBeTruthy()
     expect(todayLine.value).toContain("$0.00")
-    expect(todayLine.value).toContain("0 tokens")
     const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
     expect(yesterdayLine).toBeTruthy()
     expect(yesterdayLine.value).toContain("$0.00")
-    expect(yesterdayLine.value).toContain("0 tokens")
 
     const last30 = result.lines.find((l) => l.label === "Last 30 Days")
     expect(last30).toBeTruthy()
-    expect(last30.value).toContain("300 tokens")
+    expect(last30.value).toContain("300")
     expect(last30.value).toContain("$1.00")
   })
 
@@ -612,7 +607,7 @@ describe("codex plugin", () => {
     const result = plugin.probe(ctx)
     const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
     expect(yesterdayLine).toBeTruthy()
-    expect(yesterdayLine.value).toContain("220 tokens")
+    expect(yesterdayLine.value).toContain("220")
     expect(yesterdayLine.value).toContain("$1.10")
   })
 
@@ -639,7 +634,7 @@ describe("codex plugin", () => {
       const result = plugin.probe(ctx)
       const todayLine = result.lines.find((line) => line.label === "Today")
       expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("10 tokens")
+      expect(todayLine.value).toContain("10")
     } finally {
       vi.useRealTimers()
     }
@@ -668,7 +663,7 @@ describe("codex plugin", () => {
       const result = plugin.probe(ctx)
       const todayLine = result.lines.find((line) => line.label === "Today")
       expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("20 tokens")
+      expect(todayLine.value).toContain("20")
     } finally {
       vi.useRealTimers()
     }
@@ -697,7 +692,7 @@ describe("codex plugin", () => {
       const result = plugin.probe(ctx)
       const todayLine = result.lines.find((line) => line.label === "Today")
       expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("30 tokens")
+      expect(todayLine.value).toContain("30")
     } finally {
       vi.useRealTimers()
     }
@@ -1422,11 +1417,12 @@ describe("codex plugin", () => {
     const creditsIndex = result.lines.findIndex((line) => line.label === "Credits")
     const firstTextIndex = result.lines.findIndex((line) => line.type === "text")
 
-    expect(result.lines[resetIndex]).toEqual({
+    expect(result.lines[resetIndex]).toMatchObject({
       type: "text",
       label: "Rate Limit Resets",
       value: "1 available",
     })
+    expect(result.lines[resetIndex].resetExpiry).toBeDefined()
     expect(resetIndex).toBeGreaterThanOrEqual(0)
     expect(resetIndex).toBe(firstTextIndex)
     expect(creditsIndex).toBe(resetIndex + 1)
@@ -1461,6 +1457,119 @@ describe("codex plugin", () => {
     const malformedResult = plugin.probe(ctx)
     expect(malformedResult.lines.find((line) => line.label === "Rate Limit Resets"))
       .toBeUndefined()
+  })
+
+  it("writes grants.json when banked reset count increases and includes resetExpiry", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+
+    const now = 1_700_000_000_000
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now)
+    const issuedAtMs = now
+    const expectedExpiryMs = issuedAtMs + 30 * 24 * 60 * 60 * 1000
+    const expectedExpiryIso = new Date(expectedExpiryMs).toISOString()
+
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit_reset_credits: { available_count: 2 },
+      }),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ status: "ok", data: { daily: [] } })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(ctx.host.fs.writeText).toHaveBeenCalledWith(
+      expect.stringContaining("grants.json"),
+      expect.any(String),
+    )
+
+    // Verify grants.json content
+    const writeCall = ctx.host.fs.writeText.mock.calls.find(([p]) =>
+      String(p).endsWith("grants.json"),
+    )
+    expect(writeCall).toBeTruthy()
+    const grantsData = JSON.parse(writeCall[1])
+    expect(grantsData.grants).toHaveLength(2)
+    expect(grantsData.grants[0].issuedAt).toBe(issuedAtMs)
+    expect(grantsData.grants[1].issuedAt).toBe(issuedAtMs)
+
+    // Verify output line has resetExpiry (array of all expiry ISOs, soonest first)
+    const line = result.lines.find((l) => l.label === "Rate Limit Resets")
+    expect(line.resetExpiry).toEqual([expectedExpiryIso, expectedExpiryIso])
+
+    nowSpy.mockRestore()
+  })
+
+  it("omits resetExpiry when banked reset count is zero", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit_reset_credits: { available_count: 0 },
+      }),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ status: "ok", data: { daily: [] } })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Rate Limit Resets")
+    expect(line).toBeTruthy()
+    expect(line.value).toBe("0 available")
+    expect(line.resetExpiry).toBeUndefined()
+  })
+
+  it("reads previously-written grants and returns next resetExpiry on subsequent probes", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+
+    // Both grants issued at different times but both still within their 30-day lifetime
+    const now = Date.now()
+    const olderIssuedAtMs = now - 15 * 24 * 60 * 60 * 1000   // 15 days ago
+    const newerIssuedAtMs = now - 5 * 24 * 60 * 60 * 1000    // 5 days ago
+    const olderExpiryMs = olderIssuedAtMs + 30 * 24 * 60 * 60 * 1000 // 15 days from now
+
+    // Pre-populate grants.json in the format the plugin expects: { grants: [...] }
+    const grantsPath = ctx.app.pluginDataDir + "/grants.json"
+    ctx.host.fs.writeText(grantsPath, JSON.stringify({
+      grants: [
+        { issuedAt: olderIssuedAtMs },
+        { issuedAt: newerIssuedAtMs },
+      ],
+    }))
+
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit_reset_credits: { available_count: 2 },
+      }),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ status: "ok", data: { daily: [] } })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Rate Limit Resets")
+
+    // All grant expiries sorted soonest-first
+    const newerExpiryMs = newerIssuedAtMs + 30 * 24 * 60 * 60 * 1000
+    expect(line.resetExpiry).toEqual([
+      new Date(olderExpiryMs).toISOString(),
+      new Date(newerExpiryMs).toISOString(),
+    ])
   })
 
   it("omits resetsAt when window lacks reset info", async () => {
@@ -1950,8 +2059,8 @@ describe("codex plugin", () => {
       const result = plugin.probe(ctx)
       const today = result.lines.find((line) => line.label === "Today")
       const last30 = result.lines.find((line) => line.label === "Last 30 Days")
-      expect(today && today.value).toContain("1.3M tokens")
-      expect(last30 && last30.value).toContain("26M tokens")
+      expect(today && today.value).toContain("1.3M")
+      expect(last30 && last30.value).toContain("26M")
     } finally {
       vi.useRealTimers()
     }

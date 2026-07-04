@@ -1058,6 +1058,7 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                     var line = { type: "text", label: opts.label, value: opts.value };
                     if (opts.color) line.color = opts.color;
                     if (opts.subtitle) line.subtitle = opts.subtitle;
+                    if (opts.resetExpiry) line.resetExpiry = opts.resetExpiry;
                     return line;
                 },
                 progress: function(opts) {

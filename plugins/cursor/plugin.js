@@ -286,7 +286,7 @@
     var parts = []
     if (data.costUSD != null) parts.push("$" + data.costUSD.toFixed(2))
     if (data.tokens > 0 || (includeZeroTokens && data.tokens === 0)) {
-      parts.push(fmtTokens(data.tokens) + " tokens")
+      parts.push(fmtTokens(data.tokens))
     }
     return parts.join(" · ")
   }
@@ -320,7 +320,7 @@
         key: key,
         label: usageDayLabel(day.date),
         value: tokens,
-        valueLabel: fmtTokens(tokens) + " tokens",
+        valueLabel: fmtTokens(tokens),
       })
     }
     return points
