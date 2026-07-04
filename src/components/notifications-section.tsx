@@ -6,7 +6,7 @@ import { MILESTONE_META, PACE_MILESTONES } from "@/lib/pace-notifications"
 import type { PaceNotificationSettings } from "@/lib/settings"
 import { useAppNotificationsStore } from "@/stores/app-notifications-store"
 
-// The three toggles map 1:1 onto the milestone keys, in urgency order.
+// The toggles map 1:1 onto the milestone keys, in urgency order.
 const MILESTONE_KEYS: (keyof PaceNotificationSettings)[] = PACE_MILESTONES
 
 export function NotificationsSection() {

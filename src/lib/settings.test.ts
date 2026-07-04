@@ -5,6 +5,7 @@ import {
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_MENUBAR_METRIC,
+  DEFAULT_PACE_NOTIFICATION_SETTINGS,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
@@ -17,6 +18,7 @@ import {
   loadGlobalShortcut,
   loadMenubarIconStyle,
   loadMenubarMetric,
+  loadPaceNotificationSettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
@@ -30,6 +32,7 @@ import {
   saveGlobalShortcut,
   saveMenubarIconStyle,
   saveMenubarMetric,
+  savePaceNotificationSettings,
   savePluginSettings,
   saveResetTimerDisplayMode,
   saveStartOnLogin,
@@ -352,6 +355,38 @@ describe("settings", () => {
   it("falls back to default for invalid menubar metric", async () => {
     storeState.set("menubarMetric", "invalid")
     await expect(loadMenubarMetric()).resolves.toBe(DEFAULT_MENUBAR_METRIC)
+  })
+
+  it("loads default pace notification settings when missing", async () => {
+    await expect(loadPaceNotificationSettings()).resolves.toEqual(DEFAULT_PACE_NOTIFICATION_SETTINGS)
+  })
+
+  it("defaults missing session reset notification settings to off", async () => {
+    storeState.set("paceNotifications", {
+      underTenPercent: true,
+      healthyToClose: false,
+      closeToRunningOut: true,
+    })
+
+    await expect(loadPaceNotificationSettings()).resolves.toEqual({
+      underTenPercent: true,
+      healthyToClose: false,
+      closeToRunningOut: true,
+      sessionReset: false,
+    })
+  })
+
+  it("saves pace notification settings with session reset", async () => {
+    const settings = {
+      underTenPercent: false,
+      healthyToClose: false,
+      closeToRunningOut: false,
+      sessionReset: true,
+    }
+
+    await savePaceNotificationSettings(settings)
+
+    await expect(loadPaceNotificationSettings()).resolves.toEqual(settings)
   })
 
   it("skips legacy tray migration when keys are absent", async () => {

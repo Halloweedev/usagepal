@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({
   invokeMock: vi.fn().mockResolvedValue(undefined),
   setToggleMock: vi.fn(),
   store: {
-    settings: { underTenPercent: false, healthyToClose: false, closeToRunningOut: false },
+    settings: { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false },
     setToggle: (...args: unknown[]) => state.setToggleMock(...args),
     hydrate: vi.fn().mockResolvedValue(undefined),
   },

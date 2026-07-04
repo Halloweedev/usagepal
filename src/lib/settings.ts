@@ -32,12 +32,14 @@ export type PaceNotificationSettings = {
   underTenPercent: boolean;
   healthyToClose: boolean;
   closeToRunningOut: boolean;
+  sessionReset: boolean;
 };
 
 export const DEFAULT_PACE_NOTIFICATION_SETTINGS: PaceNotificationSettings = {
   underTenPercent: false,
   healthyToClose: false,
   closeToRunningOut: false,
+  sessionReset: false,
 };
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -335,6 +337,7 @@ function normalizePaceNotifications(value: unknown): PaceNotificationSettings {
     underTenPercent: readBool("underTenPercent"),
     healthyToClose: readBool("healthyToClose"),
     closeToRunningOut: readBool("closeToRunningOut"),
+    sessionReset: readBool("sessionReset"),
   };
 }
 

@@ -9,13 +9,14 @@ import { calculatePaceStatus } from "@/lib/pace-status"
  * already-bad quota, and never repeatedly while the quota sits in the same bucket.
  */
 
-/** One of the three quota milestones a user can be alerted about. */
-export type PaceMilestone = "underTenPercent" | "healthyToClose" | "closeToRunningOut"
+/** One of the quota milestones a user can be alerted about. */
+export type PaceMilestone = "underTenPercent" | "healthyToClose" | "closeToRunningOut" | "sessionReset"
 
 export const PACE_MILESTONES: PaceMilestone[] = [
   "underTenPercent",
   "healthyToClose",
   "closeToRunningOut",
+  "sessionReset",
 ]
 
 /** The pace-severity bucket a metric is in. `untracked` carries no trustworthy pace. */
@@ -44,6 +45,12 @@ export const MILESTONE_META: Record<
     body: "Projected to finish before the limit resets.",
     tooltip: "Alert when a limit is projected to finish before it resets.",
   },
+  sessionReset: {
+    label: "Session Reset",
+    title: "Session Reset",
+    body: "Back to 0% used.",
+    tooltip: "Alert when a session returns to 0% used.",
+  },
 }
 
 /** Which per-milestone toggles are currently on. */
@@ -51,10 +58,11 @@ export type PaceToggles = {
   underTenPercent: boolean
   healthyToClose: boolean
   closeToRunningOut: boolean
+  sessionReset: boolean
 }
 
 export const anyEnabled = (t: PaceToggles): boolean =>
-  t.underTenPercent || t.healthyToClose || t.closeToRunningOut
+  t.underTenPercent || t.healthyToClose || t.closeToRunningOut || t.sessionReset
 
 /** Deduplication state for one metric, persisted across refresh passes. */
 export type NotificationState = {
@@ -66,6 +74,8 @@ export type NotificationState = {
   previousBucket: PaceBucket
   /** Whether remaining was under 10% previously, so crossing under-10% is an edge. */
   wasUnderTenPercent: boolean
+  /** Whether this metric previously had non-zero usage, so a reset to 0% is an edge. */
+  wasAboveZeroUsed: boolean
   /** True once the first real observation is recorded as the baseline (no firing before then). */
   primed: boolean
 }
@@ -75,6 +85,7 @@ export const initialNotificationState = (): NotificationState => ({
   firedMilestones: new Set(),
   previousBucket: "untracked",
   wasUnderTenPercent: false,
+  wasAboveZeroUsed: false,
   primed: false,
 })
 
@@ -83,7 +94,11 @@ export type MetricObservation = {
   bucket: PaceBucket | "noData"
   /** Remaining share of the limit, 0..1. */
   remainingFraction: number
+  /** Used share of the limit, 0..1. */
+  usedFraction?: number
   resetsAtMs: number | null
+  /** True for the provider's rolling session meter. */
+  isSession?: boolean
 }
 
 export type PaceTransition = {
@@ -103,6 +118,7 @@ const clone = (state: NotificationState): NotificationState => ({
   firedMilestones: new Set(state.firedMilestones),
   previousBucket: state.previousBucket,
   wasUnderTenPercent: state.wasUnderTenPercent,
+  wasAboveZeroUsed: state.wasAboveZeroUsed,
   primed: state.primed,
 })
 
@@ -136,6 +152,7 @@ export function transitions(
 ): PaceTransition {
   const next = clone(previous)
   const { bucket, remainingFraction, resetsAtMs } = obs
+  const usedFraction = obs.usedFraction ?? Math.min(1, Math.max(0, 1 - remainingFraction))
 
   // New window: reset dedup. A strictly later reset (or a reset appearing where there was none) starts
   // fresh; a nil-or-equal reset keeps the window.
@@ -143,6 +160,8 @@ export function transitions(
     next.firedMilestones = new Set()
     next.wasUnderTenPercent = false
     next.previousBucket = "untracked"
+    // Keep wasAboveZeroUsed: a session reset is detected by seeing a used session return to 0% in
+    // the next window.
   }
   next.resetsAtMs = resetsAtMs ?? previous.resetsAtMs
 
@@ -159,11 +178,29 @@ export function transitions(
     next.primed = true
     next.previousBucket = currentBucket
     next.wasUnderTenPercent = remainingFraction < 0.1
+    next.wasAboveZeroUsed = usedFraction > 0
     next.firedMilestones = new Set()
     return { fire: [], newState: next }
   }
 
   const fire: PaceMilestone[] = []
+
+  const resetToZero = obs.isSession === true && usedFraction === 0 && next.wasAboveZeroUsed
+  if (resetToZero) {
+    maybeFire("sessionReset", fire, next, toggles)
+  }
+  if (usedFraction > 0) {
+    next.firedMilestones.delete("sessionReset")
+  }
+  next.wasAboveZeroUsed = usedFraction > 0
+
+  // Once a metric is effectively exhausted, pace alerts are no longer useful and read as stale noise.
+  // Record the exhausted state so the same crossing is not replayed later, then suppress all milestones.
+  if (usedFraction >= 0.99) {
+    next.previousBucket = currentBucket
+    next.wasUnderTenPercent = true
+    return { fire: [], newState: next }
+  }
 
   // Pace-verdict edges — only for live-pace states. "Cutting It Close" fires when the metric is
   // currently `close` having been below it; "Will Run Out" when severity reaches `runningOut` having
@@ -211,7 +248,8 @@ export function transitions(
  * Derive a metric's pace observation from a rendered line. Only progress meters with a positive
  * limit carry a pace story; everything else is skipped (returns null). Our pace verdict maps
  * ahead → healthy, on-track → close, behind → runningOut; a metric with data but no computable pace
- * (no reset window, or too early in the period) is `untracked` but still evaluated for under-10%.
+  * (no reset window, or too early in the period) is `untracked` but still evaluated for under-10%
+  * and reset notifications.
  */
 export function deriveObservation(line: MetricLine, nowMs: number): MetricObservation | null {
   if (line.type !== "progress") return null
@@ -221,11 +259,12 @@ export function deriveObservation(line: MetricLine, nowMs: number): MetricObserv
     return { bucket: "noData", remainingFraction: 1, resetsAtMs: null }
   }
 
+  const usedFraction = Math.min(1, Math.max(0, used / limit))
   const remainingFraction = Math.min(1, Math.max(0, (limit - used) / limit))
   const resetsAtMs = line.resetsAt ? Date.parse(line.resetsAt) : null
 
   if (used >= limit) {
-    return { bucket: "runningOut", remainingFraction, resetsAtMs }
+    return { bucket: "runningOut", remainingFraction, usedFraction, resetsAtMs }
   }
 
   let bucket: PaceBucket = "untracked"
@@ -236,7 +275,7 @@ export function deriveObservation(line: MetricLine, nowMs: number): MetricObserv
     }
   }
 
-  return { bucket, remainingFraction, resetsAtMs: Number.isFinite(resetsAtMs) ? resetsAtMs : null }
+  return { bucket, remainingFraction, usedFraction, resetsAtMs: Number.isFinite(resetsAtMs) ? resetsAtMs : null }
 }
 
 /** Stable per-metric key so dedup state follows a metric across refreshes. */
@@ -282,7 +321,7 @@ export function evaluate(
 
       const key = metricKey(provider.providerId, line.label)
       const previous = nextStates.get(key) ?? initialNotificationState()
-      const { fire, newState } = transitions(obs, previous, toggles)
+      const { fire, newState } = transitions({ ...obs, isSession: line.label === "Session" }, previous, toggles)
       nextStates.set(key, newState)
 
       for (const milestone of fire) {

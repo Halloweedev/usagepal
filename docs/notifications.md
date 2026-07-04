@@ -4,15 +4,16 @@ UsagePal can send a macOS notification when one of your usage limits is on pace 
 are **off by default** — turn on the ones you want in **Settings → Notifications**. The first time you
 enable a trigger, macOS asks for notification permission.
 
-## The three triggers
+## The triggers
 
 | Trigger | Fires when |
 |---|---|
 | **Almost Out** | A limit drops below 10% remaining for the current window. |
 | **Cutting It Close** | A limit's projected end-of-period usage moves into "close to the limit". |
 | **Will Run Out** | A limit is projected to finish before the window resets. |
+| **Session Reset** | A session meter returns to 0% used after previous usage. |
 
-Each trigger is independent — enable any combination. Turning all three off silences alerts entirely.
+Each trigger is independent — enable any combination. Turning all triggers off silences alerts entirely.
 
 ## How it behaves
 
@@ -23,7 +24,11 @@ Each trigger is independent — enable any combination. Turning all three off si
 - **Worsening edges only.** "Cutting It Close" and "Will Run Out" fire on the step into a worse state.
   A limit that jumps straight from healthy to running-out sends the single, more urgent "Will Run Out"
   alert rather than both.
+- **Exhausted limits stay quiet.** Once a metric reaches 99-100% used, pace alerts are suppressed for
+  that metric because they are no longer useful.
 - **Recovery re-arms.** If pace improves and later worsens again, the alert can fire again.
+- **Session reset alerts only fire at 0%.** A session reset alert fires when the session goes back to
+  0% used, not when it partially recovers.
 - **Every provider, every metric.** Any progress meter with a reset window is evaluated; "Almost Out"
   also applies to meters without a pace projection (e.g. a remaining credit balance).
 

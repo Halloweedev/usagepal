@@ -15,6 +15,7 @@ const ALL_ON: PaceToggles = {
   underTenPercent: true,
   healthyToClose: true,
   closeToRunningOut: true,
+  sessionReset: true,
 }
 
 const obs = (
@@ -137,6 +138,14 @@ describe("transitions", () => {
     expect(fires[4]).toEqual(["underTenPercent"])
   })
 
+  it("suppresses all milestones when usage is 99% or higher", () => {
+    const { fires } = run([
+      obs("healthy", 0.5),
+      obs("runningOut", 0.01),
+    ])
+    expect(fires[1]).toEqual([])
+  })
+
   it("re-fires in a new reset window without re-priming mid-session", () => {
     const { fires } = run([
       obs("healthy", 0.5, 1000),
@@ -184,7 +193,12 @@ describe("evaluate", () => {
   ]
 
   it("fires nothing when all toggles are off", () => {
-    const { fired } = evaluate(providersAt(95), new Map(), { underTenPercent: false, healthyToClose: false, closeToRunningOut: false }, 1)
+    const { fired } = evaluate(
+      providersAt(95),
+      new Map(),
+      { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false },
+      1
+    )
     expect(fired).toEqual([])
   })
 
@@ -198,6 +212,65 @@ describe("evaluate", () => {
       milestone: "underTenPercent",
       displayName: "Claude",
       metricLabel: "Weekly",
+    })
+  })
+
+  it("fires Session Reset only when Session returns to 0% after usage", () => {
+    const providersAt = (used: number) => [
+      {
+        providerId: "claude",
+        displayName: "Claude",
+        lines: [
+          { type: "progress", label: "Session", used, limit: 100, format: { kind: "percent" } } as MetricLine,
+        ],
+      },
+    ]
+
+    const first = evaluate(providersAt(0), new Map(), ALL_ON, 1)
+    expect(first.fired).toEqual([])
+
+    const second = evaluate(providersAt(20), first.nextStates, ALL_ON, 2)
+    expect(second.fired).toEqual([])
+
+    const third = evaluate(providersAt(0), second.nextStates, ALL_ON, 3)
+    expect(third.fired).toHaveLength(1)
+    expect(third.fired[0]).toMatchObject({
+      key: metricKey("claude", "Session"),
+      milestone: "sessionReset",
+      displayName: "Claude",
+      metricLabel: "Session",
+    })
+
+    const fourth = evaluate(providersAt(0), third.nextStates, ALL_ON, 4)
+    expect(fourth.fired).toEqual([])
+  })
+
+  it("fires Session Reset when a used session rolls into a new 0% window", () => {
+    const providersAt = (used: number, resetsAt: number) => [
+      {
+        providerId: "claude",
+        displayName: "Claude",
+        lines: [
+          {
+            type: "progress",
+            label: "Session",
+            used,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: new Date(resetsAt).toISOString(),
+          } as MetricLine,
+        ],
+      },
+    ]
+
+    const first = evaluate(providersAt(20, 1000), new Map(), ALL_ON, 1)
+    expect(first.fired).toEqual([])
+
+    const second = evaluate(providersAt(0, 2000), first.nextStates, ALL_ON, 2)
+    expect(second.fired).toHaveLength(1)
+    expect(second.fired[0]).toMatchObject({
+      milestone: "sessionReset",
+      metricLabel: "Session",
     })
   })
 
