@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.7.29-beta.1
+
+### New Features
+- Reduce noisy pace notifications by suppressing exhausted metrics and adding a Session Reset alert by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.28...v0.7.29-beta.1](https://github.com/Halloweedev/usagepal/compare/v0.7.28...v0.7.29-beta.1)
+
+- [4fff488](https://github.com/Halloweedev/usagepal/commit/4fff488ea90239b80ffff50a4570ca46fcf1874d) feat: reduce noisy pace notifications by @Halloweedev
+
 ## v0.7.28
 
 ### Bug Fixes
