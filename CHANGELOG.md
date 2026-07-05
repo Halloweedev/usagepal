@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.7.29
+
+### New Features
+- Reduce noisy pace notifications by suppressing exhausted metrics and adding a Session Reset alert by @Halloweedev
+- Add opt-in beta update checks through the normal in-app updater by @Halloweedev
+- Add a stable-or-beta update choice when both channels are available by @Halloweedev
+- Show beta update restarts as beta updates in the footer by @Halloweedev
+
+### Bug Fixes
+- Regenerate Tauri app icons from public/icon.png to replace stale OpenUsage-style assets by @Halloweedev
+- Refresh tray icon after wake-from-sleep so it matches the in-app view by @Halloweedev
+
+### Improvements
+- Move Get Beta Updates into the Debug modal by @Halloweedev
+- Remove OpenUsage fork copy from the About dialog by @Halloweedev
+- Refresh the README header with the UsagePal icon and remove the duplicate fork section by @Halloweedev
+
+### Refactor
+- Simplify beta updater progress handling and Debug naming by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.28...v0.7.29](https://github.com/Halloweedev/usagepal/compare/v0.7.28...v0.7.29)
+
+- [4fff488](https://github.com/Halloweedev/usagepal/commit/4fff488) feat: reduce noisy pace notifications by @Halloweedev
+- [81f73e1](https://github.com/Halloweedev/usagepal/commit/81f73e1) chore: bump version to 0.7.29-beta.1 by @Halloweedev
+- [7a4a18b](https://github.com/Halloweedev/usagepal/commit/7a4a18b) feat: add opt-in beta updater feed by @Halloweedev
+- [99abc1d](https://github.com/Halloweedev/usagepal/commit/99abc1d) chore: bump version to 0.7.29-beta.4 by @Halloweedev
+- [5583125](https://github.com/Halloweedev/usagepal/commit/5583125) fix: regenerate Tauri app icons from public/icon.png by @Halloweedev
+- [d5c291d](https://github.com/Halloweedev/usagepal/commit/d5c291d) fix: refresh tray icon after wake-from-sleep by @Halloweedev
+
 ## v0.7.29-beta.4
 
 ### Refactor
