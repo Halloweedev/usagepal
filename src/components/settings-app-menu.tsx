@@ -20,7 +20,7 @@ type SettingsAppMenuProps = {
   onBetaUpdatesEnabledChange: (value: boolean) => void;
 };
 
-function DebugLevelDialog({
+function DebugDialog({
   selectedLevel,
   betaUpdatesEnabled,
   onSelect,
@@ -128,18 +128,18 @@ export function SettingsAppMenu({
   onBetaUpdatesEnabledChange,
 }: SettingsAppMenuProps) {
   const [debugLevel, setDebugLevel] = useState<DebugLevel>("error");
-  const [showDebugLevelDialog, setShowDebugLevelDialog] = useState(false);
+  const [showDebugDialog, setShowDebugDialog] = useState(false);
   const debugLevelButtonRef = useRef<HTMLButtonElement>(null);
   const selectedDebugLevelLabel = DEBUG_LEVEL_OPTIONS.find((option) => option.value === debugLevel)!.label;
 
-  const closeDebugLevelDialog = useCallback(() => {
-    setShowDebugLevelDialog(false);
+  const closeDebugDialog = useCallback(() => {
+    setShowDebugDialog(false);
     debugLevelButtonRef.current?.focus();
   }, []);
 
   const handleDebugLevelChange = (level: DebugLevel) => {
     setDebugLevel(level);
-    closeDebugLevelDialog();
+    closeDebugDialog();
     invoke("set_log_level", { level }).catch((error) => {
       console.error("Failed to set log level:", error);
     });
@@ -172,7 +172,7 @@ export function SettingsAppMenu({
           aria-label={`Debug ${selectedDebugLevelLabel}`}
           className="w-full justify-center"
           ref={debugLevelButtonRef}
-          onClick={() => setShowDebugLevelDialog(true)}
+          onClick={() => setShowDebugDialog(true)}
         >
           <span>Debug</span>
         </Button>
@@ -186,13 +186,13 @@ export function SettingsAppMenu({
           Quit UsagePal
         </Button>
       </div>
-      {showDebugLevelDialog && (
-        <DebugLevelDialog
+      {showDebugDialog && (
+        <DebugDialog
           selectedLevel={debugLevel}
           betaUpdatesEnabled={betaUpdatesEnabled}
           onSelect={handleDebugLevelChange}
           onBetaUpdatesEnabledChange={onBetaUpdatesEnabledChange}
-          onClose={closeDebugLevelDialog}
+          onClose={closeDebugDialog}
         />
       )}
     </section>

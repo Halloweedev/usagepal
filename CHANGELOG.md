@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.29-beta.4
+
+### Refactor
+- Simplify beta updater progress handling and Debug naming by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.29-beta.3...v0.7.29-beta.4](https://github.com/Halloweedev/usagepal/compare/v0.7.29-beta.3...v0.7.29-beta.4)
+
 ## v0.7.29-beta.3
 
 ### New Features

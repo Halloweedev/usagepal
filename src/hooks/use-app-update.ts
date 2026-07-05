@@ -6,6 +6,10 @@ import { relaunch } from "@tauri-apps/plugin-process"
 
 export type UpdateChannel = "stable" | "beta"
 
+const INDETERMINATE_PROGRESS = -1
+const UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
+const UP_TO_DATE_RESET_MS = 3000
+
 declare global {
   // eslint-disable-next-line no-var
   var __USAGEPAL_ENABLE_UPDATES__: boolean | undefined
@@ -13,6 +17,11 @@ declare global {
 
 function areAppUpdatesEnabled() {
   return globalThis.__USAGEPAL_ENABLE_UPDATES__ ?? true
+}
+
+function getDownloadProgress(downloadedBytes: number, totalBytes: number | null): number | null {
+  if (!totalBytes || totalBytes <= 0) return null
+  return Math.min(100, Math.round((downloadedBytes / totalBytes) * 100))
 }
 
 export type UpdateStatus =
@@ -69,13 +78,13 @@ export function useAppUpdate({ betaUpdatesEnabled = false }: UseAppUpdateOptions
     upToDateTimeoutRef.current = window.setTimeout(() => {
       upToDateTimeoutRef.current = null
       if (mountedRef.current) setStatus({ status: "idle" })
-    }, 3000)
+    }, UP_TO_DATE_RESET_MS)
   }, [setStatus])
 
   const downloadBetaUpdate = useCallback(async (version: string, channelCycle: number) => {
     inFlightRef.current.downloading = true
     downloadingUpdateRef.current = { channel: "beta", version }
-    setStatus({ status: "downloading", progress: -1 })
+    setStatus({ status: "downloading", progress: INDETERMINATE_PROGRESS })
     try {
       await invoke("download_beta_update")
       if (channelCycle !== channelCycleRef.current) return
@@ -96,7 +105,7 @@ export function useAppUpdate({ betaUpdatesEnabled = false }: UseAppUpdateOptions
     updateRef.current = update
     inFlightRef.current.downloading = true
     downloadingUpdateRef.current = { channel: "stable", version }
-    setStatus({ status: "downloading", progress: -1 })
+    setStatus({ status: "downloading", progress: INDETERMINATE_PROGRESS })
 
     let totalBytes: number | null = null
     let downloadedBytes = 0
@@ -110,14 +119,12 @@ export function useAppUpdate({ betaUpdatesEnabled = false }: UseAppUpdateOptions
           downloadedBytes = 0
           setStatus({
             status: "downloading",
-            progress: totalBytes ? 0 : -1,
+            progress: totalBytes ? 0 : INDETERMINATE_PROGRESS,
           })
         } else if (event.event === "Progress") {
           downloadedBytes += event.data.chunkLength
-          if (totalBytes && totalBytes > 0) {
-            const pct = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100))
-            setStatus({ status: "downloading", progress: pct })
-          }
+          const progress = getDownloadProgress(downloadedBytes, totalBytes)
+          if (progress !== null) setStatus({ status: "downloading", progress })
         } else if (event.event === "Finished") {
           setStatus({ status: "ready", channel: "stable", version })
         }
@@ -187,9 +194,7 @@ export function useAppUpdate({ betaUpdatesEnabled = false }: UseAppUpdateOptions
         scheduleUpToDateReset()
         return
       }
-      if (update) {
-        await downloadStableUpdate(update, update.version, channelCycle)
-      }
+      await downloadStableUpdate(update, update.version, channelCycle)
     } catch (err) {
       inFlightRef.current.checking = false
       if (channelCycle !== channelCycleRef.current) return
@@ -230,13 +235,11 @@ export function useAppUpdate({ betaUpdatesEnabled = false }: UseAppUpdateOptions
       if (payload.event === "Started") {
         totalBytes = payload.data?.contentLength ?? payload.data?.content_length ?? null
         downloadedBytes = 0
-        setStatus({ status: "downloading", progress: totalBytes ? 0 : -1 })
+        setStatus({ status: "downloading", progress: totalBytes ? 0 : INDETERMINATE_PROGRESS })
       } else if (payload.event === "Progress") {
         downloadedBytes += payload.data?.chunkLength ?? payload.data?.chunk_length ?? 0
-        if (totalBytes && totalBytes > 0) {
-          const pct = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100))
-          setStatus({ status: "downloading", progress: pct })
-        }
+        const progress = getDownloadProgress(downloadedBytes, totalBytes)
+        if (progress !== null) setStatus({ status: "downloading", progress })
       } else if (payload.event === "Finished") {
         const update = downloadingUpdateRef.current
         if (update) setStatus({ status: "ready", ...update })
@@ -271,10 +274,9 @@ export function useAppUpdate({ betaUpdatesEnabled = false }: UseAppUpdateOptions
       void checkForUpdates()
     }
 
-    // Check every 15 minutes
     const intervalId = setInterval(() => {
       void checkForUpdates()
-    }, 15 * 60 * 1000)
+    }, UPDATE_CHECK_INTERVAL_MS)
 
     return () => {
       mountedRef.current = false

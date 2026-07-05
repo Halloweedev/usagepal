@@ -1,6 +1,6 @@
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Mutex, OnceLock,
+    atomic::{AtomicBool, Ordering},
 };
 
 use reqwest::Url;
@@ -55,24 +55,21 @@ pub async fn check_beta_update(app_handle: AppHandle) -> Result<Option<BetaUpdat
         .await
         .map_err(|error| format!("failed to check beta update: {error}"))?;
 
-    match update {
-        Some(update) => {
-            let version = update.version.clone();
-            *pending_update_slot()
-                .lock()
-                .map_err(|error| error.to_string())? = Some(PendingBetaUpdate {
-                update,
-                bytes: None,
-            });
-            Ok(Some(BetaUpdateInfo { version }))
-        }
-        None => {
-            *pending_update_slot()
-                .lock()
-                .map_err(|error| error.to_string())? = None;
-            Ok(None)
-        }
+    let mut pending_update = pending_update_slot()
+        .lock()
+        .map_err(|error| error.to_string())?;
+
+    if let Some(update) = update {
+        let version = update.version.clone();
+        *pending_update = Some(PendingBetaUpdate {
+            update,
+            bytes: None,
+        });
+        return Ok(Some(BetaUpdateInfo { version }));
     }
+
+    *pending_update = None;
+    Ok(None)
 }
 
 #[tauri::command]
