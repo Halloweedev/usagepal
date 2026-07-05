@@ -145,8 +145,14 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
         }
         return next
       })
+
+      // Mirror handleProbeResult: signal the tray to re-render from the
+      // hydrated data. Without this, scheduler-driven refreshes (e.g. after
+      // wake-from-sleep, via `usage:updated`) update pluginStates — so the
+      // in-app view refreshes — but the tray icon keeps stale fractions.
+      onProbeResult?.()
     },
-    [updatePluginStates]
+    [onProbeResult, updatePluginStates]
   )
 
   return {
