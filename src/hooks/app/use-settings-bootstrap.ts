@@ -9,6 +9,7 @@ import type { PluginMeta } from "@/lib/plugin-types"
 import {
   arePluginSettingsEqual,
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_BETA_UPDATES_ENABLED,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
@@ -19,6 +20,7 @@ import {
   DEFAULT_TIME_FORMAT_MODE,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
+  loadBetaUpdatesEnabled,
   loadDisplayMode,
   loadGlobalShortcut,
   loadMenubarIconStyle,
@@ -47,6 +49,7 @@ type UseSettingsBootstrapArgs = {
   setPluginSettings: (value: PluginSettings | null) => void
   setPluginsMeta: (value: PluginMeta[]) => void
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
+  setBetaUpdatesEnabled: (value: boolean) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
@@ -64,6 +67,7 @@ export function useSettingsBootstrap({
   setPluginSettings,
   setPluginsMeta,
   setAutoUpdateInterval,
+  setBetaUpdatesEnabled,
   setThemeMode,
   setDisplayMode,
   setResetTimerDisplayMode,
@@ -110,6 +114,13 @@ export function useSettingsBootstrap({
           storedInterval = await loadAutoUpdateInterval()
         } catch (error) {
           console.error("Failed to load auto-update interval:", error)
+        }
+
+        let storedBetaUpdatesEnabled = DEFAULT_BETA_UPDATES_ENABLED
+        try {
+          storedBetaUpdatesEnabled = await loadBetaUpdatesEnabled()
+        } catch (error) {
+          console.error("Failed to load beta updates setting:", error)
         }
 
         let storedThemeMode = DEFAULT_THEME_MODE
@@ -182,6 +193,7 @@ export function useSettingsBootstrap({
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
+          setBetaUpdatesEnabled(storedBetaUpdatesEnabled)
           setThemeMode(storedThemeMode)
           setDisplayMode(storedDisplayMode)
           setResetTimerDisplayMode(storedResetTimerDisplayMode)
@@ -215,6 +227,7 @@ export function useSettingsBootstrap({
   }, [
     applyStartOnLogin,
     setAutoUpdateInterval,
+    setBetaUpdatesEnabled,
     setDisplayMode,
     setErrorForPlugins,
     setGlobalShortcut,

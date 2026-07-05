@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_BETA_UPDATES_ENABLED,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
@@ -14,6 +15,7 @@ import {
   arePluginSettingsEqual,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
+  loadBetaUpdatesEnabled,
   loadDisplayMode,
   loadGlobalShortcut,
   loadMenubarIconStyle,
@@ -28,6 +30,7 @@ import {
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
+  saveBetaUpdatesEnabled,
   saveDisplayMode,
   saveGlobalShortcut,
   saveMenubarIconStyle,
@@ -184,6 +187,20 @@ describe("settings", () => {
   it("saves auto-update interval", async () => {
     await saveAutoUpdateInterval(5)
     await expect(loadAutoUpdateInterval()).resolves.toBe(5)
+  })
+
+  it("loads default beta updates setting when missing", async () => {
+    await expect(loadBetaUpdatesEnabled()).resolves.toBe(DEFAULT_BETA_UPDATES_ENABLED)
+  })
+
+  it("loads stored beta updates setting", async () => {
+    storeState.set("betaUpdatesEnabled", true)
+    await expect(loadBetaUpdatesEnabled()).resolves.toBe(true)
+  })
+
+  it("saves beta updates setting", async () => {
+    await saveBetaUpdatesEnabled(true)
+    await expect(loadBetaUpdatesEnabled()).resolves.toBe(true)
   })
 
   it("loads default theme mode when missing", async () => {

@@ -236,3 +236,48 @@ jobs:
           printf '%s\n' "$ASSETS" | grep -Fxq 'latest.json' || { echo "Missing updater manifest: latest.json"; exit 1; }
           printf '%s\n' "$ASSETS" | grep -Eq '\.sig$' || { echo "Missing updater signatures (.sig)"; exit 1; }
           printf '%s\n' "$ASSETS" | grep -Eq '^UsagePal-[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?-${{ matrix.arch }}\.dmg$' || { echo "Missing Lutin DMG for ${{ matrix.arch }}"; exit 1; }
+
+      - name: Publish beta updater feed
+        if: contains(github.ref_name, '-')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view beta-feed --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create beta-feed \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Beta Feed" \
+              --notes "Machine-readable updater feed for opt-in beta users." \
+              --prerelease || \
+              gh release view beta-feed --repo "$GITHUB_REPOSITORY" >/dev/null
+          fi
+
+          gh release view beta-feed \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease \
+            --jq 'select(.isDraft == false and .isPrerelease == true) | "ok"' \
+            | grep -Fxq ok || { echo "beta-feed release must be prerelease and not draft"; exit 1; }
+
+          mkdir -p "$RUNNER_TEMP/beta-feed"
+
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern latest.json \
+            --dir "$RUNNER_TEMP/beta-feed" \
+            --clobber
+
+          cp "$RUNNER_TEMP/beta-feed/latest.json" "$RUNNER_TEMP/beta-feed/latest_beta.json"
+
+          gh release upload beta-feed \
+            "$RUNNER_TEMP/beta-feed/latest_beta.json" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+          gh release view beta-feed \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease,assets \
+            --jq '{isDraft,isPrerelease,assets:[.assets[].name]}'
+
+          gh release view beta-feed \
+            --repo "$GITHUB_REPOSITORY" \
+            --json assets \
+            --jq '.assets[].name' | grep -Fxq latest_beta.json

@@ -45,6 +45,7 @@ export const DEFAULT_PACE_NOTIFICATION_SETTINGS: PaceNotificationSettings = {
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
 const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
+const BETA_UPDATES_ENABLED_KEY = "betaUpdatesEnabled";
 const THEME_MODE_KEY = "themeMode";
 const DISPLAY_MODE_KEY = "displayMode";
 const RESET_TIMER_DISPLAY_MODE_KEY = "resetTimerDisplayMode";
@@ -58,6 +59,7 @@ const START_ON_LOGIN_KEY = "startOnLogin";
 const PACE_NOTIFICATIONS_KEY = "paceNotifications";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
+export const DEFAULT_BETA_UPDATES_ENABLED = false;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
 export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
@@ -178,6 +180,17 @@ export async function saveAutoUpdateInterval(
   interval: AutoUpdateIntervalMinutes
 ): Promise<void> {
   await store.set(AUTO_UPDATE_SETTINGS_KEY, interval);
+  await store.save();
+}
+
+export async function loadBetaUpdatesEnabled(): Promise<boolean> {
+  const stored = await store.get<unknown>(BETA_UPDATES_ENABLED_KEY);
+  if (typeof stored === "boolean") return stored;
+  return DEFAULT_BETA_UPDATES_ENABLED;
+}
+
+export async function saveBetaUpdatesEnabled(value: boolean): Promise<void> {
+  await store.set(BETA_UPDATES_ENABLED_KEY, value);
   await store.save();
 }
 

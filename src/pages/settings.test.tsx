@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -93,6 +93,8 @@ const defaultProps = {
   onGlobalShortcutChange: vi.fn(),
   startOnLogin: false,
   onStartOnLoginChange: vi.fn(),
+  betaUpdatesEnabled: false,
+  onBetaUpdatesEnabledChange: vi.fn(),
   onShowStats: vi.fn(),
   onShowAbout: vi.fn(),
 }
@@ -162,51 +164,54 @@ describe("SettingsPage", () => {
         onToggle={onToggle}
       />
     )
-    const checkboxes = screen.getAllByRole("checkbox")
-    await userEvent.click(checkboxes[checkboxes.length - 1])
+    await userEvent.click(screen.getByText("Beta"))
     expect(onToggle).toHaveBeenCalledWith("b")
   })
 
   it("renders the full app menu at the bottom", () => {
     render(<SettingsPage {...defaultProps} />)
 
-    expect(screen.getByRole("heading", { name: "App Menu" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Show Stats" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Debug Level Error" })).toBeInTheDocument()
+    const appMenu = screen.getByRole("heading", { name: "App Menu" }).closest("section")!
+    expect(appMenu).toBeInTheDocument()
+    expect(within(appMenu).getByRole("button", { name: "Show Stats" })).toBeInTheDocument()
+    expect(within(appMenu).getByRole("button", { name: "Debug Error" })).toBeInTheDocument()
+    expect(within(appMenu).queryByRole("checkbox", { name: "Get Beta Updates" })).not.toBeInTheDocument()
     expect(screen.queryByRole("radiogroup", { name: "Debug level" })).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Copy Log Path" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "About UsagePal" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Quit UsagePal" })).toBeInTheDocument()
+    expect(within(appMenu).getByRole("button", { name: "Copy Log Path" })).toBeInTheDocument()
+    expect(within(appMenu).getByRole("button", { name: "About UsagePal" })).toBeInTheDocument()
+    expect(within(appMenu).getByRole("button", { name: "Quit UsagePal" })).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Beta Updates" })).not.toBeInTheDocument()
   })
 
   it("opens debug level choices in a modal", async () => {
     render(<SettingsPage {...defaultProps} />)
 
-    await userEvent.click(screen.getByRole("button", { name: "Debug Level Error" }))
+    await userEvent.click(screen.getByRole("button", { name: "Debug Error" }))
 
-    expect(screen.getByRole("dialog", { name: "Debug Level" })).toHaveAttribute("aria-modal", "true")
+    expect(screen.getByRole("dialog", { name: "Debug" })).toHaveAttribute("aria-modal", "true")
     expect(screen.getByRole("radiogroup", { name: "Debug level" })).toBeInTheDocument()
     expect(screen.getByRole("radio", { name: "Error" })).toHaveAttribute("aria-checked", "true")
     expect(screen.getByRole("radio", { name: "Trace" })).toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Get Beta Updates" })).toBeInTheDocument()
   })
 
   it("keeps focus inside the debug level modal and returns it on close", async () => {
     const user = userEvent.setup()
     render(<SettingsPage {...defaultProps} />)
 
-    const trigger = screen.getByRole("button", { name: "Debug Level Error" })
+    const trigger = screen.getByRole("button", { name: "Debug Error" })
     await user.click(trigger)
 
     expect(screen.getByRole("radio", { name: "Error" })).toHaveFocus()
 
     await user.keyboard("{Shift>}{Tab}{/Shift}")
-    expect(screen.getByRole("radio", { name: "Trace" })).toHaveFocus()
+    expect(screen.getByRole("checkbox", { name: "Get Beta Updates" })).toHaveFocus()
 
     await user.tab()
     expect(screen.getByRole("radio", { name: "Error" })).toHaveFocus()
 
     await user.keyboard("{Escape}")
-    expect(screen.queryByRole("dialog", { name: "Debug Level" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Debug" })).not.toBeInTheDocument()
     expect(trigger).toHaveFocus()
   })
 
@@ -224,11 +229,11 @@ describe("SettingsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Show Stats" }))
     expect(onShowStats).toHaveBeenCalledTimes(1)
 
-    await userEvent.click(screen.getByRole("button", { name: "Debug Level Error" }))
+    await userEvent.click(screen.getByRole("button", { name: "Debug Error" }))
     await userEvent.click(screen.getByRole("radio", { name: "Debug" }))
     expect(invokeMock).toHaveBeenCalledWith("set_log_level", { level: "debug" })
-    expect(screen.queryByRole("dialog", { name: "Debug Level" })).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Debug Level Debug" })).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Debug" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Debug Debug" })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole("button", { name: "Copy Log Path" }))
     expect(invokeMock).toHaveBeenCalledWith("copy_log_path")
@@ -285,6 +290,34 @@ describe("SettingsPage", () => {
   it("shows auto-update helper text", () => {
     render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("How obsessive are you")).toBeInTheDocument()
+  })
+
+  it("updates beta updates setting", async () => {
+    const onBetaUpdatesEnabledChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onBetaUpdatesEnabledChange={onBetaUpdatesEnabledChange}
+      />
+    )
+
+    await userEvent.click(screen.getByRole("button", { name: "Debug Error" }))
+    await userEvent.click(screen.getByRole("checkbox", { name: "Get Beta Updates" }))
+
+    expect(onBetaUpdatesEnabledChange).toHaveBeenCalledWith(true)
+  })
+
+  it("explains beta updates without opening release downloads", async () => {
+    render(<SettingsPage {...defaultProps} betaUpdatesEnabled />)
+    const appMenu = screen.getByRole("heading", { name: "App Menu" }).closest("section")!
+
+    expect(within(appMenu).queryByText("Beta updates will appear in the normal update button."))
+      .not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Debug Error" }))
+    expect(screen.getByText("Beta updates will appear in the normal update button."))
+      .toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Download Latest Beta" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Download Latest Stable" })).not.toBeInTheDocument()
   })
 
   it("renders app theme section with theme options", () => {

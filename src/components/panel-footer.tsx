@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AboutDialog } from "@/components/about-dialog";
 import type { UpdateStatus } from "@/hooks/use-app-update";
 import { useNowTicker } from "@/hooks/use-now-ticker";
+import type { UpdateChannel } from "@/hooks/use-app-update";
 
 interface PanelFooterProps {
   version: string;
@@ -10,6 +11,7 @@ interface PanelFooterProps {
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
   onUpdateCheck: () => void;
+  onUpdateChoice: (channel: UpdateChannel) => void;
   onRefreshAll?: () => void;
   showAbout: boolean;
   onShowAbout: () => void;
@@ -21,14 +23,18 @@ function VersionDisplay({
   updateStatus,
   onUpdateInstall,
   onUpdateCheck,
+  onUpdateChoice,
   onVersionClick,
 }: {
   version: string;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
   onUpdateCheck: () => void;
+  onUpdateChoice: (channel: UpdateChannel) => void;
   onVersionClick: () => void;
 }) {
+  const [showChoices, setShowChoices] = useState(false);
+
   switch (updateStatus.status) {
     case "downloading":
       return (
@@ -46,8 +52,49 @@ function VersionDisplay({
           className="update-border-beam"
           onClick={onUpdateInstall}
         >
-          Restart to update
+          {updateStatus.channel === "beta" ? "Restart to update beta" : "Restart to update"}
         </Button>
+      );
+    case "choice":
+      return (
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="xs"
+            className="update-border-beam"
+            onClick={() => setShowChoices((current) => !current)}
+          >
+            Update available
+          </Button>
+          {showChoices && (
+            <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-lg border bg-card p-1 shadow-lg">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => {
+                  setShowChoices(false)
+                  onUpdateChoice("stable")
+                }}
+              >
+                Update to Stable v{updateStatus.stableVersion}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => {
+                  setShowChoices(false)
+                  onUpdateChoice("beta")
+                }}
+              >
+                Update to Beta v{updateStatus.betaVersion}
+              </Button>
+            </div>
+          )}
+        </div>
       );
     case "installing":
       return (
@@ -90,6 +137,7 @@ export function PanelFooter({
   updateStatus,
   onUpdateInstall,
   onUpdateCheck,
+  onUpdateChoice,
   onRefreshAll,
   showAbout,
   onShowAbout,
@@ -134,6 +182,7 @@ export function PanelFooter({
           updateStatus={updateStatus}
           onUpdateInstall={onUpdateInstall}
           onUpdateCheck={onUpdateCheck}
+          onUpdateChoice={onUpdateChoice}
           onVersionClick={onShowAbout}
         />
         {autoUpdateNextAt !== null && onRefreshAll ? (

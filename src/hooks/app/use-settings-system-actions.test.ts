@@ -5,11 +5,13 @@ const {
   getEnabledPluginIdsMock,
   invokeMock,
   saveAutoUpdateIntervalMock,
+  saveBetaUpdatesEnabledMock,
   saveGlobalShortcutMock,
   saveStartOnLoginMock,
 } = vi.hoisted(() => ({
   getEnabledPluginIdsMock: vi.fn(),
   saveAutoUpdateIntervalMock: vi.fn(),
+  saveBetaUpdatesEnabledMock: vi.fn(),
   saveGlobalShortcutMock: vi.fn(),
   saveStartOnLoginMock: vi.fn(),
   invokeMock: vi.fn(),
@@ -22,6 +24,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@/lib/settings", () => ({
   getEnabledPluginIds: getEnabledPluginIdsMock,
   saveAutoUpdateInterval: saveAutoUpdateIntervalMock,
+  saveBetaUpdatesEnabled: saveBetaUpdatesEnabledMock,
   saveGlobalShortcut: saveGlobalShortcutMock,
   saveStartOnLogin: saveStartOnLoginMock,
 }))
@@ -32,6 +35,7 @@ describe("useSettingsSystemActions", () => {
   beforeEach(() => {
     getEnabledPluginIdsMock.mockReset()
     saveAutoUpdateIntervalMock.mockReset()
+    saveBetaUpdatesEnabledMock.mockReset()
     saveGlobalShortcutMock.mockReset()
     saveStartOnLoginMock.mockReset()
     invokeMock.mockReset()
@@ -40,6 +44,7 @@ describe("useSettingsSystemActions", () => {
       settings.order.filter((id) => !settings.disabled.includes(id))
     )
     saveAutoUpdateIntervalMock.mockResolvedValue(undefined)
+    saveBetaUpdatesEnabledMock.mockResolvedValue(undefined)
     saveGlobalShortcutMock.mockResolvedValue(undefined)
     saveStartOnLoginMock.mockResolvedValue(undefined)
     invokeMock.mockResolvedValue(undefined)
@@ -124,18 +129,43 @@ describe("useSettingsSystemActions", () => {
     expect(applyStartOnLogin).toHaveBeenCalledWith(true)
   })
 
+  it("updates beta updates setting", () => {
+    const setBetaUpdatesEnabled = vi.fn()
+
+    const { result } = renderHook(() =>
+      useSettingsSystemActions({
+        pluginSettings: null,
+        setAutoUpdateInterval: vi.fn(),
+        setAutoUpdateNextAt: vi.fn(),
+        setGlobalShortcut: vi.fn(),
+        setStartOnLogin: vi.fn(),
+        setBetaUpdatesEnabled,
+        applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
+      })
+    )
+
+    act(() => {
+      result.current.handleBetaUpdatesEnabledChange(true)
+    })
+
+    expect(setBetaUpdatesEnabled).toHaveBeenCalledWith(true)
+    expect(saveBetaUpdatesEnabledMock).toHaveBeenCalledWith(true)
+  })
+
   it("logs persistence/update failures", async () => {
     const autoError = new Error("auto save failed")
     const shortcutSaveError = new Error("shortcut save failed")
     const shortcutInvokeError = new Error("shortcut invoke failed")
     const startOnLoginSaveError = new Error("start on login save failed")
     const startOnLoginApplyError = new Error("start on login apply failed")
+    const betaUpdatesSaveError = new Error("beta updates save failed")
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
 
     saveAutoUpdateIntervalMock.mockRejectedValueOnce(autoError)
     saveGlobalShortcutMock.mockRejectedValueOnce(shortcutSaveError)
     invokeMock.mockRejectedValueOnce(shortcutInvokeError)
     saveStartOnLoginMock.mockRejectedValueOnce(startOnLoginSaveError)
+    saveBetaUpdatesEnabledMock.mockRejectedValueOnce(betaUpdatesSaveError)
     const applyStartOnLogin = vi.fn().mockRejectedValueOnce(startOnLoginApplyError)
 
     const { result } = renderHook(() =>
@@ -145,6 +175,7 @@ describe("useSettingsSystemActions", () => {
         setAutoUpdateNextAt: vi.fn(),
         setGlobalShortcut: vi.fn(),
         setStartOnLogin: vi.fn(),
+        setBetaUpdatesEnabled: vi.fn(),
         applyStartOnLogin,
       })
     )
@@ -153,6 +184,7 @@ describe("useSettingsSystemActions", () => {
       result.current.handleAutoUpdateIntervalChange(5)
       result.current.handleGlobalShortcutChange(null)
       result.current.handleStartOnLoginChange(false)
+      result.current.handleBetaUpdatesEnabledChange(true)
     })
 
     await waitFor(() => {
@@ -161,6 +193,7 @@ describe("useSettingsSystemActions", () => {
       expect(errorSpy).toHaveBeenCalledWith("Failed to update global shortcut:", shortcutInvokeError)
       expect(errorSpy).toHaveBeenCalledWith("Failed to save start on login:", startOnLoginSaveError)
       expect(errorSpy).toHaveBeenCalledWith("Failed to update start on login:", startOnLoginApplyError)
+      expect(errorSpy).toHaveBeenCalledWith("Failed to save beta updates setting:", betaUpdatesSaveError)
     })
 
     errorSpy.mockRestore()

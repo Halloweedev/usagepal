@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
   loadPluginSettingsMock: vi.fn(),
   loadAutoUpdateIntervalMock: vi.fn(),
   saveAutoUpdateIntervalMock: vi.fn(),
+  loadBetaUpdatesEnabledMock: vi.fn(),
+  saveBetaUpdatesEnabledMock: vi.fn(),
   loadThemeModeMock: vi.fn(),
   saveThemeModeMock: vi.fn(),
   loadDisplayModeMock: vi.fn(),
@@ -230,6 +232,8 @@ vi.mock("@/lib/settings", async () => {
     savePluginSettings: state.savePluginSettingsMock,
     loadAutoUpdateInterval: state.loadAutoUpdateIntervalMock,
     saveAutoUpdateInterval: state.saveAutoUpdateIntervalMock,
+    loadBetaUpdatesEnabled: state.loadBetaUpdatesEnabledMock,
+    saveBetaUpdatesEnabled: state.saveBetaUpdatesEnabledMock,
     loadThemeMode: state.loadThemeModeMock,
     saveThemeMode: state.saveThemeModeMock,
     loadDisplayMode: state.loadDisplayModeMock,
@@ -272,6 +276,8 @@ describe("App", () => {
     state.loadPluginSettingsMock.mockReset()
     state.loadAutoUpdateIntervalMock.mockReset()
     state.saveAutoUpdateIntervalMock.mockReset()
+    state.loadBetaUpdatesEnabledMock.mockReset()
+    state.saveBetaUpdatesEnabledMock.mockReset()
     state.loadThemeModeMock.mockReset()
     state.saveThemeModeMock.mockReset()
     state.loadDisplayModeMock.mockReset()
@@ -314,6 +320,8 @@ describe("App", () => {
     updaterState.checkMock.mockResolvedValue(null)
     state.savePluginSettingsMock.mockResolvedValue(undefined)
     state.saveAutoUpdateIntervalMock.mockResolvedValue(undefined)
+    state.loadBetaUpdatesEnabledMock.mockResolvedValue(false)
+    state.saveBetaUpdatesEnabledMock.mockResolvedValue(undefined)
     state.loadThemeModeMock.mockResolvedValue("system")
     state.saveThemeModeMock.mockResolvedValue(undefined)
     state.loadDisplayModeMock.mockResolvedValue("left")

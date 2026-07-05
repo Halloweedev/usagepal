@@ -40,6 +40,7 @@ export type AppContentActionProps = {
   traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
+  onBetaUpdatesEnabledChange: (value: boolean) => void
 }
 
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
@@ -62,6 +63,7 @@ export function AppContent({
   traySettingsPreview,
   onGlobalShortcutChange,
   onStartOnLoginChange,
+  onBetaUpdatesEnabledChange,
 }: AppContentProps) {
   const { activeView, setActiveView, setShowAbout } = useAppUiStore(
     useShallow((state) => ({
@@ -78,6 +80,7 @@ export function AppContent({
     menubarIconStyle,
     menubarMetric,
     autoUpdateInterval,
+    betaUpdatesEnabled,
     globalShortcut,
     themeMode,
     startOnLogin,
@@ -89,6 +92,7 @@ export function AppContent({
       menubarIconStyle: state.menubarIconStyle,
       menubarMetric: state.menubarMetric,
       autoUpdateInterval: state.autoUpdateInterval,
+      betaUpdatesEnabled: state.betaUpdatesEnabled,
       globalShortcut: state.globalShortcut,
       themeMode: state.themeMode,
       startOnLogin: state.startOnLogin,
@@ -133,6 +137,8 @@ export function AppContent({
         onGlobalShortcutChange={onGlobalShortcutChange}
         startOnLogin={startOnLogin}
         onStartOnLoginChange={onStartOnLoginChange}
+        betaUpdatesEnabled={betaUpdatesEnabled}
+        onBetaUpdatesEnabledChange={onBetaUpdatesEnabledChange}
         onShowStats={() => setActiveView("home")}
         onShowAbout={() => setShowAbout(true)}
       />

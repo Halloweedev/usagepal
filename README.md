@@ -1,29 +1,20 @@
-# UsagePal — track all your AI coding subscriptions in one place
+<p align="center">
+  <img src="public/icon.png" alt="UsagePal Logo" width="96" height="96">
+</p>
+
+<h1 align="center">UsagePal</h1>
+
+<p align="center"><strong>Track all your AI coding subscriptions in one place.</strong></p>
 
 [![Secured by Keylight.dev](https://img.shields.io/badge/Secured%20by-Keylight.dev-6E56CF)](https://keylight.dev)
 
 See your usage at a glance from your menu bar. No digging through dashboards.
 
-![UsagePal Screenshot](screenshot.png)
-
-> **UsagePal is an independent, open-source fork of [OpenUsage](https://github.com/robinebers/openusage) by Robin Ebers.**
-> It is not affiliated with, endorsed by, or an official part of OpenUsage. "OpenUsage" is Robin Ebers' trademark; this fork uses its own name and branding.
-
-## About this fork
-
-UsagePal continues the project on the **Rust + Tauri** version, with the **same stack and the same UI**:
-
-- **Frontend:** TypeScript + React, Tailwind, Vite
-- **Backend:** Rust + Tauri v2
-- **Plugins:** sandboxed JavaScript run in an embedded QuickJS engine
-
-It stays **open source (MIT)** and is actively maintained. The goal is a fast, native menu-bar tracker that keeps the architecture and look of the original while moving independently.
-
 ## Download
 
 [**Download the latest release**](https://github.com/Halloweedev/usagepal/releases/latest) (macOS, Apple Silicon & Intel)
 
-The app auto-updates. Install once and you're set.
+The app auto-updates. Install once and you're set. If you want early builds, turn on **Get Beta Updates** in Settings and beta updates will appear in the normal in-app update button.
 
 ## What It Does
 
@@ -84,14 +75,14 @@ Keep it simple. No feature creep, test your changes.
 
 ## Credits
 
-- Forked from [**OpenUsage**](https://github.com/robinebers/openusage) by [Robin Ebers](https://github.com/robinebers) — the original project this is built on (MIT).
+- UsagePal is built on [**OpenUsage**](https://github.com/robinebers/openusage) by [Robin Ebers](https://github.com/robinebers). If you want a native macOS app, try OpenUsage instead.
 - Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](https://github.com/steipete).
 
 Maintained by [Nicolas Demanez](https://github.com/Halloweedev).
 
 ## License
 
-[MIT](LICENSE) — the fork preserves the original OpenUsage copyright and adds its own. See [NOTICE](NOTICE).
+[MIT](LICENSE). See [NOTICE](NOTICE) for attribution.
 
 ## Privacy
 

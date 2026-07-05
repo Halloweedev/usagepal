@@ -3,7 +3,7 @@
 ## Source of truth stores
 - `app-ui-store`: UI view state (`activeView`, `showAbout`)
 - `app-plugin-store`: plugin metadata + persisted plugin settings
-- `app-preferences-store`: persisted user preferences (display/theme/tray/system)
+- `app-preferences-store`: persisted user preferences (display/theme/tray/system/beta updates)
 
 ## Derived values
 - `displayPlugins` + `navPlugins` are computed by `useAppPluginViews`.

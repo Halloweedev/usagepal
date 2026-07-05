@@ -365,6 +365,8 @@ interface SettingsPageProps {
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
+  betaUpdatesEnabled: boolean;
+  onBetaUpdatesEnabledChange: (value: boolean) => void;
   onShowStats: () => void;
   onShowAbout: () => void;
 }
@@ -392,6 +394,8 @@ export function SettingsPage({
   onGlobalShortcutChange,
   startOnLogin,
   onStartOnLoginChange,
+  betaUpdatesEnabled,
+  onBetaUpdatesEnabledChange,
   onShowStats,
   onShowAbout,
 }: SettingsPageProps) {
@@ -672,7 +676,12 @@ export function SettingsPage({
         </div>
       </section>
       <SupporterSection />
-      <SettingsAppMenu onShowStats={onShowStats} onShowAbout={onShowAbout} />
+      <SettingsAppMenu
+        onShowStats={onShowStats}
+        onShowAbout={onShowAbout}
+        betaUpdatesEnabled={betaUpdatesEnabled}
+        onBetaUpdatesEnabledChange={onBetaUpdatesEnabledChange}
+      />
     </div>
   );
 }

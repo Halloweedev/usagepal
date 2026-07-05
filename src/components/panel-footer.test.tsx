@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 
 const idle: UpdateStatus = { status: "idle" }
 const noop = () => {}
-const footerProps = { showAbout: false, onShowAbout: noop, onCloseAbout: noop, onUpdateCheck: noop }
+const footerProps = { showAbout: false, onShowAbout: noop, onCloseAbout: noop, onUpdateCheck: noop, onUpdateChoice: noop }
 
 describe("PanelFooter", () => {
   afterEach(() => {
@@ -142,7 +142,7 @@ describe("PanelFooter", () => {
       <PanelFooter
         version="0.0.0"
         autoUpdateNextAt={null}
-        updateStatus={{ status: "ready" }}
+        updateStatus={{ status: "ready", channel: "stable", version: "0.7.29" }}
         onUpdateInstall={onInstall}
         {...footerProps}
       />
@@ -151,6 +151,41 @@ describe("PanelFooter", () => {
     expect(button).toBeTruthy()
     await userEvent.click(button)
     expect(onInstall).toHaveBeenCalledTimes(1)
+  })
+
+  it("shows beta restart button when a beta update is ready", () => {
+    render(
+      <PanelFooter
+        version="0.0.0"
+        autoUpdateNextAt={null}
+        updateStatus={{ status: "ready", channel: "beta", version: "0.7.30-beta.1" }}
+        onUpdateInstall={noop}
+        {...footerProps}
+      />
+    )
+    expect(screen.getByRole("button", { name: "Restart to update beta" })).toBeTruthy()
+  })
+
+  it("opens update choices when stable and beta updates are available", async () => {
+    const onUpdateChoice = vi.fn()
+    render(
+      <PanelFooter
+        version="0.0.0"
+        autoUpdateNextAt={null}
+        updateStatus={{ status: "choice", stableVersion: "0.7.29", betaVersion: "0.7.30-beta.1" }}
+        onUpdateInstall={noop}
+        {...footerProps}
+        onUpdateChoice={onUpdateChoice}
+      />
+    )
+
+    await userEvent.click(screen.getByRole("button", { name: "Update available" }))
+    await userEvent.click(screen.getByRole("button", { name: "Update to Stable v0.7.29" }))
+    expect(onUpdateChoice).toHaveBeenCalledWith("stable")
+
+    await userEvent.click(screen.getByRole("button", { name: "Update available" }))
+    await userEvent.click(screen.getByRole("button", { name: "Update to Beta v0.7.30-beta.1" }))
+    expect(onUpdateChoice).toHaveBeenCalledWith("beta")
   })
 
   it("shows retryable updates soon state for update check failures", async () => {
@@ -214,6 +249,7 @@ describe("PanelFooter", () => {
           onShowAbout={() => setShowAbout(true)}
           onCloseAbout={() => setShowAbout(false)}
           onUpdateCheck={noop}
+          onUpdateChoice={noop}
         />
       )
     }

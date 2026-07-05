@@ -47,7 +47,9 @@ export function MainApp() {
 
   const {
     autoUpdateInterval,
+    betaUpdatesEnabled,
     setAutoUpdateInterval,
+    setBetaUpdatesEnabled,
     themeMode,
     setThemeMode,
     displayMode,
@@ -64,7 +66,9 @@ export function MainApp() {
   } = useAppPreferencesStore(
     useShallow((state) => ({
       autoUpdateInterval: state.autoUpdateInterval,
+      betaUpdatesEnabled: state.betaUpdatesEnabled,
       setAutoUpdateInterval: state.setAutoUpdateInterval,
+      setBetaUpdatesEnabled: state.setBetaUpdatesEnabled,
       themeMode: state.themeMode,
       setThemeMode: state.setThemeMode,
       displayMode: state.displayMode,
@@ -123,6 +127,7 @@ export function MainApp() {
     setPluginSettings,
     setPluginsMeta,
     setAutoUpdateInterval,
+    setBetaUpdatesEnabled,
     setThemeMode,
     setDisplayMode,
     setMenubarIconStyle,
@@ -159,12 +164,14 @@ export function MainApp() {
 
   const {
     handleAutoUpdateIntervalChange,
+    handleBetaUpdatesEnabledChange,
     handleGlobalShortcutChange,
     handleStartOnLoginChange,
   } = useSettingsSystemActions({
     pluginSettings,
     setAutoUpdateInterval,
     setAutoUpdateNextAt,
+    setBetaUpdatesEnabled,
     setGlobalShortcut,
     setStartOnLogin,
     applyStartOnLogin,
@@ -251,6 +258,7 @@ export function MainApp() {
       displayPlugins={displayPlugins}
       settingsPlugins={settingsPlugins}
       autoUpdateNextAt={autoUpdateNextAt}
+      betaUpdatesEnabled={betaUpdatesEnabled}
       selectedPlugin={selectedPlugin}
       onPluginContextAction={handlePluginContextAction}
       isPluginRefreshAvailable={isPluginRefreshAvailable}
@@ -261,6 +269,7 @@ export function MainApp() {
         onReorder: handleReorder,
         onToggle: handleToggle,
         onAutoUpdateIntervalChange: handleAutoUpdateIntervalChange,
+        onBetaUpdatesEnabledChange: handleBetaUpdatesEnabledChange,
         onThemeModeChange: handleThemeModeChange,
         onDisplayModeChange: handleDisplayModeChange,
         onResetTimerDisplayModeChange: handleResetTimerDisplayModeChange,

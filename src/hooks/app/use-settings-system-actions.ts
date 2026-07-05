@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import {
   getEnabledPluginIds,
   saveAutoUpdateInterval,
+  saveBetaUpdatesEnabled,
   saveGlobalShortcut,
   saveStartOnLogin,
   type AutoUpdateIntervalMinutes,
@@ -14,6 +15,7 @@ type UseSettingsSystemActionsArgs = {
   pluginSettings: PluginSettings | null
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setAutoUpdateNextAt: (value: number | null) => void
+  setBetaUpdatesEnabled: (value: boolean) => void
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   applyStartOnLogin: (value: boolean) => Promise<void>
@@ -23,6 +25,7 @@ export function useSettingsSystemActions({
   pluginSettings,
   setAutoUpdateInterval,
   setAutoUpdateNextAt,
+  setBetaUpdatesEnabled,
   setGlobalShortcut,
   setStartOnLogin,
   applyStartOnLogin,
@@ -54,6 +57,13 @@ export function useSettingsSystemActions({
     })
   }, [setGlobalShortcut])
 
+  const handleBetaUpdatesEnabledChange = useCallback((value: boolean) => {
+    setBetaUpdatesEnabled(value)
+    void saveBetaUpdatesEnabled(value).catch((error) => {
+      console.error("Failed to save beta updates setting:", error)
+    })
+  }, [setBetaUpdatesEnabled])
+
   const handleStartOnLoginChange = useCallback((value: boolean) => {
     setStartOnLogin(value)
     void saveStartOnLogin(value).catch((error) => {
@@ -66,6 +76,7 @@ export function useSettingsSystemActions({
 
   return {
     handleAutoUpdateIntervalChange,
+    handleBetaUpdatesEnabledChange,
     handleGlobalShortcutChange,
     handleStartOnLoginChange,
   }

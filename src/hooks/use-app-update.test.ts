@@ -1,10 +1,26 @@
 import { renderHook, act } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach, afterAll } from "vitest"
 
-const { checkMock, relaunchMock } = vi.hoisted(() => ({
+const { checkMock, invokeMock, listenMock, progressHandlers, relaunchMock } = vi.hoisted(() => ({
   checkMock: vi.fn(),
+  invokeMock: vi.fn(),
+  listenMock: vi.fn(),
+  progressHandlers: [] as Array<(event: any) => void>,
   relaunchMock: vi.fn(),
 }))
+
+vi.mock("@tauri-apps/api/core", async () => {
+  const actual = await vi.importActual<typeof import("@tauri-apps/api/core")>("@tauri-apps/api/core")
+  return {
+    ...actual,
+    invoke: invokeMock,
+  }
+})
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: listenMock,
+}))
+
 vi.mock("@tauri-apps/plugin-updater", () => ({
   check: checkMock,
 }))
@@ -28,6 +44,13 @@ describe("useAppUpdate", () => {
 
   beforeEach(() => {
     checkMock.mockReset()
+    invokeMock.mockReset()
+    progressHandlers.length = 0
+    listenMock.mockReset()
+    listenMock.mockImplementation(async (_eventName: string, handler: (event: any) => void) => {
+      progressHandlers.push(handler)
+      return vi.fn()
+    })
     relaunchMock.mockReset()
     // `@tauri-apps/api/core` considers `globalThis.isTauri` the runtime flag.
     globalThis.isTauri = true
@@ -63,6 +86,350 @@ describe("useAppUpdate", () => {
     await act(() => Promise.resolve())
 
     expect(checkMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("uses the stable updater when beta updates are disabled", async () => {
+    checkMock.mockResolvedValue(null)
+
+    renderHook(() => useAppUpdate({ betaUpdatesEnabled: false }))
+    await act(() => Promise.resolve())
+
+    expect(checkMock).toHaveBeenCalledTimes(1)
+    expect(invokeMock).not.toHaveBeenCalledWith("check_beta_update")
+  })
+
+  it("checks both stable and beta updater commands when beta updates are enabled", async () => {
+    checkMock.mockResolvedValue(null)
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return null
+      return undefined
+    })
+
+    renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+
+    expect(checkMock).toHaveBeenCalledTimes(1)
+    expect(invokeMock).toHaveBeenCalledWith("check_beta_update")
+  })
+
+  it("downloads a beta update and transitions to ready", async () => {
+    checkMock.mockResolvedValue(null)
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.29-beta.3" }
+      if (command === "download_beta_update") return undefined
+      return undefined
+    })
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+
+    expect(invokeMock).toHaveBeenCalledWith("download_beta_update")
+    expect(result.current.updateStatus).toEqual({ status: "ready", channel: "beta", version: "0.7.29-beta.3" })
+  })
+
+  it("downloads a stable update when beta is enabled and only stable is available", async () => {
+    const downloadMock = vi.fn(async (onEvent: (event: any) => void) => {
+      onEvent({ event: "Finished", data: {} })
+    })
+    checkMock.mockResolvedValue({ version: "0.7.29", download: downloadMock, install: vi.fn() })
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return null
+      return undefined
+    })
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+
+    expect(downloadMock).toHaveBeenCalled()
+    expect(invokeMock).not.toHaveBeenCalledWith("download_beta_update")
+    expect(result.current.updateStatus).toEqual({ status: "ready", channel: "stable", version: "0.7.29" })
+  })
+
+  it("offers a choice when beta updates are enabled and both channels have updates", async () => {
+    const downloadMock = vi.fn(async (onEvent: (event: any) => void) => {
+      onEvent({ event: "Finished", data: {} })
+    })
+    checkMock.mockResolvedValue({ version: "0.7.29", download: downloadMock, install: vi.fn() })
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.30-beta.1" }
+      if (command === "download_beta_update") return undefined
+      return undefined
+    })
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+
+    expect(result.current.updateStatus).toEqual({
+      status: "choice",
+      stableVersion: "0.7.29",
+      betaVersion: "0.7.30-beta.1",
+    })
+    expect(downloadMock).not.toHaveBeenCalled()
+    expect(invokeMock).not.toHaveBeenCalledWith("download_beta_update")
+  })
+
+  it("downloads the selected stable update when both channels are available", async () => {
+    const installMock = vi.fn().mockResolvedValue(undefined)
+    const downloadMock = vi.fn(async (onEvent: (event: any) => void) => {
+      onEvent({ event: "Finished", data: {} })
+    })
+    checkMock.mockResolvedValue({ version: "0.7.29", download: downloadMock, install: installMock })
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.30-beta.1" }
+      if (command === "download_beta_update") return undefined
+      if (command === "install_beta_update") return undefined
+      return undefined
+    })
+    relaunchMock.mockResolvedValue(undefined)
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+
+    await act(() => result.current.chooseUpdate("stable"))
+    expect(downloadMock).toHaveBeenCalled()
+    expect(result.current.updateStatus).toEqual({ status: "ready", channel: "stable", version: "0.7.29" })
+
+    await act(() => result.current.triggerInstall())
+    expect(installMock).toHaveBeenCalled()
+    expect(invokeMock).not.toHaveBeenCalledWith("install_beta_update")
+    expect(relaunchMock).toHaveBeenCalled()
+  })
+
+  it("downloads the selected beta update when both channels are available", async () => {
+    const downloadMock = vi.fn(async (onEvent: (event: any) => void) => {
+      onEvent({ event: "Finished", data: {} })
+    })
+    checkMock.mockResolvedValue({ version: "0.7.29", download: downloadMock, install: vi.fn() })
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.30-beta.1" }
+      if (command === "download_beta_update") return undefined
+      return undefined
+    })
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+
+    await act(() => result.current.chooseUpdate("beta"))
+    expect(downloadMock).not.toHaveBeenCalled()
+    expect(invokeMock).toHaveBeenCalledWith("download_beta_update")
+    expect(result.current.updateStatus).toEqual({ status: "ready", channel: "beta", version: "0.7.30-beta.1" })
+  })
+
+  it("installs beta updates through the beta install command", async () => {
+    checkMock.mockResolvedValue(null)
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.29-beta.3" }
+      if (command === "download_beta_update") return undefined
+      if (command === "install_beta_update") return undefined
+      return undefined
+    })
+    relaunchMock.mockResolvedValue(undefined)
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+
+    await act(() => result.current.triggerInstall())
+
+    expect(invokeMock).toHaveBeenCalledWith("install_beta_update")
+    expect(relaunchMock).toHaveBeenCalled()
+  })
+
+  it("shows up-to-date then returns to idle when a beta check returns null", async () => {
+    vi.useFakeTimers()
+    checkMock.mockResolvedValue(null)
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return null
+      return undefined
+    })
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+
+    expect(result.current.updateStatus).toEqual({ status: "up-to-date" })
+    await act(async () => {
+      vi.advanceTimersByTime(3000)
+    })
+    expect(result.current.updateStatus).toEqual({ status: "idle" })
+    vi.useRealTimers()
+  })
+
+  it("transitions to error when beta download fails and does not install", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.29-beta.3" }
+      if (command === "download_beta_update") throw new Error("download failed")
+      if (command === "install_beta_update") return undefined
+      return undefined
+    })
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+
+    expect(result.current.updateStatus).toEqual({ status: "error", message: "Download failed" })
+    await act(() => result.current.triggerInstall())
+    expect(invokeMock).not.toHaveBeenCalledWith("install_beta_update")
+  })
+
+  it("transitions to error when beta install fails", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.29-beta.3" }
+      if (command === "download_beta_update") return undefined
+      if (command === "install_beta_update") throw new Error("install failed")
+      return undefined
+    })
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+
+    await act(() => result.current.triggerInstall())
+    expect(result.current.updateStatus).toEqual({ status: "error", message: "Install failed" })
+  })
+
+  it("updates progress from beta progress events", async () => {
+    let resolveDownload: (() => void) | null = null
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.29-beta.3" }
+      if (command === "download_beta_update") return new Promise<void>((resolve) => { resolveDownload = resolve })
+      return undefined
+    })
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+
+    act(() => {
+      progressHandlers[0]?.({ payload: { event: "Started", data: { contentLength: 1000 } } })
+    })
+    expect(result.current.updateStatus).toEqual({ status: "downloading", progress: 0 })
+
+    act(() => {
+      progressHandlers[0]?.({ payload: { event: "Progress", data: { chunkLength: 400 } } })
+    })
+    expect(result.current.updateStatus).toEqual({ status: "downloading", progress: 40 })
+
+    await act(async () => { resolveDownload?.() })
+  })
+
+  it("keeps beta progress indeterminate when content length is unknown", async () => {
+    let resolveDownload: (() => void) | null = null
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.29-beta.3" }
+      if (command === "download_beta_update") return new Promise<void>((resolve) => { resolveDownload = resolve })
+      return undefined
+    })
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+
+    act(() => {
+      progressHandlers[0]?.({ payload: { event: "Started", data: { contentLength: null } } })
+      progressHandlers[0]?.({ payload: { event: "Progress", data: { chunkLength: 400 } } })
+    })
+    expect(result.current.updateStatus).toEqual({ status: "downloading", progress: -1 })
+
+    await act(async () => { resolveDownload?.() })
+  })
+
+  it("cleans up the beta progress listener after unmount", async () => {
+    const unlistenMock = vi.fn()
+    listenMock.mockResolvedValue(unlistenMock)
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return null
+      return undefined
+    })
+
+    const { unmount } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+    unmount()
+
+    expect(unlistenMock).toHaveBeenCalled()
+  })
+
+  it("runs delayed beta listener cleanup when listen resolves after unmount", async () => {
+    let resolveListen: ((cleanup: () => void) => void) | null = null
+    const unlistenMock = vi.fn()
+    listenMock.mockReturnValue(new Promise<() => void>((resolve) => { resolveListen = resolve }))
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return null
+      return undefined
+    })
+
+    const { unmount } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    unmount()
+    await act(async () => { resolveListen?.(unlistenMock) })
+
+    expect(unlistenMock).toHaveBeenCalled()
+  })
+
+  it("ignores a second beta check while download is in flight", async () => {
+    let resolveDownload: (() => void) | null = null
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.29-beta.3" }
+      if (command === "download_beta_update") return new Promise<void>((resolve) => { resolveDownload = resolve })
+      return undefined
+    })
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus.status).toBe("downloading")
+
+    await act(() => result.current.checkForUpdates())
+    expect(invokeMock).toHaveBeenCalledWith("check_beta_update")
+    expect(invokeMock.mock.calls.filter(([command]) => command === "check_beta_update")).toHaveLength(1)
+
+    await act(async () => { resolveDownload?.() })
+  })
+
+  it("does not trigger beta install outside Tauri", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.29-beta.3" }
+      if (command === "download_beta_update") return undefined
+      if (command === "install_beta_update") return undefined
+      return undefined
+    })
+
+    const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+    invokeMock.mockClear()
+    globalThis.isTauri = false
+
+    await act(() => result.current.triggerInstall())
+
+    expect(invokeMock).not.toHaveBeenCalled()
+    expect(relaunchMock).not.toHaveBeenCalled()
+  })
+
+  it("resets stale ready state when beta updates are disabled", async () => {
+    checkMock.mockResolvedValue(null)
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "check_beta_update") return { version: "0.7.29-beta.3" }
+      if (command === "download_beta_update") return undefined
+      if (command === "install_beta_update") return undefined
+      return undefined
+    })
+
+    const { result, rerender } = renderHook(
+      ({ betaUpdatesEnabled }) => useAppUpdate({ betaUpdatesEnabled }),
+      { initialProps: { betaUpdatesEnabled: true } }
+    )
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus).toEqual({ status: "ready", channel: "beta", version: "0.7.29-beta.3" })
+
+    rerender({ betaUpdatesEnabled: false })
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus).toEqual({ status: "idle" })
+
+    await act(() => result.current.triggerInstall())
+    expect(invokeMock).not.toHaveBeenCalledWith("install_beta_update")
   })
 
   it("stays idle when not running in Tauri", async () => {
@@ -142,7 +509,7 @@ describe("useAppUpdate", () => {
     await act(() => Promise.resolve()) // extra tick for download to complete
 
     expect(downloadMock).toHaveBeenCalled()
-    expect(result.current.updateStatus).toEqual({ status: "ready" })
+    expect(result.current.updateStatus).toEqual({ status: "ready", channel: "stable", version: "1.0.0" })
   })
 
   it("does not check again when already ready", async () => {

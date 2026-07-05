@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.7.29-beta.3
+
+### New Features
+- Add a stable-or-beta update choice when both channels are available by @Halloweedev
+- Show beta update restarts as beta updates in the footer by @Halloweedev
+
+### Improvements
+- Move Get Beta Updates into the Debug modal by @Halloweedev
+- Remove OpenUsage fork copy from the About dialog by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.29-beta.1...v0.7.29-beta.3](https://github.com/Halloweedev/usagepal/compare/v0.7.29-beta.1...v0.7.29-beta.3)
+
+## v0.7.29-beta.2
+
+### New Features
+- Add opt-in beta update checks through the normal in-app updater by @Halloweedev
+
+### Chores
+- Refresh the README header with the UsagePal icon and remove the duplicate fork section by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.29-beta.1...v0.7.29-beta.2](https://github.com/Halloweedev/usagepal/compare/v0.7.29-beta.1...v0.7.29-beta.2)
+
 ## v0.7.29-beta.1
 
 ### New Features
@@ -19,6 +49,8 @@
 - Fix low-quality app icon — regenerated icon.icns from 1024×1024 source with proper anti-aliasing, shadow, and 103× more pixel detail at Retina resolution by @Halloweedev
 
 ---
+
+### Changelog
 
 **Full Changelog**: [v0.7.27...v0.7.28](https://github.com/Halloweedev/usagepal/compare/v0.7.27...v0.7.28)
 

@@ -1,3 +1,4 @@
+mod beta_updater;
 mod config;
 mod local_http_api;
 mod log_path;
@@ -715,6 +716,9 @@ pub fn run() {
             get_next_update_at,
             update_global_shortcut,
             open_notification_settings,
+            beta_updater::check_beta_update,
+            beta_updater::download_beta_update,
+            beta_updater::install_beta_update,
             openrouter_key::openrouter_key_status,
             openrouter_key::save_openrouter_key,
             openrouter_key::clear_openrouter_key

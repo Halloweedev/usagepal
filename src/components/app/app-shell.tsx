@@ -17,6 +17,7 @@ type AppShellProps = {
   displayPlugins: DisplayPluginState[]
   settingsPlugins: SettingsPluginState[]
   autoUpdateNextAt: number | null
+  betaUpdatesEnabled: boolean
   selectedPlugin: DisplayPluginState | null
   onPluginContextAction: (pluginId: string, action: PluginContextAction) => void
   isPluginRefreshAvailable: (pluginId: string) => boolean
@@ -31,6 +32,7 @@ export function AppShell({
   displayPlugins,
   settingsPlugins,
   autoUpdateNextAt,
+  betaUpdatesEnabled,
   selectedPlugin,
   onPluginContextAction,
   isPluginRefreshAvailable,
@@ -64,7 +66,7 @@ export function AppShell({
   })
 
   const appVersion = useAppVersion()
-  const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
+  const { updateStatus, triggerInstall, chooseUpdate, checkForUpdates } = useAppUpdate({ betaUpdatesEnabled })
 
   return (
     <div
@@ -102,6 +104,7 @@ export function AppShell({
               updateStatus={updateStatus}
               onUpdateInstall={triggerInstall}
               onUpdateCheck={checkForUpdates}
+              onUpdateChoice={chooseUpdate}
               onRefreshAll={onRefreshAll}
               showAbout={showAbout}
               onShowAbout={() => setShowAbout(true)}

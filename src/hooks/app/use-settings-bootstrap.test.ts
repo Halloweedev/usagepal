@@ -10,6 +10,7 @@ const {
   isAutostartEnabledMock,
   isTauriMock,
   loadAutoUpdateIntervalMock,
+  loadBetaUpdatesEnabledMock,
   loadDisplayModeMock,
   loadGlobalShortcutMock,
   loadMenubarIconStyleMock,
@@ -32,6 +33,7 @@ const {
   arePluginSettingsEqualMock: vi.fn(),
   getEnabledPluginIdsMock: vi.fn(),
   loadAutoUpdateIntervalMock: vi.fn(),
+  loadBetaUpdatesEnabledMock: vi.fn(),
   loadDisplayModeMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
   loadMenubarIconStyleMock: vi.fn(),
@@ -61,6 +63,7 @@ vi.mock("@tauri-apps/plugin-autostart", () => ({
 vi.mock("@/lib/settings", () => ({
   arePluginSettingsEqual: arePluginSettingsEqualMock,
   DEFAULT_AUTO_UPDATE_INTERVAL: 15,
+  DEFAULT_BETA_UPDATES_ENABLED: false,
   DEFAULT_DISPLAY_MODE: "left",
   DEFAULT_GLOBAL_SHORTCUT: null,
   DEFAULT_MENUBAR_ICON_STYLE: "provider",
@@ -71,6 +74,7 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_TIME_FORMAT_MODE: "auto",
   getEnabledPluginIds: getEnabledPluginIdsMock,
   loadAutoUpdateInterval: loadAutoUpdateIntervalMock,
+  loadBetaUpdatesEnabled: loadBetaUpdatesEnabledMock,
   loadDisplayMode: loadDisplayModeMock,
   loadGlobalShortcut: loadGlobalShortcutMock,
   loadMenubarIconStyle: loadMenubarIconStyleMock,
@@ -93,6 +97,7 @@ function createArgs() {
     setPluginSettings: vi.fn(),
     setPluginsMeta: vi.fn(),
     setAutoUpdateInterval: vi.fn(),
+    setBetaUpdatesEnabled: vi.fn(),
     setThemeMode: vi.fn(),
     setDisplayMode: vi.fn(),
     setResetTimerDisplayMode: vi.fn(),
@@ -117,6 +122,7 @@ describe("useSettingsBootstrap", () => {
     arePluginSettingsEqualMock.mockReset()
     getEnabledPluginIdsMock.mockReset()
     loadAutoUpdateIntervalMock.mockReset()
+    loadBetaUpdatesEnabledMock.mockReset()
     loadDisplayModeMock.mockReset()
     loadGlobalShortcutMock.mockReset()
     loadMenubarIconStyleMock.mockReset()
@@ -147,6 +153,7 @@ describe("useSettingsBootstrap", () => {
     normalizePluginSettingsMock.mockImplementation((stored) => stored)
     arePluginSettingsEqualMock.mockReturnValue(true)
     loadAutoUpdateIntervalMock.mockResolvedValue(15)
+    loadBetaUpdatesEnabledMock.mockResolvedValue(false)
     loadThemeModeMock.mockResolvedValue("dark")
     loadDisplayModeMock.mockResolvedValue("used")
     loadResetTimerDisplayModeMock.mockResolvedValue("relative")
@@ -199,6 +206,33 @@ describe("useSettingsBootstrap", () => {
     await waitFor(() => {
       expect(args.setMenubarMetric).toHaveBeenCalledWith("weekly")
     })
+  })
+
+  it("applies the stored beta updates setting", async () => {
+    loadBetaUpdatesEnabledMock.mockResolvedValueOnce(true)
+    const args = createArgs()
+
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setBetaUpdatesEnabled).toHaveBeenCalledWith(true)
+    })
+  })
+
+  it("falls back to default beta updates setting when loading fails", async () => {
+    const betaError = new Error("beta updates unavailable")
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    loadBetaUpdatesEnabledMock.mockRejectedValueOnce(betaError)
+    const args = createArgs()
+
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Failed to load beta updates setting:", betaError)
+      expect(args.setBetaUpdatesEnabled).toHaveBeenCalledWith(false)
+    })
+
+    errorSpy.mockRestore()
   })
 
   it("falls back to default menubar metric when loading fails", async () => {

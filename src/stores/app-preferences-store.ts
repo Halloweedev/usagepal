@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_BETA_UPDATES_ENABLED,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
@@ -21,6 +22,7 @@ import {
 
 type AppPreferencesStore = {
   autoUpdateInterval: AutoUpdateIntervalMinutes
+  betaUpdatesEnabled: boolean
   themeMode: ThemeMode
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
@@ -30,6 +32,7 @@ type AppPreferencesStore = {
   menubarIconStyle: MenubarIconStyle
   menubarMetric: MenubarMetric
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
+  setBetaUpdatesEnabled: (value: boolean) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
@@ -43,6 +46,7 @@ type AppPreferencesStore = {
 
 const initialState = {
   autoUpdateInterval: DEFAULT_AUTO_UPDATE_INTERVAL,
+  betaUpdatesEnabled: DEFAULT_BETA_UPDATES_ENABLED,
   themeMode: DEFAULT_THEME_MODE,
   displayMode: DEFAULT_DISPLAY_MODE,
   resetTimerDisplayMode: DEFAULT_RESET_TIMER_DISPLAY_MODE,
@@ -56,6 +60,7 @@ const initialState = {
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   ...initialState,
   setAutoUpdateInterval: (value) => set({ autoUpdateInterval: value }),
+  setBetaUpdatesEnabled: (value) => set({ betaUpdatesEnabled: value }),
   setThemeMode: (value) => set({ themeMode: value }),
   setDisplayMode: (value) => set({ displayMode: value }),
   setResetTimerDisplayMode: (value) => set({ resetTimerDisplayMode: value }),

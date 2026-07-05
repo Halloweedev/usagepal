@@ -8,11 +8,11 @@
 ## API Surfaces
 - Local HTTP API — documented in `docs/local-http-api.md`, implemented under `src-tauri/src/local_http_api/`.
 - Plugin host API — Rust bridge in `src-tauri/src/plugin_engine/host_api.rs`, schema docs in `docs/plugins/`.
-- Tauri commands/events — app shell, settings, log-level, copy-log, and quit actions flow through `src-tauri/src/lib.rs` plus frontend hooks.
+- Tauri commands/events — app shell, settings, beta updater, log-level, copy-log, and quit actions flow through `src-tauri/src/lib.rs` plus frontend hooks.
 ## Modules / Components
 - `src/App.tsx` — top-level app orchestration for plugin data, settings bootstrap, probing, and tray updates.
 - `src/pages/overview.tsx` — primary provider overview screen with no retirement banner in this fork.
-- `src/pages/settings.tsx` plus `src/components/settings-app-menu.tsx` — app preferences, plugin toggles, shortcuts, and bottom App Menu actions.
+- `src/pages/settings.tsx` plus `src/components/settings-app-menu.tsx` — app preferences, Debug modal beta opt-in, plugin toggles, shortcuts, and bottom App Menu actions.
 - `src/components/` — reusable dialogs, cards, nav, footer, skeletons, and UI primitives.
 - `src/lib/settings.ts` — persisted frontend settings and migration helpers.
 - `src-tauri/src/plugin_engine/` — manifest loading, runtime sandboxing, and host capabilities for plugins.
@@ -42,8 +42,8 @@
 - Tray/menu-bar behavior — `src/lib/tray-tooltip.ts`, `src/hooks/app/use-tray-icon.ts`, `src-tauri/src/tray.rs`.
 - Settings bootstrap/tests — `src/hooks/app/use-settings-bootstrap.ts`, `src/lib/settings.ts`, `src/App.test.tsx`.
 ## Update Log (Last 5)
+- 2026-07-05 — Added stable/beta update choice UI and moved beta opt-in into Debug.
+- 2026-07-05 — Added opt-in beta updater feed using the existing in-app update UI.
+- 2026-07-05 — Added Rust beta updater command surface for the opt-in update feed.
+- 2026-07-04 — Added persisted beta update preference in Settings.
 - 2026-06-30 — Allowed Tauri CSP blob images for release menu bar status icon rendering.
-- 2026-06-30 — Prepared v0.7.0 release packaging with Tauri updater artifacts and Lutin DMGs.
-- 2026-06-28 — Split Settings App Menu into a component with a modal Debug Level picker.
-- 2026-06-28 — Added Settings bottom App Menu for Show Stats, Debug Level, Copy Log Path, About, and Quit.
-- 2026-06-28 — Removed native tray context menu so menu bar left-click opens Home and updated About attribution.
