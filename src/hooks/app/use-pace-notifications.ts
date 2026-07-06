@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react"
-import { isTauri } from "@tauri-apps/api/core"
+import { invoke, isTauri } from "@tauri-apps/api/core"
 import {
   isPermissionGranted,
-  sendNotification,
 } from "@tauri-apps/plugin-notification"
 import type { PluginState } from "@/hooks/app/types"
 import {
@@ -13,6 +12,15 @@ import {
   type ProviderMetrics,
 } from "@/lib/pace-notifications"
 import { useAppNotificationsStore } from "@/stores/app-notifications-store"
+
+export type PaceNotificationDelivery = {
+  title: string
+  body: string
+}
+
+export async function deliverPaceNotification(notification: PaceNotificationDelivery): Promise<void> {
+  await invoke("send_pace_notification", notification)
+}
 
 /**
  * Evaluates quota pace milestones on every refresh and delivers OS notifications for the ones that
@@ -65,7 +73,7 @@ export function usePaceNotifications(pluginStates: Record<string, PluginState>) 
       for (const item of fired) {
         const meta = MILESTONE_META[item.milestone]
         try {
-          sendNotification({
+          await deliverPaceNotification({
             title: meta.title,
             body: `${item.displayName} ${item.metricLabel} — ${meta.body}`,
           })

@@ -259,6 +259,10 @@ import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
 
+async function openSettingsPlugins() {
+  await userEvent.click(await screen.findByRole("button", { name: "Show Plugins" }))
+}
+
 describe("App", () => {
   beforeEach(() => {
     useAppUiStore.getState().resetState()
@@ -911,6 +915,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
+    await openSettingsPlugins()
     // Re-query before each click: the Checkbox remounts on each toggle because
     // its key includes plugin.enabled, so the reference goes stale after click 1.
     await userEvent.click((await screen.findAllByRole("checkbox")).at(-1)!)
@@ -1264,6 +1269,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
+    await openSettingsPlugins()
     const checkboxes = await screen.findAllByRole("checkbox")
     const targetCheckbox = checkboxes[checkboxes.length - 1]
     await userEvent.click(targetCheckbox)
@@ -1277,6 +1283,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
+    await openSettingsPlugins()
     const checkboxes = await screen.findAllByRole("checkbox")
     const targetCheckbox = checkboxes[checkboxes.length - 1]
     await userEvent.click(targetCheckbox)
@@ -1330,6 +1337,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
+    await openSettingsPlugins()
     dndState.latestOnDragEnd?.({ active: { id: "a" }, over: { id: "b" } })
     await waitFor(() => expect(errorSpy).toHaveBeenCalled())
     errorSpy.mockRestore()
@@ -1339,6 +1347,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
+    await openSettingsPlugins()
     dndState.latestOnDragEnd?.({ active: { id: "a" }, over: { id: "b" } })
     expect(state.savePluginSettingsMock).toHaveBeenCalled()
   })
@@ -1428,6 +1437,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
+    await openSettingsPlugins()
 
     // Toggle then reorder quickly (within debounce window) to force timer replacement.
     const checkboxes = await screen.findAllByRole("checkbox")

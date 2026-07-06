@@ -399,6 +399,7 @@ export function SettingsPage({
   onShowStats,
   onShowAbout,
 }: SettingsPageProps) {
+  const [pluginsOpen, setPluginsOpen] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -650,30 +651,44 @@ export function SettingsPage({
       </section>
       <NotificationsSection />
       <section>
-        <h3 className="text-lg font-semibold mb-0">Plugins</h3>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold mb-0">Plugins</h3>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-expanded={pluginsOpen}
+            aria-controls="settings-plugins-list"
+            onClick={() => setPluginsOpen((open) => !open)}
+          >
+            {pluginsOpen ? "Hide Plugins" : "Show Plugins"}
+          </Button>
+        </div>
         <p className="text-sm text-muted-foreground mb-2">
           Your AI coding lineup
         </p>
-        <div className="bg-muted/50 rounded-lg p-1 space-y-1">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={plugins.map((p) => p.id)}
-              strategy={verticalListSortingStrategy}
+        {pluginsOpen && (
+          <div id="settings-plugins-list" className="bg-muted/50 rounded-lg p-1 space-y-1">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
             >
-              {plugins.map((plugin) => (
-                <SortablePluginItem
-                  key={plugin.id}
-                  plugin={plugin}
-                  onToggle={onToggle}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
-        </div>
+              <SortableContext
+                items={plugins.map((p) => p.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {plugins.map((plugin) => (
+                  <SortablePluginItem
+                    key={plugin.id}
+                    plugin={plugin}
+                    onToggle={onToggle}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          </div>
+        )}
       </section>
       <SupporterSection />
       <SettingsAppMenu

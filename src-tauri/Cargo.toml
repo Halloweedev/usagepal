@@ -1,6 +1,6 @@
 [package]
 name = "usagepal"
-version = "0.7.29"
+version = "0.7.30-beta.1"
 description = "UsagePal is an open source AI subscription limit tracker (a fork of OpenUsage)"
 authors = ["Nicolas Demanez"]
 edition = "2024"
@@ -45,6 +45,7 @@ keylight = "0.3.0"
 tauri-plugin-keylight = "0.3.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+mac-notification-sys = "0.6.15"
 objc2 = "0.6"
 objc2-foundation = "0.3"
 

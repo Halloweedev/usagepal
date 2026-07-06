@@ -6227,7 +6227,7 @@ dependencies = [
 
 [[package]]
 name = "usagepal"
-version = "0.7.29"
+version = "0.7.30-beta.1"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -6235,6 +6235,7 @@ dependencies = [
  "keylight",
  "libc",
  "log",
+ "mac-notification-sys",
  "objc2",
  "objc2-foundation",
  "regex-lite",

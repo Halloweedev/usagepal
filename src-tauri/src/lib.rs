@@ -27,7 +27,7 @@ fn unix_now_ms() -> u64 {
 }
 
 use serde::Serialize;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_store::StoreExt;
@@ -551,6 +551,64 @@ fn open_notification_settings() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn send_pace_notification(
+    app_handle: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    send_pace_notification_impl(&app_handle, &title, &body)
+}
+
+#[cfg(target_os = "macos")]
+fn send_pace_notification_impl(
+    app_handle: &tauri::AppHandle,
+    title: &str,
+    body: &str,
+) -> Result<(), String> {
+    let icon_path = app_handle
+        .path()
+        .resolve("icons/icon.icns", tauri::path::BaseDirectory::Resource)
+        .map_err(|e| format!("Couldn't resolve notification icon: {e}"))?;
+    let icon_path = icon_path
+        .to_str()
+        .ok_or_else(|| "Notification icon path is not valid UTF-8".to_string())?;
+
+    match mac_notification_sys::set_application(&app_handle.config().identifier) {
+        Ok(())
+        | Err(mac_notification_sys::error::Error::Application(
+            mac_notification_sys::error::ApplicationError::AlreadySet(_),
+        )) => {}
+        Err(error) => log::warn!("Failed to set notification application identity: {error}"),
+    }
+
+    mac_notification_sys::Notification::new()
+        .title(title)
+        .message(body)
+        .app_icon(icon_path)
+        .asynchronous(true)
+        .send()
+        .map(|_| ())
+        .map_err(|e| format!("Couldn't send pace notification: {e}"))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn send_pace_notification_impl(
+    app_handle: &tauri::AppHandle,
+    title: &str,
+    body: &str,
+) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+
+    app_handle
+        .notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|e| format!("Couldn't send pace notification: {e}"))
+}
+
 /// Update the global shortcut registration.
 /// Pass `null` to disable the shortcut, or a shortcut string like "CommandOrControl+Shift+U".
 #[cfg(desktop)]
@@ -716,6 +774,7 @@ pub fn run() {
             get_next_update_at,
             update_global_shortcut,
             open_notification_settings,
+            send_pace_notification,
             beta_updater::check_beta_update,
             beta_updater::download_beta_update,
             beta_updater::install_beta_update,

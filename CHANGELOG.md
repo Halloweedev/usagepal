@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.7.30-beta.1
+
+### New Features
+- Make the Settings plugin list collapsible and reset it closed when changing views by @Halloweedev
+
+### Bug Fixes
+- Route pace notifications through a native macOS sender so banners use the current bundled app icon by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.29...v0.7.30-beta.1](https://github.com/Halloweedev/usagepal/compare/v0.7.29...v0.7.30-beta.1)
+
 ## v0.7.29
 
 ### New Features

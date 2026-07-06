@@ -99,6 +99,10 @@ const defaultProps = {
   onShowAbout: vi.fn(),
 }
 
+async function openPluginsList() {
+  await userEvent.click(screen.getByRole("button", { name: "Show Plugins" }))
+}
+
 afterEach(() => {
   cleanup()
 })
@@ -128,6 +132,7 @@ describe("SettingsPage", () => {
         ]}
       />
     )
+    await openPluginsList()
 
     const pill = screen.getByRole("button", { name: "Open Claude referral link" })
     await userEvent.click(pill)
@@ -147,6 +152,7 @@ describe("SettingsPage", () => {
         onToggle={onToggle}
       />
     )
+    await openPluginsList()
 
     await userEvent.click(screen.getByRole("button", { name: "Open Claude referral link" }))
     expect(openUrlMock).toHaveBeenCalledWith("https://example.com/ref")
@@ -164,8 +170,38 @@ describe("SettingsPage", () => {
         onToggle={onToggle}
       />
     )
+    await openPluginsList()
     await userEvent.click(screen.getByText("Beta"))
     expect(onToggle).toHaveBeenCalledWith("b")
+  })
+
+  it("keeps the plugin list closed until toggled open", async () => {
+    render(<SettingsPage {...defaultProps} />)
+
+    expect(screen.getByRole("button", { name: "Show Plugins" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByText("Alpha")).not.toBeInTheDocument()
+
+    await openPluginsList()
+
+    expect(screen.getByRole("button", { name: "Hide Plugins" })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByText("Alpha")).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: "Hide Plugins" }))
+    expect(screen.getByRole("button", { name: "Show Plugins" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByText("Alpha")).not.toBeInTheDocument()
+  })
+
+  it("closes the plugin list after Settings unmounts for a view change", async () => {
+    const { unmount } = render(<SettingsPage {...defaultProps} />)
+
+    await openPluginsList()
+    expect(screen.getByText("Alpha")).toBeInTheDocument()
+
+    unmount()
+    render(<SettingsPage {...defaultProps} />)
+
+    expect(screen.getByRole("button", { name: "Show Plugins" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByText("Alpha")).not.toBeInTheDocument()
   })
 
   it("renders the full app menu at the bottom", () => {
@@ -246,7 +282,7 @@ describe("SettingsPage", () => {
   })
 
 
-  it("reorders plugins on drag end", () => {
+  it("reorders plugins on drag end", async () => {
     const onReorder = vi.fn()
     render(
       <SettingsPage
@@ -258,11 +294,12 @@ describe("SettingsPage", () => {
         onReorder={onReorder}
       />
     )
+    await openPluginsList()
     latestOnDragEnd?.({ active: { id: "a" }, over: { id: "b" } })
     expect(onReorder).toHaveBeenCalledWith(["b", "a"])
   })
 
-  it("ignores invalid drag end", () => {
+  it("ignores invalid drag end", async () => {
     const onReorder = vi.fn()
     render(
       <SettingsPage
@@ -270,6 +307,7 @@ describe("SettingsPage", () => {
         onReorder={onReorder}
       />
     )
+    await openPluginsList()
     latestOnDragEnd?.({ active: { id: "a" }, over: null })
     latestOnDragEnd?.({ active: { id: "a" }, over: { id: "a" } })
     expect(onReorder).not.toHaveBeenCalled()
