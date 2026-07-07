@@ -1,17 +1,69 @@
 # Changelog
 
+## v0.7.30-beta.3
+
+### New Features
+- Multi menubar style — show two to four providers at once in a composite tray icon; click the icon to cycle the provider count by @Halloweedev
+- Numbers vs Bars display mode for multi menubar — switch between percentage labels and compact progress bars for each provider row by @Halloweedev
+- Live menubar previews in Settings — Provider, Donut, Bars, and Multi styles update as you change options without leaving the page by @Halloweedev
+- Hide metric toggle and multi menubar settings — control whether weekly or secondary metrics appear in multi style by @Halloweedev
+- Cursor Auto/API multi rows — Auto usage and API usage on separate menubar rows, with Total usage as the primary line for single-icon styles by @Halloweedev
+- Plugin manifest `multiTrayLines` and `trayPrimaryLabel` — declare which progress lines drive multi and single menubar displays, with Rust validation and tests by @Halloweedev
+- `toggle_panel_at_tray_rect` IPC — open the panel from auxiliary tray icon click targets with correct screen positioning by @Halloweedev
+
+### Improvements
+- Bars menubar rendering — refined bar geometry, spacing, centering, and composite layout for steadier macOS tray icons by @Halloweedev
+- Provider icon scale and masking — OpenCode and Cline logos stay legible inside small composite multi icons by @Halloweedev
+- Multi menubar tooltips and dual-line provider SVGs — clearer labels and two-row provider glyphs for multi style by @Halloweedev
+- Probe output merge on rate limits — preserve last-known progress lines when a provider probe returns rate-limited without fresh metrics (Claude) by @Halloweedev
+- Share card and side navigation updates for new menubar display settings by @Halloweedev
+
+### Bug Fixes
+- Tray icon jitter and misalignment when probe results refresh quickly by @Halloweedev
+- Weekly fraction and percent formatting edge cases for multi tray bottom line by @Halloweedev
+
+### Documentation
+- Document multi menubar tray icon style, manifest fields, and behavior in plugin schema docs by @Halloweedev
+- Clarify Claude rate-limit state scope in the Claude plugin by @Halloweedev
+
+### Chores
+- Bump `tauri-build` from 2.6.2 to 2.6.3 ([#10](https://github.com/Halloweedev/usagepal/pull/10)) by @dependabot
+- Bump `tauri` from 2.11.2 to 2.11.5 ([#9](https://github.com/Halloweedev/usagepal/pull/9)) by @dependabot
+- Bump `time` from 0.3.47 to 0.3.53 ([#7](https://github.com/Halloweedev/usagepal/pull/7)) by @dependabot
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.30-beta.2...v0.7.30-beta.3](https://github.com/Halloweedev/usagepal/compare/v0.7.30-beta.2...v0.7.30-beta.3)
+
+- [36cb572](https://github.com/Halloweedev/usagepal/commit/36cb572) feat: multi menubar numbers/bars, tray polish, and probe merge by @Halloweedev
+- [b76533b](https://github.com/Halloweedev/usagepal/commit/b76533b) docs: multi menubar tray icon style by @Halloweedev
+- [7dca34a](https://github.com/Halloweedev/usagepal/commit/7dca34a) feat: settings preview and hide metric toggle for multi menubar style by @Halloweedev
+- [31b359f](https://github.com/Halloweedev/usagepal/commit/31b359f) feat: multi menubar tray icon lifecycle and rendering by @Halloweedev
+- [e1d96b7](https://github.com/Halloweedev/usagepal/commit/e1d96b7) feat: add formatTrayTooltipMulti for multi menubar style by @Halloweedev
+- [53e3ee7](https://github.com/Halloweedev/usagepal/commit/53e3ee7) feat: add toggle_panel_at_tray_rect IPC for aux tray icons by @Halloweedev
+- [17c0c4a](https://github.com/Halloweedev/usagepal/commit/17c0c4a) feat: dual-line provider tray SVG for multi menubar style by @Halloweedev
+- [7b96855](https://github.com/Halloweedev/usagepal/commit/7b96855) feat: add getTrayWeeklyFraction for multi tray bottom line by @Halloweedev
+- [8bafa71](https://github.com/Halloweedev/usagepal/commit/8bafa71) feat: add formatTrayPercentIfPresent for multi tray icons by @Halloweedev
+- [e41ee75](https://github.com/Halloweedev/usagepal/commit/e41ee75) feat: add multi menubar icon style setting by @Halloweedev
+- [215d203](https://github.com/Halloweedev/usagepal/commit/215d203) chore(deps): bump time from 0.3.47 to 0.3.53 in /src-tauri (#7) by @dependabot
+- [5c97101](https://github.com/Halloweedev/usagepal/commit/5c97101) chore(deps): bump tauri from 2.11.2 to 2.11.5 in /src-tauri (#9) by @dependabot
+- [bbe0082](https://github.com/Halloweedev/usagepal/commit/bbe0082) chore(deps): bump tauri-build from 2.6.2 to 2.6.3 in /src-tauri (#10) by @dependabot
+
 ## v0.7.30-beta.2
 
 ### New Features
-- Add machine-based plugin detection so new installs only enable providers found on the current Mac by @Halloweedev
-- Add a ClinePass API key dialog so users can save a key in UsagePal without installing Cline by @Halloweedev
+- Smart plugin detection — UsagePal now automatically enables only the providers actually installed on your Mac. No more manual toggling after a fresh install by @Halloweedev
+- ClinePass key dialog — you can now paste and save a ClinePass API key inside UsagePal without installing the Cline app. Great for OpenCode and other Cline-compatible tools by @Halloweedev
+- Flame indicator on providers running low — when a session or limit is close to exhausted, a 🔥 flame icon appears next to the provider card instead of a subtle dot. Easy to spot at a glance by @Halloweedev
 
 ### Improvements
-- Generate frontend IPC types from Rust with tauri-specta and keep manual invoke/listen calls by @Halloweedev
-- Clean up provider overview filtering and replace the close-to-running-out dot with a flame indicator by @Halloweedev
+- IPC types are now auto-generated from Rust code so the frontend always stays in sync with the backend. Faster development, fewer type mismatches by @Halloweedev
+- Cleaner provider overview — reduced visual noise in the scope labels and tightened up the filtering logic by @Halloweedev
 
 ### Documentation
-- Document generated IPC bindings, plugin detection, and app-managed provider key files by @Halloweedev
+- Documented generated IPC bindings, plugin detection rules, and app-managed provider key files by @Halloweedev
 
 ---
 
