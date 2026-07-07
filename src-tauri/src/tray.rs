@@ -1,11 +1,10 @@
 use tauri::image::Image;
 use tauri::path::BaseDirectory;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager};
-use tauri_nspanel::ManagerExt;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
-use crate::panel::{get_or_init_panel, position_panel_at_tray_icon};
+use crate::panel::toggle_panel_at_tray_rect;
 
 const LOG_LEVEL_STORE_KEY: &str = "logLevel";
 
@@ -51,23 +50,7 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
             {
                 log::info!("tray click: button=Left, state={:?}", button_state);
                 if button_state == MouseButtonState::Up {
-                    let Some(panel) = get_or_init_panel!(app_handle) else {
-                        return;
-                    };
-
-                    if panel.is_visible() {
-                        log::info!("tray click: hiding panel");
-                        panel.hide();
-                        return;
-                    }
-                    log::info!("tray click: showing panel and navigating home");
-
-                    // macOS quirk: must show window before positioning to another monitor
-                    panel.show_and_make_key();
-                    position_panel_at_tray_icon(app_handle, rect.position, rect.size);
-                    if let Err(error) = app_handle.emit("tray:navigate", "home") {
-                        log::error!("failed to emit tray:navigate home: {error}");
-                    }
+                    toggle_panel_at_tray_rect(app_handle, rect.position, rect.size);
                 }
             }
         })

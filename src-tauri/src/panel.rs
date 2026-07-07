@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager, Position, Size};
+use tauri::{AppHandle, Emitter, Manager, Position, Size};
 use tauri_nspanel::{
     CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt, tauri_panel,
 };
@@ -122,6 +122,28 @@ pub fn toggle_panel(app_handle: &AppHandle) {
         log::debug!("toggle_panel: showing panel");
         panel.show_and_make_key();
         position_panel_from_tray(app_handle);
+    }
+}
+
+pub fn toggle_panel_at_tray_rect(
+    app_handle: &AppHandle,
+    icon_position: Position,
+    icon_size: Size,
+) {
+    let Some(panel) = get_or_init_panel!(app_handle) else {
+        return;
+    };
+
+    if panel.is_visible() {
+        log::info!("tray click: hiding panel");
+        panel.hide();
+        return;
+    }
+    log::info!("tray click: showing panel and navigating home");
+    panel.show_and_make_key();
+    position_panel_at_tray_icon(app_handle, icon_position, icon_size);
+    if let Err(error) = app_handle.emit("tray:navigate", "home") {
+        log::error!("failed to emit tray:navigate home: {error}");
     }
 }
 

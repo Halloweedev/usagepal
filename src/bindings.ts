@@ -7,6 +7,7 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 export const commands = {
 	initPanel: () => __TAURI_INVOKE<void>("init_panel"),
 	hidePanel: () => __TAURI_INVOKE<void>("hide_panel"),
+	togglePanelAtTrayRect: (rect: TrayRectInput) => __TAURI_INVOKE<void>("toggle_panel_at_tray_rect", { rect }),
 	openDevtools: () => __TAURI_INVOKE<void>("open_devtools"),
 	setLogLevel: (level: string) => typedError<null, string>(__TAURI_INVOKE("set_log_level", { level })),
 	copyLogPath: () => typedError<null, string>(__TAURI_INVOKE("copy_log_path")),
@@ -157,6 +158,13 @@ export type ProbeResult = {
 };
 
 export type ProgressFormat = { kind: "percent" } | { kind: "dollars" } | { kind: "count"; suffix: string };
+
+export type TrayRectInput = {
+	x: number | null,
+	y: number | null,
+	width: number | null,
+	height: number | null,
+};
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

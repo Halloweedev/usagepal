@@ -148,6 +148,28 @@ fn hide_panel(app_handle: tauri::AppHandle) {
     }
 }
 
+#[derive(serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TrayRectInput {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[tauri::command]
+#[specta::specta]
+fn toggle_panel_at_tray_rect(
+    app_handle: tauri::AppHandle,
+    rect: TrayRectInput,
+) {
+    panel::toggle_panel_at_tray_rect(
+        &app_handle,
+        tauri::Position::Logical(tauri::LogicalPosition::new(rect.x, rect.y)),
+        tauri::Size::Logical(tauri::LogicalSize::new(rect.width, rect.height)),
+    );
+}
+
 #[tauri::command]
 #[specta::specta]
 fn open_devtools(#[allow(unused)] app_handle: tauri::AppHandle) {
@@ -759,6 +781,7 @@ pub fn run() {
         .commands(tauri_specta::collect_commands![
             init_panel,
             hide_panel,
+            toggle_panel_at_tray_rect,
             open_devtools,
             set_log_level,
             copy_log_path,
@@ -947,6 +970,7 @@ fn export_bindings() {
         .commands(tauri_specta::collect_commands![
             init_panel,
             hide_panel,
+            toggle_panel_at_tray_rect,
             open_devtools,
             set_log_level,
             copy_log_path,
