@@ -121,30 +121,45 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm certificate.p12
 
-      # Build grouped release notes from conventional-commit subjects since the previous tag, so the
-      # GitHub release lists the features, fixes, and chores it contains. Both matrix jobs compute the
-      # same notes and pass them as releaseBody (idempotent), avoiding a post-publish edit race.
+      # Release notes come from the curated CHANGELOG.md section for this exact tag, so every release
+      # (stable or beta) shows the same grouped, human-written notes as the changelog rather than a raw
+      # commit dump. If no matching "## <tag>" section exists, fall back to conventional-commit subjects
+      # since the previous tag. Both matrix jobs compute the same notes and pass them as releaseBody
+      # (idempotent), avoiding a post-publish edit race.
       - name: Generate release notes
         id: notes
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 "${RELEASE_TAG}^" 2>/dev/null || true)
-          if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..$RELEASE_TAG"; else RANGE="$RELEASE_TAG"; fi
+          # Exact-match the "## <tag>" heading (so v0.7.30 never picks up v0.7.30-beta.3), print until
+          # the next "## v" heading, drop the heading itself, then trim leading blank lines.
+          awk -v tag="## ${RELEASE_TAG}" '
+            $0 == tag { found = 1; next }
+            found && /^## v/ { exit }
+            found { print }
+          ' CHANGELOG.md | sed '/./,$!d' > release-notes.md
 
-          subjects() { git log --no-merges --pretty=format:'%s' "$RANGE"; }
-          FEATS=$(subjects | grep -E '^feat(\(.+\))?!?:' || true)
-          FIXES=$(subjects | grep -E '^fix(\(.+\))?!?:' || true)
-          CHORES=$(subjects | grep -vE '^(feat|fix)(\(.+\))?!?:' || true)
+          if [ -s release-notes.md ]; then
+            echo "Using CHANGELOG.md section for ${RELEASE_TAG}."
+          else
+            echo "No CHANGELOG.md section for ${RELEASE_TAG}; falling back to commit-derived notes." >&2
+            PREV_TAG=$(git describe --tags --abbrev=0 "${RELEASE_TAG}^" 2>/dev/null || true)
+            if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..$RELEASE_TAG"; else RANGE="$RELEASE_TAG"; fi
 
-          {
-            echo "## What's Changed"
-            echo ""
-            if [ -n "$FEATS" ]; then echo "### Features"; echo "$FEATS" | sed 's/^/- /'; echo ""; fi
-            if [ -n "$FIXES" ]; then echo "### Fixes"; echo "$FIXES" | sed 's/^/- /'; echo ""; fi
-            if [ -n "$CHORES" ]; then echo "### Chores"; echo "$CHORES" | sed 's/^/- /'; echo ""; fi
-            if [ -n "$PREV_TAG" ]; then
-              echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${RELEASE_TAG}"
-            fi
-          } > release-notes.md
+            subjects() { git log --no-merges --pretty=format:'%s' "$RANGE"; }
+            FEATS=$(subjects | grep -E '^feat(\(.+\))?!?:' || true)
+            FIXES=$(subjects | grep -E '^fix(\(.+\))?!?:' || true)
+            CHORES=$(subjects | grep -vE '^(feat|fix)(\(.+\))?!?:' || true)
+
+            {
+              echo "## What's Changed"
+              echo ""
+              if [ -n "$FEATS" ]; then echo "### Features"; echo "$FEATS" | sed 's/^/- /'; echo ""; fi
+              if [ -n "$FIXES" ]; then echo "### Fixes"; echo "$FIXES" | sed 's/^/- /'; echo ""; fi
+              if [ -n "$CHORES" ]; then echo "### Chores"; echo "$CHORES" | sed 's/^/- /'; echo ""; fi
+              if [ -n "$PREV_TAG" ]; then
+                echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${RELEASE_TAG}"
+              fi
+            } > release-notes.md
+          fi
 
           cat release-notes.md
           {
