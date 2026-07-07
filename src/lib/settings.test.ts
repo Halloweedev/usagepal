@@ -11,6 +11,7 @@ import {
   DEFAULT_PACE_NOTIFICATION_SETTINGS,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
+  DEFAULT_SHARE_SETTINGS,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   DEFAULT_TIME_FORMAT_MODE,
@@ -27,6 +28,7 @@ import {
   loadPaceNotificationSettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
+  loadShareSettings,
   loadStartOnLogin,
   loadTimeFormatMode,
   cycleMultiTrayProviderCount,
@@ -45,6 +47,7 @@ import {
   savePaceNotificationSettings,
   savePluginSettings,
   saveResetTimerDisplayMode,
+  saveShareSettings,
   saveStartOnLogin,
   saveThemeMode,
   saveTimeFormatMode,
@@ -539,5 +542,52 @@ describe("settings", () => {
   it("falls back to default for invalid start on login value", async () => {
     storeState.set("startOnLogin", "invalid")
     await expect(loadStartOnLogin()).resolves.toBe(DEFAULT_START_ON_LOGIN)
+  })
+
+  it("loads default share settings when missing", async () => {
+    await expect(loadShareSettings()).resolves.toEqual(DEFAULT_SHARE_SETTINGS)
+  })
+
+  it("normalizes partial/invalid stored share settings to defaults per field", async () => {
+    storeState.set("shareSettings", {
+      selectedId: "claude",
+      preset: "bogus",
+      checkedLabels: ["Session", 42, "Sonnet"],
+      theme: "light",
+      showWatermark: "nope",
+      modelDisplay: { showPercent: false, showToday: "x" },
+    })
+
+    await expect(loadShareSettings()).resolves.toEqual({
+      selectedId: "claude",
+      preset: null, // "bogus" is not a valid preset
+      checkedLabels: ["Session", "Sonnet"], // non-strings dropped
+      theme: "light",
+      showWatermark: true, // invalid -> default
+      showPlan: true, // missing -> default
+      modelDisplay: {
+        showPercent: false,
+        showToday: true, // invalid -> default
+        showSevenDay: true, // missing -> default
+        showThirtyDay: true, // missing -> default
+      },
+    })
+  })
+
+  it("round-trips saved share settings", async () => {
+    const settings = {
+      selectedId: "codex",
+      preset: "models" as const,
+      checkedLabels: ["Session", "claude-sonnet-5"],
+      theme: "dark" as const,
+      showWatermark: false,
+      showPlan: false,
+      modelDisplay: { showPercent: true, showToday: false, showSevenDay: true, showThirtyDay: false },
+    }
+
+    await saveShareSettings(settings)
+
+    await expect(loadShareSettings()).resolves.toEqual(settings)
+    expect(storeSaveMock).toHaveBeenCalled()
   })
 })
