@@ -1,9 +1,10 @@
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 
 type ProgressLine = Extract<MetricLine, { type: "progress" }>
+type UsableProgressLine = ProgressLine & { used: number; limit: number }
 
-function isProgressLine(line: MetricLine): line is ProgressLine {
-  return line.type === "progress"
+function isUsableProgressLine(line: MetricLine): line is UsableProgressLine {
+  return line.type === "progress" && line.used != null && line.limit != null
 }
 
 /**
@@ -16,7 +17,7 @@ function isProgressLine(line: MetricLine): line is ProgressLine {
 export function selectEscalatedLine(
   lines: MetricLine[],
   manifestLines: ManifestLine[]
-): ProgressLine | undefined {
+): UsableProgressLine | undefined {
   const thresholds = new Map<string, number>()
   for (const line of manifestLines) {
     if (
@@ -30,10 +31,10 @@ export function selectEscalatedLine(
   }
   if (thresholds.size === 0) return undefined
 
-  let best: ProgressLine | undefined
+  let best: UsableProgressLine | undefined
   let bestFraction = -1
   for (const line of lines) {
-    if (!isProgressLine(line)) continue
+    if (!isUsableProgressLine(line)) continue
     if (line.limit <= 0) continue
     const threshold = thresholds.get(line.label)
     if (threshold === undefined) continue

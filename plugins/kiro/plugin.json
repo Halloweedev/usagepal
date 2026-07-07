@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#C09CFF",
+  "detect": [
+    { "file": "~/Library/Application Support/Kiro/User/globalStorage/state.vscdb" },
+    { "file": "~/.aws/sso/cache/kiro-auth-token.json" }
+  ],
   "lines": [
     { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Bonus Credits", "scope": "overview" },

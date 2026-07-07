@@ -1,5 +1,6 @@
 use crate::plugin_engine::runtime::{MetricLine, PluginOutput};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -7,7 +8,6 @@ use std::time::Duration;
 
 const CACHE_FILE_NAME: &str = "usage-api-cache.json";
 const SETTINGS_FILE_NAME: &str = "settings.json";
-const DEFAULT_ENABLED_PLUGINS: &[&str] = &["claude", "codex", "cursor"];
 /// Mirror of the frontend default (`DEFAULT_AUTO_UPDATE_INTERVAL` in
 /// src/lib/settings.ts). Used by the native auto-update scheduler when the
 /// stored setting is missing or unreadable.
@@ -23,7 +23,7 @@ const CACHE_WRITE_RETRY_MAX_DELAY: Duration = Duration::from_secs(30);
 // Types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CachedPluginSnapshot {
     pub provider_id: String,
@@ -53,6 +53,9 @@ pub(super) struct CacheState {
     pub snapshots: HashMap<String, CachedPluginSnapshot>,
     pub app_data_dir: PathBuf,
     pub known_plugin_ids: Vec<String>,
+    /// Plugin ids whose `detect` rules matched at startup. Used as the
+    /// default-enabled set when no settings are stored yet.
+    pub detected_ids: HashSet<String>,
     dirty_generation: u64,
     flushed_generation: u64,
     flush_scheduled: bool,
@@ -76,6 +79,7 @@ pub(super) fn cache_state() -> &'static Mutex<CacheState> {
             snapshots: HashMap::new(),
             app_data_dir: PathBuf::new(),
             known_plugin_ids: Vec::new(),
+            detected_ids: HashSet::new(),
             dirty_generation: 0,
             flushed_generation: 0,
             flush_scheduled: false,
@@ -229,12 +233,17 @@ fn flush_pending_cache_once() -> CacheFlushResult {
 // Public API: initialise + update cache
 // ---------------------------------------------------------------------------
 
-pub fn init(app_data_dir: &Path, known_plugin_ids: Vec<String>) {
+pub fn init(
+    app_data_dir: &Path,
+    known_plugin_ids: Vec<String>,
+    detected_ids: HashSet<String>,
+) {
     let snapshots = load_cache(app_data_dir);
     let mut state = cache_state().lock().expect("cache state poisoned");
     state.snapshots = snapshots;
     state.app_data_dir = app_data_dir.to_path_buf();
     state.known_plugin_ids = known_plugin_ids;
+    state.detected_ids = detected_ids;
     state.dirty_generation = 0;
     state.flushed_generation = 0;
     state.flush_scheduled = false;
@@ -330,18 +339,21 @@ pub fn read_auto_update_interval_minutes(app_data_dir: &Path) -> u64 {
 
 /// Ordered list of enabled plugin ids, shared by the HTTP API and the native
 /// scheduler. Settings order first, then remaining known ids; an id is enabled
-/// unless explicitly disabled (or, with no stored settings, only the defaults
-/// are enabled).
-fn enabled_ids_for(app_data_dir: &Path, known_plugin_ids: &[String]) -> Vec<String> {
+/// unless explicitly disabled (or, with no stored settings, only detected
+/// plugins are enabled — detected means the provider's credentials/config were
+/// found on this machine).
+fn enabled_ids_for(
+    app_data_dir: &Path,
+    known_plugin_ids: &[String],
+    detected_ids: &HashSet<String>,
+) -> Vec<String> {
     let (settings_order, disabled, has_settings) = read_plugin_settings(app_data_dir);
-
-    let default_enabled: HashSet<&str> = DEFAULT_ENABLED_PLUGINS.iter().copied().collect();
 
     let is_enabled = |id: &str| -> bool {
         if has_settings {
             !disabled.contains(id)
         } else {
-            default_enabled.contains(id)
+            detected_ids.contains(id)
         }
     };
 
@@ -363,8 +375,14 @@ fn enabled_ids_for(app_data_dir: &Path, known_plugin_ids: &[String]) -> Vec<Stri
 }
 
 /// Public wrapper for the native scheduler to learn which plugins to probe.
-pub fn read_enabled_plugin_ids(app_data_dir: &Path, known_plugin_ids: &[String]) -> Vec<String> {
-    enabled_ids_for(app_data_dir, known_plugin_ids)
+/// `detected_ids` is the set of plugin ids whose `detect` rules matched at
+/// startup — used as the default-enabled set when no settings are stored yet.
+pub fn read_enabled_plugin_ids(
+    app_data_dir: &Path,
+    known_plugin_ids: &[String],
+    detected_ids: &HashSet<String>,
+) -> Vec<String> {
+    enabled_ids_for(app_data_dir, known_plugin_ids, detected_ids)
 }
 
 /// Snapshot of the currently enabled, cached usage outputs — used by the
@@ -376,7 +394,7 @@ pub fn enabled_usage_snapshots() -> Vec<CachedPluginSnapshot> {
 
 /// Build the ordered list of enabled cached snapshots for GET /v1/usage.
 pub(super) fn enabled_snapshots_ordered(state: &CacheState) -> Vec<CachedPluginSnapshot> {
-    enabled_ids_for(&state.app_data_dir, &state.known_plugin_ids)
+    enabled_ids_for(&state.app_data_dir, &state.known_plugin_ids, &state.detected_ids)
         .into_iter()
         .filter_map(|id| state.snapshots.get(&id).cloned())
         .collect()
@@ -535,7 +553,7 @@ mod tests {
         let dir = temp_dir("debounced-cache");
         std::fs::create_dir_all(&dir).unwrap();
 
-        init(&dir, vec!["claude".to_string(), "codex".to_string()]);
+        init(&dir, vec!["claude".to_string(), "codex".to_string()], HashSet::new());
         cache_successful_output(&make_output("claude", "Claude"));
         cache_successful_output(&make_output("codex", "Codex"));
 
@@ -565,7 +583,7 @@ mod tests {
         let dir = temp_dir("flush-cache");
         std::fs::create_dir_all(&dir).unwrap();
 
-        init(&dir, vec!["claude".to_string()]);
+        init(&dir, vec!["claude".to_string()], HashSet::new());
         cache_successful_output(&make_output("claude", "Claude"));
         assert!(
             !dir.join(CACHE_FILE_NAME).exists(),
@@ -588,7 +606,7 @@ mod tests {
     fn failed_cache_write_stays_pending_for_retry() {
         let dir = temp_dir("cache-write-retry");
 
-        init(&dir, vec!["claude".to_string()]);
+        init(&dir, vec!["claude".to_string()], HashSet::new());
         {
             let mut state = cache_state().lock().unwrap();
             state
@@ -640,7 +658,7 @@ mod tests {
                 limit: 100.0,
                 format: ProgressFormat::Percent,
                 resets_at: Some("2026-03-26T12:00:00Z".to_string()),
-                period_duration_ms: Some(14400000),
+                period_duration_ms: Some(14400000.0),
                 color: None,
             }],
             fetched_at: "2026-03-26T08:00:00Z".to_string(),
@@ -688,7 +706,7 @@ mod tests {
     }
 
     #[test]
-    fn read_enabled_plugin_ids_defaults_without_settings() {
+    fn read_enabled_plugin_ids_defaults_to_detected_without_settings() {
         let dir = temp_dir("enabled-default");
         let known = vec![
             "claude".to_string(),
@@ -696,8 +714,14 @@ mod tests {
             "cursor".to_string(),
             "amp".to_string(),
         ];
-        let enabled = read_enabled_plugin_ids(&dir, &known);
-        assert_eq!(enabled, vec!["claude", "codex", "cursor"]);
+        // Only claude and codex are "detected" — cursor and amp are not, so a
+        // new user without stored settings gets only the detected providers.
+        let detected: HashSet<String> = ["claude", "codex"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let enabled = read_enabled_plugin_ids(&dir, &known, &detected);
+        assert_eq!(enabled, vec!["claude", "codex"]);
     }
 
     #[test]
@@ -714,7 +738,11 @@ mod tests {
             "codex".to_string(),
             "amp".to_string(),
         ];
-        let enabled = read_enabled_plugin_ids(&dir, &known);
+        let detected: HashSet<String> = ["claude", "codex", "amp"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let enabled = read_enabled_plugin_ids(&dir, &known, &detected);
         assert_eq!(enabled, vec!["amp", "claude"]);
         let _ = std::fs::remove_dir_all(&dir);
     }

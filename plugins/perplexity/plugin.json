@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#20808D",
+  "detect": [
+    { "file": "~/Library/Containers/ai.perplexity.mac/Data/Library/Caches/ai.perplexity.mac/Cache.db" },
+    { "file": "~/Library/Caches/ai.perplexity.mac/Cache.db" }
+  ],
   "lines": [
     { "type": "progress", "label": "API credits", "scope": "overview", "primaryOrder": 1 },
     { "type": "text", "label": "Queries", "scope": "overview" },

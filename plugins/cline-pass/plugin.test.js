@@ -42,6 +42,12 @@ const mockEnvKey = (ctx, key) => {
   ctx.host.env.get.mockImplementation((name) => (name === "CLINE_API_KEY" ? key : null))
 }
 
+const mockUsagePalKeyFile = (ctx, text = JSON.stringify({ apiKey: "usagepal-cline-key" })) => {
+  const path = "~/.config/usagepal/cline-pass.json"
+  ctx.host.fs.exists = (p) => p === path
+  ctx.host.fs.readText = (p) => (p === path ? text : null)
+}
+
 const ME_RESPONSE = { id: "usr-abc123", email: "test@test.com", displayName: "Test" }
 // Balance is in micro-USD: 500000 = $0.50
 const BALANCE_RESPONSE = { balance: 500000, userId: "usr-abc123" }
@@ -158,6 +164,19 @@ describe("cline-pass plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(findLine(result, "Session")).toBeDefined()
+  })
+
+  it("loads token from UsagePal-saved API key before env var", async () => {
+    const ctx = makeCtxWithNow()
+    mockUsagePalKeyFile(ctx)
+    mockEnvKey(ctx, "env-key-should-not-be-used")
+    mockEndpoints(ctx)
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+    const authCall = ctx.host.http.request.mock.calls.find(
+      (c) => c[0].headers && c[0].headers.Authorization
+    )
+    expect(authCall[0].headers.Authorization).toBe("Bearer usagepal-cline-key")
   })
 
   it("strips the workos: prefix from OAuth tokens", async () => {

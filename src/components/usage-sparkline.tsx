@@ -3,6 +3,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
 import type { BarChartPoint } from "@/lib/plugin-types"
 
+type UsableBarChartPoint = BarChartPoint & { value: number }
+
 type UsageSparklineProps = {
   label: string
   points: BarChartPoint[]
@@ -10,13 +12,13 @@ type UsageSparklineProps = {
   color?: string
 }
 
-const pointLabel = (point: BarChartPoint) => point.valueLabel ?? formatCountNumber(point.value)
+const pointLabel = (point: UsableBarChartPoint) => point.valueLabel ?? formatCountNumber(point.value)
 
 // Inline, glanceable usage history that matches the card's row rhythm.
 // Hover/focus reveals a larger, readable graph (detail-on-demand); hovering a
 // day's bar in that graph shows exactly how much was used that day.
 export function UsageSparkline({ label, points, note, color }: UsageSparklineProps) {
-  const valid = points.filter((point) => Number.isFinite(point.value) && point.value >= 0)
+  const valid = points.filter((point): point is UsableBarChartPoint => point.value != null && Number.isFinite(point.value) && point.value >= 0)
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   if (valid.length === 0) return null
 
@@ -29,7 +31,7 @@ export function UsageSparkline({ label, points, note, color }: UsageSparklinePro
   const active = activeIndex != null ? valid[activeIndex] : null
   const readout = active ? `${active.label} · ${pointLabel(active)}` : `peak ${pointLabel(peak)}`
 
-  const barStyle = (point: BarChartPoint, minPercent: number): CSSProperties => {
+  const barStyle = (point: UsableBarChartPoint, minPercent: number): CSSProperties => {
     const ratio = clamp01(point.value / maxValue)
     const height = point.value > 0 ? Math.max(minPercent, ratio * 100) : minPercent / 2
     const style: CSSProperties = { height: `${height}%` }

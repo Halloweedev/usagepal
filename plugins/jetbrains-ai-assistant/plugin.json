@@ -6,6 +6,7 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#7d5fe6",
+  "detect": [{ "file": "~/.config/JetBrains" }],
   "lines": [
     { "type": "progress", "label": "Quota", "scope": "overview", "primaryOrder": 1 },
     { "type": "text", "label": "Used", "scope": "detail" },

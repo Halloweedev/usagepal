@@ -1,5 +1,5 @@
 import { Fragment, useMemo } from "react"
-import { AlertCircle, ExternalLink, Hourglass, RefreshCw } from "lucide-react"
+import { AlertCircle, ExternalLink, Flame, Hourglass, RefreshCw } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -46,13 +46,13 @@ interface ProviderCardProps {
   onResetTimerDisplayModeToggle?: () => void
 }
 
-const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
-  ahead: { dotClass: "bg-green-500" },
-  "on-track": { dotClass: "bg-yellow-500" },
-  behind: { dotClass: "bg-red-500" },
+// "behind" (run out soon) renders a flame instead of a dot — see PaceIndicator.
+const PACE_DOT_CLASS: Record<Exclude<PaceStatus, "behind">, string> = {
+  ahead: "bg-green-500",
+  "on-track": "bg-yellow-500",
 }
 
-/** Colored dot indicator showing pace status */
+/** Colored dot indicator showing pace status; a flame for the "run out soon" state */
 function PaceIndicator({
   status,
   detailText,
@@ -62,20 +62,26 @@ function PaceIndicator({
   detailText?: string | null
   isLimitReached?: boolean
 }) {
-  const colorClass = PACE_VISUALS[status].dotClass
-
   const statusText = getPaceStatusText(status)
+  const isBehind = status === "behind"
+  const ariaLabel = isLimitReached ? "Limit reached" : statusText
 
   return (
     <Tooltip>
       <TooltipTrigger
-        render={(props) => (
-          <span
-            {...props}
-            className={`inline-block w-2 h-2 rounded-full ${colorClass}`}
-            aria-label={isLimitReached ? "Limit reached" : statusText}
-          />
-        )}
+        render={(props) =>
+          isBehind ? (
+            <span {...props} className="inline-flex items-center" aria-label={ariaLabel}>
+              <Flame className="h-3.5 w-3.5 text-red-500" />
+            </span>
+          ) : (
+            <span
+              {...props}
+              className={`inline-block w-2 h-2 rounded-full ${PACE_DOT_CLASS[status]}`}
+              aria-label={ariaLabel}
+            />
+          )
+        }
       />
       <TooltipContent side="top" className="text-xs text-center">
         {isLimitReached ? (
@@ -130,24 +136,23 @@ export function ProviderCard({
   // decluttered rendering: percent only, costs in a tooltip.
   const manifestLabels = useMemo(() => new Set(skeletonLines.map((line) => line.label)), [skeletonLines])
 
-  // Filter lines based on scope - match by label since runtime lines can differ from manifest
-  const overviewLabels = new Set(
-    skeletonLines
-      .filter(line => line.scope === "overview")
-      .map(line => line.label)
+  // Overview scope shows only manifest lines marked "overview". Runtime lines
+  // are matched by label so runtime-only lines (e.g. model breakdowns) stay
+  // detail-only. The detail view (scopeFilter "all") shows every line.
+  const isOverview = scopeFilter === "overview"
+  const overviewLabels = useMemo(
+    () => new Set(skeletonLines.filter((line) => line.scope === "overview").map((line) => line.label)),
+    [skeletonLines],
   )
-  const filteredSkeletonLines = scopeFilter === "all"
-    ? skeletonLines
-    : skeletonLines.filter(line => line.scope === "overview")
-  const filteredLines = scopeFilter === "all"
-    ? lines
-    : lines.filter(line => overviewLabels.has(line.label))
+  const filteredSkeletonLines = isOverview
+    ? skeletonLines.filter((line) => line.scope === "overview")
+    : skeletonLines
+  const filteredLines = isOverview ? lines.filter((line) => overviewLabels.has(line.label)) : lines
 
   // In overview scope, a metric that has crossed its escalation threshold takes
   // over the card: show only it, replacing the normal overview lines. The detail
-  // view (scopeFilter "all") always shows every line, so it is left untouched.
-  const escalatedLine =
-    scopeFilter === "overview" ? selectEscalatedLine(lines, skeletonLines) : undefined
+  // view is left untouched.
+  const escalatedLine = isOverview ? selectEscalatedLine(lines, skeletonLines) : undefined
   const displayLines = escalatedLine ? [escalatedLine] : filteredLines
 
   const hasResetCountdown = displayLines.some(
@@ -543,11 +548,13 @@ function MetricLineRenderer({
 
   if (line.type === "barChart") {
     return (
-      <UsageSparkline label={line.label} points={line.points} note={line.note} color={line.color} />
+      <UsageSparkline label={line.label} points={line.points} note={line.note ?? undefined} color={line.color ?? undefined} />
     )
   }
 
   if (line.type === "progress") {
+    if (line.used == null || line.limit == null) return null
+
     const resetsAtMs = line.resetsAt ? Date.parse(line.resetsAt) : Number.NaN
     const periodDurationMs = line.periodDurationMs
     const hasPaceContext = Number.isFinite(resetsAtMs) && Number.isFinite(periodDurationMs)
@@ -642,7 +649,7 @@ function MetricLineRenderer({
         </div>
         <Progress
           value={percent}
-          indicatorColor={line.color}
+          indicatorColor={line.color ?? undefined}
           markerValue={paceMarkerValue}
           refreshing={refreshing}
         />

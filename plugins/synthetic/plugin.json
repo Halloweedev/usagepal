@@ -6,6 +6,12 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#000000",
+  "detect": [
+    { "file": "~/.pi/agent/auth.json" },
+    { "file": "~/.local/share/opencode/auth.json" },
+    { "env": "SYNTHETIC_API_KEY" },
+    { "env": "PI_CODING_AGENT_DIR" }
+  ],
   "lines": [
     { "type": "progress", "label": "5h Rate Limit", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Mana Bar", "scope": "overview" },

@@ -5,6 +5,13 @@ import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
 import { Logo } from "@/components/logo"
 
+type ProgressMetricLine = Extract<MetricLine, { type: "progress" }> & { used: number; limit: number }
+type UsableBarChartPoint = Extract<MetricLine, { type: "barChart" }>["points"][number] & { value: number }
+
+function hasProgressValues(line: Extract<MetricLine, { type: "progress" }>): line is ProgressMetricLine {
+  return line.used != null && line.limit != null
+}
+
 export type ShareCardTheme = "dark" | "light"
 
 export type ShareCardProps = {
@@ -47,7 +54,7 @@ const THEME_STYLES: Record<ShareCardTheme, ThemeStyle> = {
   },
 }
 
-function progressValueLabel(line: Extract<MetricLine, { type: "progress" }>, percent: number): string {
+function progressValueLabel(line: ProgressMetricLine, percent: number): string {
   if (line.format.kind === "percent") return `${Math.round(percent)}%`
   if (line.format.kind === "dollars") {
     return `$${formatCountNumber(line.used)} / $${formatCountNumber(line.limit)}`
@@ -60,7 +67,7 @@ function ProgressRow({
   styles,
   brandColor,
 }: {
-  line: Extract<MetricLine, { type: "progress" }>
+  line: ProgressMetricLine
   styles: ThemeStyle
   brandColor?: string
 }) {
@@ -182,7 +189,7 @@ function BarChartRow({
   styles: ThemeStyle
   brandColor?: string
 }) {
-  const valid = line.points.filter((point) => Number.isFinite(point.value) && point.value >= 0)
+  const valid = line.points.filter((point): point is UsableBarChartPoint => point.value != null && Number.isFinite(point.value) && point.value >= 0)
   const maxValue = Math.max(1, ...valid.map((point) => point.value))
 
   // Deliberately unlabeled: in a usage card the trend bars read on their own,
@@ -280,6 +287,7 @@ export function ShareCard({
         <div className="flex flex-col gap-3">
           {otherLines.map((line, index) => {
             if (line.type === "progress") {
+              if (!hasProgressValues(line)) return null
               return <ProgressRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
             }
             if (line.type === "text") {

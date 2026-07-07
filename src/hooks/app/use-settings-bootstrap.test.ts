@@ -146,7 +146,7 @@ describe("useSettingsBootstrap", () => {
         iconUrl: "/codex.svg",
         brandColor: "#000000",
         lines: [],
-        primaryCandidates: [],
+        primaryCandidates: [], detected: true,
       },
     ])
     loadPluginSettingsMock.mockResolvedValue({ order: ["codex"], disabled: [] })
@@ -262,7 +262,7 @@ describe("useSettingsBootstrap", () => {
         iconUrl: "/devin.svg",
         brandColor: "#000000",
         lines: [],
-        primaryCandidates: [],
+        primaryCandidates: [], detected: true,
       },
     ]
 

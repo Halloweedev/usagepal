@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#94A3B8",
+  "detect": [
+    { "file": "~/.config/usagepal/openrouter.json" },
+    { "file": "~/.config/openrouter/key.json" }
+  ],
   "links": [
     { "label": "Activity", "url": "https://openrouter.ai/activity" },
     { "label": "Credits", "url": "https://openrouter.ai/settings/credits" }

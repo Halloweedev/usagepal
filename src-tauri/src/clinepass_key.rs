@@ -1,20 +1,15 @@
-//! In-app management of the OpenRouter API key. OpenRouter has no companion CLI that leaves a
-//! credential on disk, so the user supplies one. The Settings → API Keys card calls these commands to
-//! write / clear the plaintext config file the `openrouter` plugin already reads
-//! (`~/.config/usagepal/openrouter.json`, JSON `{"apiKey": "..."}`).
-//!
-//! The saved key is never read back into the webview — `key_status` returns only booleans — so the
-//! secret leaves the disk only for the outbound provider request the plugin makes.
+//! In-app management of the ClinePass API key. ClinePass can read the Cline app's own OAuth config,
+//! a UsagePal-managed API key, or `CLINE_API_KEY`. This module writes / clears only the
+//! UsagePal-managed plaintext config file (`~/.config/usagepal/cline-pass.json`, JSON
+//! `{"apiKey":"..."}`).
 
 use std::path::PathBuf;
 
 use serde::Serialize;
 use specta::Type;
 
-/// Config files the plugin reads, in the same order. The first is the one this card writes.
-const CONFIG_RELATIVE_PATHS: [&str; 2] = [".config/usagepal/openrouter.json", ".config/openrouter/key.json"];
-/// Environment variables the plugin falls back to, surfaced as the "from environment" indicator.
-const ENV_NAMES: [&str; 2] = ["OPENROUTER_API_KEY", "OPENROUTER_KEY"];
+const CONFIG_RELATIVE_PATHS: [&str; 1] = [".config/usagepal/cline-pass.json"];
+const ENV_NAMES: [&str; 1] = ["CLINE_API_KEY"];
 
 fn config_paths() -> Vec<PathBuf> {
     match dirs::home_dir() {
@@ -23,12 +18,10 @@ fn config_paths() -> Vec<PathBuf> {
     }
 }
 
-/// The primary path this card writes to (the first path the plugin checks).
 fn primary_path() -> Option<PathBuf> {
     config_paths().into_iter().next()
 }
 
-/// Extract a key from a config file: JSON `apiKey`/`api_key`/`key`, or a plain-text key file.
 fn key_from_text(text: &str) -> Option<String> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -61,25 +54,22 @@ fn env_has_key() -> bool {
         .any(|name| std::env::var(name).ok().map(|v| !v.trim().is_empty()).unwrap_or(false))
 }
 
-/// Which sources currently hold a key — drives the API Keys card state without exposing the key.
 #[derive(Serialize, Type)]
 #[serde(rename_all = "camelCase")]
-pub struct KeyStatus {
-    /// A key is saved in a config file.
+pub struct ClinePassKeyStatus {
     pub saved: bool,
-    /// A key is present in the environment (a saved key takes precedence — the plugin checks files first).
     pub from_env: bool,
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn openrouter_key_status() -> KeyStatus {
-    KeyStatus { saved: file_has_key(), from_env: env_has_key() }
+pub fn clinepass_key_status() -> ClinePassKeyStatus {
+    ClinePassKeyStatus { saved: file_has_key(), from_env: env_has_key() }
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn save_openrouter_key(key: String) -> Result<(), String> {
+pub fn save_clinepass_key(key: String) -> Result<(), String> {
     let trimmed = key.trim();
     if trimmed.is_empty() {
         return Err("API key is empty.".to_string());
@@ -95,8 +85,7 @@ pub fn save_openrouter_key(key: String) -> Result<(), String> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn clear_openrouter_key() -> Result<(), String> {
-    // Remove from every path the plugin reads, so a key in the alternate file doesn't resurface.
+pub fn clear_clinepass_key() -> Result<(), String> {
     for path in config_paths() {
         if path.exists() {
             std::fs::remove_file(&path).map_err(|e| format!("Couldn't remove the API key: {e}"))?;
@@ -111,14 +100,14 @@ mod tests {
 
     #[test]
     fn key_from_json_object() {
-        assert_eq!(key_from_text(r#"{"apiKey":"sk-or-1"}"#).as_deref(), Some("sk-or-1"));
-        assert_eq!(key_from_text(r#"{"api_key":" sk-or-2 "}"#).as_deref(), Some("sk-or-2"));
-        assert_eq!(key_from_text(r#"{"key":"sk-or-3"}"#).as_deref(), Some("sk-or-3"));
+        assert_eq!(key_from_text(r#"{"apiKey":"cline-1"}"#).as_deref(), Some("cline-1"));
+        assert_eq!(key_from_text(r#"{"api_key":" cline-2 "}"#).as_deref(), Some("cline-2"));
+        assert_eq!(key_from_text(r#"{"key":"cline-3"}"#).as_deref(), Some("cline-3"));
     }
 
     #[test]
     fn key_from_plain_text() {
-        assert_eq!(key_from_text("  sk-or-plain\n").as_deref(), Some("sk-or-plain"));
+        assert_eq!(key_from_text("  cline-plain\n").as_deref(), Some("cline-plain"));
     }
 
     #[test]

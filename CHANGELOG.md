@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.7.30-beta.2
+
+### New Features
+- Add machine-based plugin detection so new installs only enable providers found on the current Mac by @Halloweedev
+- Add a ClinePass API key dialog so users can save a key in UsagePal without installing Cline by @Halloweedev
+
+### Improvements
+- Generate frontend IPC types from Rust with tauri-specta and keep manual invoke/listen calls by @Halloweedev
+- Clean up provider overview filtering and replace the close-to-running-out dot with a flame indicator by @Halloweedev
+
+### Documentation
+- Document generated IPC bindings, plugin detection, and app-managed provider key files by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.30-beta.1...v0.7.30-beta.2](https://github.com/Halloweedev/usagepal/compare/v0.7.30-beta.1...v0.7.30-beta.2)
+
 ## v0.7.30-beta.1
 
 ### New Features

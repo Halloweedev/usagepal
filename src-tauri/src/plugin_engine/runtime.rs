@@ -2,12 +2,13 @@ use crate::plugin_engine::host_api;
 use crate::plugin_engine::manifest::LoadedPlugin;
 use rquickjs::{Array, Context, Ctx, Error, Object, Promise, Runtime, Value};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 const PROBE_TIMEOUT_SECS: u64 = 30;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ProgressFormat {
     Percent,
@@ -15,7 +16,7 @@ pub enum ProgressFormat {
     Count { suffix: String },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BarChartPoint {
     label: String,
@@ -24,7 +25,7 @@ pub struct BarChartPoint {
     value_label: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum MetricLine {
     Text {
@@ -43,7 +44,7 @@ pub enum MetricLine {
         #[serde(rename = "resetsAt")]
         resets_at: Option<String>,
         #[serde(rename = "periodDurationMs")]
-        period_duration_ms: Option<u64>,
+        period_duration_ms: Option<f64>,
         color: Option<String>,
     },
     Badge {
@@ -61,7 +62,7 @@ pub enum MetricLine {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginOutput {
     pub provider_id: String,
@@ -470,14 +471,14 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                 };
 
                 // Parse optional periodDurationMs
-                let period_duration_ms: Option<u64> = match line.get::<_, Value>("periodDurationMs")
+                let period_duration_ms: Option<f64> = match line.get::<_, Value>("periodDurationMs")
                 {
                     Ok(val) => {
                         if val.is_null() || val.is_undefined() {
                             None
                         } else if let Some(n) = val.as_number() {
-                            let ms = n as u64;
-                            if ms > 0 {
+                            let ms = n as f64;
+                            if ms > 0.0 {
                                 Some(ms)
                             } else {
                                 log::warn!(
@@ -749,6 +750,7 @@ mod tests {
                 brand_color: None,
                 lines: vec![],
                 links: vec![],
+                detect: vec![],
             },
             plugin_dir: PathBuf::from("."),
             entry_script: entry_script.to_string(),

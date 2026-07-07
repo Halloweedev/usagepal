@@ -1,4 +1,5 @@
 mod beta_updater;
+mod clinepass_key;
 mod config;
 mod local_http_api;
 mod log_path;
@@ -27,6 +28,7 @@ fn unix_now_ms() -> u64 {
 }
 
 use serde::Serialize;
+use specta::Type;
 use tauri::{Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_log::{Target, TargetKind};
@@ -71,7 +73,7 @@ pub struct AppState {
     pub app_version: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginMeta {
     pub id: String,
@@ -86,9 +88,13 @@ pub struct PluginMeta {
     /// Label of the progress line marked `"period": "weekly"`, if any.
     /// Drives the menubar weekly-metric preference.
     pub weekly_candidate: Option<String>,
+    /// Whether the provider's credentials/config were found on this machine.
+    /// New users get detected plugins enabled by default; undetected ones start
+    /// disabled so they don't show error cards for providers they don't use.
+    pub detected: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ManifestLineDto {
     #[serde(rename = "type")]
@@ -98,39 +104,43 @@ pub struct ManifestLineDto {
     pub escalate_at_percent: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginLinkDto {
     pub label: String,
     pub url: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProbeBatchStarted {
     pub batch_id: String,
     pub plugin_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type, tauri_specta::Event)]
+#[tauri_specta(event_name = "probe:result")]
 #[serde(rename_all = "camelCase")]
 pub struct ProbeResult {
     pub batch_id: String,
     pub output: plugin_engine::runtime::PluginOutput,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type, tauri_specta::Event)]
+#[tauri_specta(event_name = "probe:batch-complete")]
 #[serde(rename_all = "camelCase")]
 pub struct ProbeBatchComplete {
     pub batch_id: String,
 }
 
 #[tauri::command]
+#[specta::specta]
 fn init_panel(app_handle: tauri::AppHandle) {
     panel::init(&app_handle).expect("Failed to initialize panel");
 }
 
 #[tauri::command]
+#[specta::specta]
 fn hide_panel(app_handle: tauri::AppHandle) {
     use tauri_nspanel::ManagerExt;
     if let Ok(panel) = app_handle.get_webview_panel("main") {
@@ -139,6 +149,7 @@ fn hide_panel(app_handle: tauri::AppHandle) {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn open_devtools(#[allow(unused)] app_handle: tauri::AppHandle) {
     #[cfg(debug_assertions)]
     {
@@ -161,6 +172,7 @@ fn parse_log_level(level: &str) -> Option<log::LevelFilter> {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn set_log_level(app_handle: tauri::AppHandle, level: String) -> Result<(), String> {
     let selected_level = parse_log_level(&level).ok_or_else(|| format!("invalid log level: {level}"))?;
     log::set_max_level(selected_level);
@@ -176,6 +188,7 @@ fn set_log_level(app_handle: tauri::AppHandle, level: String) -> Result<(), Stri
 }
 
 #[tauri::command]
+#[specta::specta]
 fn copy_log_path(app_handle: tauri::AppHandle) -> Result<(), String> {
     let path = log_path::for_app(&app_handle).map_err(|e| e.to_string())?;
     app_handle
@@ -185,11 +198,13 @@ fn copy_log_path(app_handle: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn quit_app(app_handle: tauri::AppHandle) {
     app_handle.exit(0);
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn start_probe_batch(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, Mutex<AppState>>,
@@ -436,6 +451,7 @@ fn start_auto_update_scheduler(
     plugins: Vec<Arc<plugin_engine::manifest::LoadedPlugin>>,
     app_data_dir: PathBuf,
     app_version: String,
+    detected_ids: HashSet<String>,
 ) {
     let known_plugin_ids: Vec<String> = plugins.iter().map(|p| p.manifest.id.clone()).collect();
 
@@ -481,7 +497,7 @@ fn start_auto_update_scheduler(
             // below (including the early `continue`s) starts a fresh interval.
             cycle_start_ms = unix_now_ms();
 
-            let enabled = local_http_api::read_enabled_plugin_ids(&app_data_dir, &known_plugin_ids);
+            let enabled = local_http_api::read_enabled_plugin_ids(&app_data_dir, &known_plugin_ids, &detected_ids);
             if enabled.is_empty() {
                 continue;
             }
@@ -517,6 +533,7 @@ fn start_auto_update_scheduler(
 /// hydrate immediately on open (or after the WebView was throttled while
 /// hidden) without waiting for a fresh probe.
 #[tauri::command]
+#[specta::specta]
 fn get_cached_usage() -> Vec<local_http_api::CachedPluginSnapshot> {
     local_http_api::enabled_usage_snapshots()
 }
@@ -525,14 +542,16 @@ fn get_cached_usage() -> Vec<local_http_api::CachedPluginSnapshot> {
 /// scheduler hasn't set it yet. Lets the UI countdown track the real native
 /// schedule instead of resetting on every panel open.
 #[tauri::command]
-fn get_next_update_at() -> Option<u64> {
+#[specta::specta]
+fn get_next_update_at() -> Option<f64> {
     match NEXT_UPDATE_AT_MS.load(Ordering::Relaxed) {
         0 => None,
-        ms => Some(ms),
+        ms => Some(ms as f64),
     }
 }
 
 #[tauri::command]
+#[specta::specta]
 fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     log_path::for_app(&app_handle).map(|path| path.to_string_lossy().to_string())
 }
@@ -540,6 +559,7 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
 /// Open the macOS System Settings → Notifications pane. The opener plugin doesn't handle the
 /// `x-apple.systempreferences:` scheme, so shell out to `open`, which does.
 #[tauri::command]
+#[specta::specta]
 fn open_notification_settings() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -552,6 +572,7 @@ fn open_notification_settings() -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 fn send_pace_notification(
     app_handle: tauri::AppHandle,
     title: String,
@@ -613,6 +634,7 @@ fn send_pace_notification_impl(
 /// Pass `null` to disable the shortcut, or a shortcut string like "CommandOrControl+Shift+U".
 #[cfg(desktop)]
 #[tauri::command]
+#[specta::specta]
 fn update_global_shortcut(
     app_handle: tauri::AppHandle,
     shortcut: Option<String>,
@@ -669,6 +691,7 @@ fn update_global_shortcut(
 }
 
 #[tauri::command]
+#[specta::specta]
 fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
     let plugins = {
         let locked = state.lock().expect("plugin state poisoned");
@@ -694,6 +717,8 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
             let weekly_candidate: Option<String> =
                 plugin_engine::manifest::weekly_candidate(&plugin.manifest.lines)
                     .map(str::to_string);
+
+            let detected = plugin_engine::manifest::is_plugin_detected(&plugin.manifest);
 
             PluginMeta {
                 id: plugin.manifest.id.clone(),
@@ -722,6 +747,7 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                     .collect(),
                 primary_candidates,
                 weekly_candidate,
+                detected,
             }
         })
         .collect()
@@ -729,6 +755,48 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
+        .commands(tauri_specta::collect_commands![
+            init_panel,
+            hide_panel,
+            open_devtools,
+            set_log_level,
+            copy_log_path,
+            quit_app,
+            start_probe_batch,
+            list_plugins,
+            get_log_path,
+            get_cached_usage,
+            get_next_update_at,
+            update_global_shortcut,
+            open_notification_settings,
+            send_pace_notification,
+            beta_updater::check_beta_update,
+            beta_updater::download_beta_update,
+            beta_updater::install_beta_update,
+            clinepass_key::clinepass_key_status,
+            clinepass_key::save_clinepass_key,
+            clinepass_key::clear_clinepass_key,
+            openrouter_key::openrouter_key_status,
+            openrouter_key::save_openrouter_key,
+            openrouter_key::clear_openrouter_key
+        ])
+        .events(tauri_specta::collect_events![
+            ProbeResult,
+            ProbeBatchComplete,
+            beta_updater::BetaUpdateProgress
+        ]);
+
+    #[cfg(debug_assertions)]
+    {
+        specta_builder
+            .export(
+                specta_typescript::Typescript::default(),
+                "../src/bindings.ts",
+            )
+            .expect("Failed to export TypeScript bindings");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -756,33 +824,14 @@ pub fn run() {
         )
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(tauri_plugin_global_shortcut::Builder::default().build())
+        .plugin(tauri_plugin_autostart::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_keylight::init(crate::keylight::config()))
-        .invoke_handler(tauri::generate_handler![
-            init_panel,
-            hide_panel,
-            open_devtools,
-            set_log_level,
-            copy_log_path,
-            quit_app,
-            start_probe_batch,
-            list_plugins,
-            get_log_path,
-            get_cached_usage,
-            get_next_update_at,
-            update_global_shortcut,
-            open_notification_settings,
-            send_pace_notification,
-            beta_updater::check_beta_update,
-            beta_updater::download_beta_update,
-            beta_updater::install_beta_update,
-            openrouter_key::openrouter_key_status,
-            openrouter_key::save_openrouter_key,
-            openrouter_key::clear_openrouter_key
-        ])
-        .setup(|app| {
+        .invoke_handler(specta_builder.invoke_handler())
+        .setup(move |app| {
+            specta_builder.mount_events(app);
+
             std::thread::spawn(crate::keylight::report_on_launch);
 
             #[cfg(target_os = "macos")]
@@ -813,6 +862,15 @@ pub fn run() {
             let (_, plugins) = plugin_engine::initialize_plugins(&app_data_dir, &resource_dir);
             let known_plugin_ids: Vec<String> =
                 plugins.iter().map(|p| p.manifest.id.clone()).collect();
+            let detected_ids: HashSet<String> = plugins
+                .iter()
+                .filter(|p| plugin_engine::manifest::is_plugin_detected(&p.manifest))
+                .map(|p| p.manifest.id.clone())
+                .collect();
+            log::debug!(
+                "detected plugins: {:?}",
+                detected_ids.iter().cloned().collect::<Vec<_>>()
+            );
             let plugin_arcs: Vec<Arc<plugin_engine::manifest::LoadedPlugin>> =
                 plugins.into_iter().map(Arc::new).collect();
             let scheduler_plugins = plugin_arcs.clone();
@@ -822,7 +880,7 @@ pub fn run() {
                 app_version: app.package_info().version.to_string(),
             }));
 
-            local_http_api::init(&app_data_dir, known_plugin_ids);
+            local_http_api::init(&app_data_dir, known_plugin_ids, detected_ids.clone());
             local_http_api::start_server();
 
             // Native auto-update scheduler. Runs probes on a background thread so
@@ -832,6 +890,7 @@ pub fn run() {
                 scheduler_plugins,
                 app_data_dir.clone(),
                 version.clone(),
+                detected_ids,
             );
 
             tray::create(app.handle())?;
@@ -878,6 +937,55 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+/// Generates `src/bindings.ts` from the specta command/event registry.
+/// Run with: `cargo test export_bindings`
+#[cfg(test)]
+fn export_bindings() {
+    let builder = tauri_specta::Builder::<tauri::Wry>::new()
+        .commands(tauri_specta::collect_commands![
+            init_panel,
+            hide_panel,
+            open_devtools,
+            set_log_level,
+            copy_log_path,
+            quit_app,
+            start_probe_batch,
+            list_plugins,
+            get_log_path,
+            get_cached_usage,
+            get_next_update_at,
+            update_global_shortcut,
+            open_notification_settings,
+            send_pace_notification,
+            beta_updater::check_beta_update,
+            beta_updater::download_beta_update,
+            beta_updater::install_beta_update,
+            clinepass_key::clinepass_key_status,
+            clinepass_key::save_clinepass_key,
+            clinepass_key::clear_clinepass_key,
+            openrouter_key::openrouter_key_status,
+            openrouter_key::save_openrouter_key,
+            openrouter_key::clear_openrouter_key
+        ])
+        .events(tauri_specta::collect_events![
+            ProbeResult,
+            ProbeBatchComplete,
+            beta_updater::BetaUpdateProgress
+        ]);
+
+    builder
+        .export(
+            specta_typescript::Typescript::default(),
+            "../src/bindings.ts",
+        )
+        .expect("Failed to export TypeScript bindings");
+}
+
+#[test]
+fn test_export_bindings() {
+    export_bindings();
 }
 
 #[cfg(test)]

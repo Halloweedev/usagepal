@@ -5,6 +5,7 @@ use std::sync::{
 
 use reqwest::Url;
 use serde::Serialize;
+use specta::Type;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
@@ -22,17 +23,18 @@ fn pending_update_slot() -> &'static Mutex<Option<PendingBetaUpdate>> {
     SLOT.get_or_init(|| Mutex::new(None))
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BetaUpdateInfo {
     pub version: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type, tauri_specta::Event)]
+#[tauri_specta(event_name = "beta-update:progress")]
 #[serde(tag = "event", content = "data")]
 pub enum BetaUpdateProgress {
-    Started { content_length: Option<u64> },
-    Progress { chunk_length: usize },
+    Started { content_length: Option<f64> },
+    Progress { chunk_length: f64 },
     Finished,
 }
 
@@ -42,6 +44,7 @@ fn beta_endpoint() -> Result<Url, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn check_beta_update(app_handle: AppHandle) -> Result<Option<BetaUpdateInfo>, String> {
     let updater = app_handle
         .updater_builder()
@@ -73,6 +76,7 @@ pub async fn check_beta_update(app_handle: AppHandle) -> Result<Option<BetaUpdat
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn download_beta_update(app_handle: AppHandle) -> Result<(), String> {
     let update = pending_update_slot()
         .lock()
@@ -88,12 +92,12 @@ pub async fn download_beta_update(app_handle: AppHandle) -> Result<(), String> {
                 if !started.swap(true, Ordering::Relaxed) {
                     let _ = app_handle.emit(
                         BETA_UPDATE_PROGRESS_EVENT,
-                        BetaUpdateProgress::Started { content_length },
+                        BetaUpdateProgress::Started { content_length: content_length.map(|v| v as f64) },
                     );
                 }
                 let _ = app_handle.emit(
                     BETA_UPDATE_PROGRESS_EVENT,
-                    BetaUpdateProgress::Progress { chunk_length },
+                    BetaUpdateProgress::Progress { chunk_length: chunk_length as f64 },
                 );
             },
             || {
@@ -115,6 +119,7 @@ pub async fn download_beta_update(app_handle: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn install_beta_update() -> Result<(), String> {
     let pending = pending_update_slot()
         .lock()

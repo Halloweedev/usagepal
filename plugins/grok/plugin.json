@@ -6,6 +6,7 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#000000",
+  "detect": [{ "file": "~/.grok/auth.json" }],
   "links": [
     { "label": "Usage", "url": "https://grok.com/?_s=usage" }
   ],

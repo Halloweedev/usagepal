@@ -484,7 +484,7 @@ describe("App", () => {
             id: "a",
             name: "Alpha",
             iconUrl: "icon-a",
-            primaryCandidates: ["Session"],
+            primaryCandidates: ["Session"], detected: true,
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
         ]
@@ -515,14 +515,14 @@ describe("App", () => {
             id: "a",
             name: "Alpha",
             iconUrl: "icon-a",
-            primaryCandidates: ["Session"],
+            primaryCandidates: ["Session"], detected: true,
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
           {
             id: "b",
             name: "Beta",
             iconUrl: "icon-b",
-            primaryCandidates: ["Session"],
+            primaryCandidates: ["Session"], detected: true,
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
         ]
@@ -549,14 +549,14 @@ describe("App", () => {
             id: "a",
             name: "Alpha",
             iconUrl: "icon-a",
-            primaryCandidates: ["Session"],
+            primaryCandidates: ["Session"], detected: true,
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
           {
             id: "b",
             name: "Beta",
             iconUrl: "icon-b",
-            primaryCandidates: ["Session"],
+            primaryCandidates: ["Session"], detected: true,
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
         ]
@@ -585,14 +585,14 @@ describe("App", () => {
             id: "a",
             name: "Alpha",
             iconUrl: "icon-a",
-            primaryCandidates: ["Session"],
+            primaryCandidates: ["Session"], detected: true,
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
           {
             id: "b",
             name: "Beta",
             iconUrl: "icon-b",
-            primaryCandidates: ["Session"],
+            primaryCandidates: ["Session"], detected: true,
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
         ]
@@ -640,14 +640,14 @@ describe("App", () => {
             id: "a",
             name: "Alpha",
             iconUrl: "icon-a",
-            primaryCandidates: ["Session"],
+            primaryCandidates: ["Session"], detected: true,
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
           {
             id: "b",
             name: "Beta",
             iconUrl: "icon-b",
-            primaryCandidates: ["Session"],
+            primaryCandidates: ["Session"], detected: true,
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
         ]
@@ -763,7 +763,7 @@ describe("App", () => {
             id: "a",
             name: "Alpha",
             iconUrl: "icon-a",
-            primaryCandidates: ["Session"],
+            primaryCandidates: ["Session"], detected: true,
             weeklyCandidate: "Weekly",
             lines: [
               { type: "progress", label: "Session", scope: "overview" },
@@ -811,7 +811,7 @@ describe("App", () => {
             id: "claude",
             name: "Claude",
             iconUrl: "icon-claude",
-            primaryCandidates: ["Session"],
+            primaryCandidates: ["Session"], detected: true,
             weeklyCandidate: "Weekly",
             lines: [
               { type: "progress", label: "Session", scope: "overview" },
@@ -822,7 +822,7 @@ describe("App", () => {
             id: "cursor",
             name: "Cursor",
             iconUrl: "icon-cursor",
-            primaryCandidates: ["Credits"],
+            primaryCandidates: ["Credits"], detected: true,
             lines: [{ type: "progress", label: "Credits", scope: "overview" }],
           },
         ]
@@ -1922,7 +1922,7 @@ describe("App", () => {
               id: "a",
               name: "Alpha",
               iconUrl: "icon-a",
-              primaryCandidates: ["Session"],
+              primaryCandidates: ["Session"], detected: true,
               lines: [{ type: "progress", label: "Session", scope: "overview" }],
             },
           ]
@@ -1985,7 +1985,7 @@ describe("App", () => {
               id: "a",
               name: "Alpha",
               iconUrl: "icon-a",
-              primaryCandidates: ["Session"],
+              primaryCandidates: ["Session"], detected: true,
               lines: [{ type: "progress", label: "Session", scope: "overview" }],
             },
           ]

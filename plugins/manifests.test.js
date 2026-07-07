@@ -50,5 +50,20 @@ describe("plugin manifests", () => {
 
       expect(Array.isArray(m.lines)).toBe(true)
     })
+
+    it("declares a valid detect field when present", () => {
+      const m = JSON.parse(readFileSync(manifestPath, "utf8"))
+      if (m.detect === undefined) return // optional — defaults to always detected
+
+      expect(Array.isArray(m.detect)).toBe(true)
+      for (const rule of m.detect) {
+        expect(typeof rule).toBe("object")
+        // Each rule must have exactly one of `file` or `env`
+        const keys = Object.keys(rule).filter((k) => k === "file" || k === "env")
+        expect(keys.length).toBe(1)
+        if (rule.file) expect(typeof rule.file).toBe("string")
+        if (rule.env) expect(typeof rule.env).toBe("string")
+      }
+    })
   })
 })

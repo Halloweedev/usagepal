@@ -241,8 +241,8 @@ export function SharePage({ plugins }: SharePageProps) {
                   <ShareCard
                     providerName={selected.meta.name}
                     providerIconUrl={selected.meta.iconUrl}
-                    brandColor={selected.meta.brandColor}
-                    plan={showPlan ? selected.data.plan : undefined}
+                    brandColor={selected.meta.brandColor ?? undefined}
+                    plan={showPlan ? selected.data.plan ?? undefined : undefined}
                     lines={checkedLines}
                     theme={theme}
                     showWatermark={showWatermark}

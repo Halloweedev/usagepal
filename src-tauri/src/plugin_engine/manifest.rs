@@ -42,6 +42,19 @@ pub struct PluginManifest {
     pub lines: Vec<ManifestLine>,
     #[serde(default)]
     pub links: Vec<PluginLink>,
+    /// Availability checks — a plugin is "detected" (enabled by default for new
+    /// users) when ANY rule matches. Each rule is either a file path (with `~`
+    /// expansion) or an env var name. Omitting `detect` means always detected.
+    #[serde(default)]
+    pub detect: Vec<DetectRule>,
+}
+
+/// A single availability probe. Exactly one of `file` / `env` is set.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectRule {
+    pub file: Option<String>,
+    pub env: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +97,41 @@ pub fn weekly_candidate(lines: &[ManifestLine]) -> Option<&str> {
         .iter()
         .find(|line| line.line_type == "progress" && line.period.as_deref() == Some("weekly"))
         .map(|line| line.label.as_str())
+}
+
+/// Expand a leading `~` to the user's home directory. Other paths are returned
+/// unchanged. Used by `is_plugin_detected` for file-based detection rules.
+fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
+        }
+    }
+    PathBuf::from(path)
+}
+
+/// Check whether a plugin is available on this machine. A plugin with no
+/// `detect` rules is always detected. A plugin with rules is detected when ANY
+/// rule matches (file exists OR env var is set and non-empty).
+pub fn is_plugin_detected(manifest: &PluginManifest) -> bool {
+    if manifest.detect.is_empty() {
+        return true;
+    }
+    for rule in &manifest.detect {
+        if let Some(path) = &rule.file {
+            if expand_tilde(path).exists() {
+                return true;
+            }
+        }
+        if let Some(var) = &rule.env {
+            if let Ok(value) = std::env::var(var) {
+                if !value.trim().is_empty() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 fn load_single_plugin(

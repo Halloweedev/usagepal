@@ -93,6 +93,12 @@ try {
 }
 ```
 
+### App-Managed Provider Keys
+
+Some plugins have a Settings dialog that saves a provider API key for users who do not have the provider's app installed. Those plugins may read their own UsagePal-managed key file, such as `~/.config/usagepal/<plugin-id>.json`, through `ctx.host.fs`.
+
+Do not return saved secrets to the webview or include them in metric output. UI status commands should expose only booleans like “saved” or “from environment.”
+
 **Example: Persisting plugin state**
 
 ```javascript

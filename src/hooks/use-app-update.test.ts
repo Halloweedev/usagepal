@@ -303,12 +303,12 @@ describe("useAppUpdate", () => {
     await act(() => Promise.resolve())
 
     act(() => {
-      progressHandlers[0]?.({ payload: { event: "Started", data: { contentLength: 1000 } } })
+      progressHandlers[0]?.({ payload: { event: "Started", data: { content_length: 1000 } } })
     })
     expect(result.current.updateStatus).toEqual({ status: "downloading", progress: 0 })
 
     act(() => {
-      progressHandlers[0]?.({ payload: { event: "Progress", data: { chunkLength: 400 } } })
+      progressHandlers[0]?.({ payload: { event: "Progress", data: { chunk_length: 400 } } })
     })
     expect(result.current.updateStatus).toEqual({ status: "downloading", progress: 40 })
 
@@ -328,8 +328,8 @@ describe("useAppUpdate", () => {
     await act(() => Promise.resolve())
 
     act(() => {
-      progressHandlers[0]?.({ payload: { event: "Started", data: { contentLength: null } } })
-      progressHandlers[0]?.({ payload: { event: "Progress", data: { chunkLength: 400 } } })
+      progressHandlers[0]?.({ payload: { event: "Started", data: { content_length: null } } })
+      progressHandlers[0]?.({ payload: { event: "Progress", data: { chunk_length: 400 } } })
     })
     expect(result.current.updateStatus).toEqual({ status: "downloading", progress: -1 })
 

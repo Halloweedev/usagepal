@@ -1,15 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { MetricLine, PluginOutput } from "@/lib/plugin-types"
+import type { CachedPluginSnapshot } from "@/bindings"
+import type { PluginOutput } from "@/lib/plugin-types"
 import type { PluginState } from "@/hooks/app/types"
 
-/** Shape returned by the `get_cached_usage` command (camelCase via serde). */
-export type CachedUsageSnapshot = {
-  providerId: string
-  displayName: string
-  plan?: string
-  lines: MetricLine[]
-  fetchedAt: string
-}
+export type CachedUsageSnapshot = CachedPluginSnapshot
 
 type UseProbeStateArgs = {
   onProbeResult?: () => void

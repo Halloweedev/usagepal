@@ -6,6 +6,11 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#DE7356",
+  "detect": [
+    { "file": "~/.claude/.credentials.json" },
+    { "env": "CLAUDE_CONFIG_DIR" },
+    { "env": "CLAUDE_CODE_OAUTH_TOKEN" }
+  ],
   "links": [
     { "label": "Status", "url": "https://status.anthropic.com/" },
     { "label": "Console", "url": "https://console.anthropic.com/" }

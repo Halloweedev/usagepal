@@ -1,61 +1,15 @@
-export type ProgressFormat =
-  | { kind: "percent" }
-  | { kind: "dollars" }
-  | { kind: "count"; suffix: string }
+export type { ProgressFormat, BarChartPoint, MetricLine, PluginOutput } from "@/bindings"
+import type { ManifestLineDto, PluginLinkDto, PluginMeta as PluginMetaDto, PluginOutput } from "@/bindings"
 
-export type BarChartPoint = {
-  label: string
-  value: number
-  valueLabel?: string
-}
-
-export type MetricLine =
-  | { type: "text"; label: string; value: string; color?: string; subtitle?: string; resetExpiry?: string | string[] }
-  | {
-      type: "progress"
-      label: string
-      used: number
-      limit: number
-      format: ProgressFormat
-      resetsAt?: string
-      periodDurationMs?: number
-      color?: string
-    }
-  | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }
-  | { type: "barChart"; label: string; points: BarChartPoint[]; note?: string; color?: string }
-
-export type ManifestLine = {
+export type ManifestLine = Omit<ManifestLineDto, "type" | "scope"> & {
   type: "text" | "progress" | "badge" | "barChart"
-  label: string
   scope: "overview" | "detail"
-  /** When set on a progress line, it escalates once used/limit >= this percent. */
-  escalateAtPercent?: number
 }
 
-export type PluginLink = {
-  label: string
-  url: string
-}
+export type PluginLink = PluginLinkDto
 
-export type PluginOutput = {
-  providerId: string
-  displayName: string
-  plan?: string
-  lines: MetricLine[]
-  iconUrl: string
-}
-
-export type PluginMeta = {
-  id: string
-  name: string
-  iconUrl: string
-  brandColor?: string
+export type PluginMeta = Omit<PluginMetaDto, "lines"> & {
   lines: ManifestLine[]
-  links?: PluginLink[]
-  /** Ordered list of primary metric candidates. Frontend picks first available. */
-  primaryCandidates: string[]
-  /** Label of the line marked `"period": "weekly"`, if the provider has one. */
-  weeklyCandidate?: string
 }
 
 export type PluginDisplayState = {

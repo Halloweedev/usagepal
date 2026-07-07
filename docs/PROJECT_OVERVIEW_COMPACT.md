@@ -8,12 +8,13 @@
 ## API Surfaces
 - Local HTTP API — documented in `docs/local-http-api.md`, implemented under `src-tauri/src/local_http_api/`.
 - Plugin host API — Rust bridge in `src-tauri/src/plugin_engine/host_api.rs`, schema docs in `docs/plugins/`.
-- Tauri commands/events — app shell, settings, pace notifications, beta updater, log-level, copy-log, and quit actions flow through `src-tauri/src/lib.rs` plus frontend hooks.
+- Tauri commands/events — app shell, settings, pace notifications, provider key dialogs, beta updater, log-level, copy-log, and quit actions flow through `src-tauri/src/lib.rs` plus frontend hooks.
+- `src/bindings.ts` plus `src/lib/plugin-types.ts` — generated tauri-specta IPC types feed frontend state while manual `invoke()`/`listen()` calls stay in place.
 ## Modules / Components
 - `src/App.tsx` — top-level app orchestration for plugin data, settings bootstrap, probing, and tray updates.
 - `src/pages/overview.tsx` — primary provider overview screen with no retirement banner in this fork.
 - `src/pages/settings.tsx` plus `src/components/settings-app-menu.tsx` — app preferences, Debug modal beta opt-in, collapsible plugin toggles, shortcuts, and bottom App Menu actions.
-- `src/components/` — reusable dialogs, cards, nav, footer, skeletons, and UI primitives.
+- `src/components/` — reusable dialogs, provider API key modals, cards, nav, footer, skeletons, and UI primitives.
 - `src/lib/settings.ts` — persisted frontend settings and migration helpers.
 - `src-tauri/src/plugin_engine/` — manifest loading, runtime sandboxing, and host capabilities for plugins.
 ## Infrastructure / Cross-Cutting
@@ -30,6 +31,7 @@
 - Plugin execution stays behind the Rust host API surface and bundled plugin manifest/runtime checks.
 - Tauri CSP permits `blob:` images so release builds can rasterize dynamic menu bar status icons.
 - Copilot keychain cache now uses the `UsagePal-copilot` service name in this fork.
+- Provider API key status commands expose booleans only; saved keys are never read back into the webview.
 ## Phase Status
 - Imported from OpenUsage `v0.6.28` source archive into this repo.
 - Core app/product branding renamed to UsagePal across desktop metadata, UI copy, docs, and selected plugin identity strings.
@@ -43,8 +45,8 @@
 - Tray/menu-bar behavior — `src/lib/tray-tooltip.ts`, `src/hooks/app/use-tray-icon.ts`, `src-tauri/src/tray.rs`.
 - Settings bootstrap/tests — `src/hooks/app/use-settings-bootstrap.ts`, `src/lib/settings.ts`, `src/App.test.tsx`.
 ## Update Log (Last 5)
+- 2026-07-07 — Added UsagePal-managed ClinePass API key dialog and Rust key commands.
+- 2026-07-07 — Wired frontend plugin/update/key types to generated tauri-specta bindings.
 - 2026-07-06 — Made the Settings plugin list collapsible and reset closed on view changes.
 - 2026-07-06 — Routed pace notifications through a native command with bundled macOS app icon resource.
 - 2026-07-05 — Added stable/beta update choice UI and moved beta opt-in into Debug.
-- 2026-07-05 — Added opt-in beta updater feed using the existing in-app update UI.
-- 2026-07-05 — Added Rust beta updater command surface for the opt-in update feed.

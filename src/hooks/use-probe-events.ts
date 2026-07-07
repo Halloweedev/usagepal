@@ -1,21 +1,8 @@
 import { useCallback, useEffect, useRef } from "react"
 import { listen, type UnlistenFn } from "@tauri-apps/api/event"
 import { invoke } from "@tauri-apps/api/core"
+import type { ProbeBatchComplete, ProbeBatchStarted, ProbeResult } from "@/bindings"
 import type { PluginOutput } from "@/lib/plugin-types"
-
-type ProbeResult = {
-  batchId: string
-  output: PluginOutput
-}
-
-type ProbeBatchComplete = {
-  batchId: string
-}
-
-type ProbeBatchStarted = {
-  batchId: string
-  pluginIds: string[]
-}
 
 type UseProbeEventsOptions = {
   onResult: (output: PluginOutput) => void

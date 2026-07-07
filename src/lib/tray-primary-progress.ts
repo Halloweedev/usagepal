@@ -4,6 +4,9 @@ import { DEFAULT_DISPLAY_MODE, type DisplayMode } from "@/lib/settings"
 import { clamp01 } from "@/lib/utils"
 import { selectEscalatedLine } from "@/lib/metric-escalation"
 
+type ProgressLine = Extract<PluginOutput["lines"][number], { type: "progress" }>
+type UsableProgressLine = ProgressLine & { used: number; limit: number }
+
 type PluginState = {
   data: PluginOutput | null
   loading: boolean
@@ -19,13 +22,8 @@ export type TrayPrimaryBar = {
   weekly?: boolean
 }
 
-type ProgressLine = Extract<
-  PluginOutput["lines"][number],
-  { type: "progress"; label: string; used: number; limit: number }
->
-
-function isProgressLine(line: PluginOutput["lines"][number]): line is ProgressLine {
-  return line.type === "progress"
+function isUsableProgressLine(line: PluginOutput["lines"][number]): line is UsableProgressLine {
+  return line.type === "progress" && line.used != null && line.limit != null
 }
 
 export function getTrayPrimaryBars(args: {
@@ -89,21 +87,21 @@ export function getTrayPrimaryBars(args: {
         const weeklyLabel = preferWeekly ? meta.weeklyCandidate : undefined
         const usesWeekly =
           weeklyLabel !== undefined &&
-          data.lines.some((line) => isProgressLine(line) && line.label === weeklyLabel)
+          data.lines.some((line) => isUsableProgressLine(line) && line.label === weeklyLabel)
 
         // Otherwise fall back to the first primary candidate that exists in data.
         const metricLabel = usesWeekly
           ? weeklyLabel
           : meta.primaryCandidates.find((candidate) =>
-              data.lines.some((line) => isProgressLine(line) && line.label === candidate)
+              data.lines.some((line) => isUsableProgressLine(line) && line.label === candidate)
             )
 
         if (metricLabel) {
           label = metricLabel
           weekly = usesWeekly || undefined
           const metricLine = data.lines.find(
-            (line): line is ProgressLine =>
-              isProgressLine(line) && line.label === metricLabel
+            (line): line is UsableProgressLine =>
+              isUsableProgressLine(line) && line.label === metricLabel
           )
           if (metricLine && metricLine.limit > 0) {
             const shownAmount =
@@ -122,4 +120,3 @@ export function getTrayPrimaryBars(args: {
 
   return out
 }
-

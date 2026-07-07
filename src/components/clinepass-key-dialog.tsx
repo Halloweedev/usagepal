@@ -1,25 +1,21 @@
 import { useCallback, useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
-import { openUrl } from "@tauri-apps/plugin-opener"
-import { ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import type { KeyStatus } from "@/bindings"
-
-const OPENROUTER_KEYS_URL = "https://openrouter.ai/keys"
+import type { ClinePassKeyStatus } from "@/bindings"
 
 /**
- * Small modal for adding / clearing the OpenRouter API key, opened from the OpenRouter row in the
+ * Small modal for adding / clearing the ClinePass API key, opened from the ClinePass row in the
  * plugin list. `onSaved` fires only after a successful save; `onClose` fires on cancel/dismiss (the
  * caller uses that to undo an enable). The saved key is never read back into the webview.
  */
-export function OpenRouterKeyDialog({
+export function ClinePassKeyDialog({
   onClose,
   onSaved,
 }: {
   onClose: () => void
   onSaved: () => void
 }) {
-  const [status, setStatus] = useState<KeyStatus>({ saved: false, fromEnv: false })
+  const [status, setStatus] = useState<ClinePassKeyStatus>({ saved: false, fromEnv: false })
   const [keyInput, setKeyInput] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -27,10 +23,10 @@ export function OpenRouterKeyDialog({
   const refreshStatus = useCallback(async () => {
     if (!isTauri()) return
     try {
-      const result = await invoke<KeyStatus>("openrouter_key_status")
+      const result = await invoke<ClinePassKeyStatus>("clinepass_key_status")
       if (result && typeof result === "object") setStatus(result)
     } catch (e) {
-      console.error("Failed to read OpenRouter key status:", e)
+      console.error("Failed to read ClinePass key status:", e)
     }
   }, [])
 
@@ -38,7 +34,6 @@ export function OpenRouterKeyDialog({
     void refreshStatus()
   }, [refreshStatus])
 
-  // Close on ESC, and when the panel hides — matching AboutDialog's behavior.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -63,7 +58,7 @@ export function OpenRouterKeyDialog({
     setBusy(true)
     setError(null)
     try {
-      await invoke("save_openrouter_key", { key: trimmed })
+      await invoke("save_clinepass_key", { key: trimmed })
       onSaved()
     } catch (e) {
       setError(String(e))
@@ -76,7 +71,7 @@ export function OpenRouterKeyDialog({
     setBusy(true)
     setError(null)
     try {
-      await invoke("clear_openrouter_key")
+      await invoke("clear_clinepass_key")
       setKeyInput("")
       await refreshStatus()
     } catch (e) {
@@ -86,13 +81,14 @@ export function OpenRouterKeyDialog({
     }
   }
 
-  const note = error
-    ? error
-    : status.saved
-      ? "A key is saved."
-      : status.fromEnv
-        ? "Using a key from your environment."
-        : null
+  let note: string | null = null
+  if (error) {
+    note = error
+  } else if (status.saved) {
+    note = "A key is saved."
+  } else if (status.fromEnv) {
+    note = "Using a key from your environment."
+  }
 
   return (
     <div
@@ -102,16 +98,9 @@ export function OpenRouterKeyDialog({
       }}
     >
       <div className="bg-card rounded-lg border shadow-xl p-5 max-w-xs w-full mx-4 animate-in fade-in zoom-in-95 duration-200">
-        <h2 className="text-base font-semibold mb-1">OpenRouter API Key</h2>
+        <h2 className="text-base font-semibold mb-1">ClinePass API Key</h2>
         <p className="text-sm text-muted-foreground mb-3">
-          Paste your key to track usage.{" "}
-          <button
-            type="button"
-            className="inline-flex items-center gap-0.5 text-primary hover:underline"
-            onClick={() => void openUrl(OPENROUTER_KEYS_URL)}
-          >
-            Get a key <ExternalLink className="size-3" />
-          </button>
+          Paste your Cline API key to track ClinePass usage without the Cline app installed.
         </p>
 
         <input
@@ -119,14 +108,14 @@ export function OpenRouterKeyDialog({
           autoComplete="off"
           spellCheck={false}
           autoFocus
-          placeholder="sk-or-v1-..."
+          placeholder="cline-..."
           value={keyInput}
           onChange={(e) => setKeyInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") void handleSave()
           }}
           className="w-full h-8 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-          aria-label="OpenRouter API key"
+          aria-label="ClinePass API key"
         />
 
         {note && <p className="text-xs text-muted-foreground mt-2">{note}</p>}

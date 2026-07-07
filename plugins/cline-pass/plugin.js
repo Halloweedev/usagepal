@@ -11,11 +11,13 @@
   var MICRO_USD = 1000000
 
   // Cline stores OAuth tokens in ~/.cline/data/settings/providers.json.
+  // UsagePal can also save a ClinePass API key for users without the Cline app.
   // An API key can also come from the CLINE_API_KEY environment variable.
   var CONFIG_PATHS = [
     "~/.cline/data/settings/providers.json",
     "~/.config/cline/providers.json",
   ]
+  var USAGEPAL_KEY_PATHS = ["~/.config/usagepal/cline-pass.json"]
   var ENV_NAMES = ["CLINE_API_KEY"]
 
   // Cline stores the access token with a "workos:" prefix tag identifying the
@@ -87,6 +89,42 @@
     return null
   }
 
+  function apiKeyFromConfigText(text) {
+    if (typeof text !== "string") return null
+    var trimmed = text.trim()
+    if (!trimmed) return null
+    if (trimmed.indexOf("{") === 0) {
+      var obj = null
+      try {
+        obj = JSON.parse(trimmed)
+      } catch (e) {
+        return null
+      }
+      if (!obj || typeof obj !== "object") return null
+      var fields = ["apiKey", "api_key", "key"]
+      for (var i = 0; i < fields.length; i++) {
+        var value = obj[fields[i]]
+        if (typeof value === "string" && value.trim()) return value.trim()
+      }
+      return null
+    }
+    return trimmed
+  }
+
+  function apiKeyFromUsagePalFile(ctx) {
+    for (var i = 0; i < USAGEPAL_KEY_PATHS.length; i++) {
+      var path = USAGEPAL_KEY_PATHS[i]
+      try {
+        if (!ctx.host.fs.exists(path)) continue
+        var key = apiKeyFromConfigText(ctx.host.fs.readText(path))
+        if (key) return key
+      } catch (e) {
+        ctx.host.log.warn("cline-pass UsagePal key read failed for " + path + ": " + String(e))
+      }
+    }
+    return null
+  }
+
   function tokenFromEnvironment(ctx) {
     for (var i = 0; i < ENV_NAMES.length; i++) {
       var value = ctx.host.env.get(ENV_NAMES[i])
@@ -151,9 +189,9 @@
     }
   }
 
-  // Resolve a usable bearer token. Tries (1) OAuth from config file, refreshing
-  // if expired, then (2) CLINE_API_KEY env var. Returns the raw JWT/key string
-  // (prefix already stripped) or throws if no auth is available.
+  // Resolve a usable bearer token. Tries (1) OAuth from Cline config, refreshing
+  // if expired, then (2) UsagePal-saved API key, then (3) CLINE_API_KEY env var.
+  // Returns the raw JWT/key string (prefix already stripped) or throws if no auth is available.
   function resolveToken(ctx) {
     var oauth = loadOauthFromConfig(ctx)
     if (oauth && oauth.accessToken) {
@@ -178,10 +216,13 @@
       return token
     }
 
+    var savedKey = apiKeyFromUsagePalFile(ctx)
+    if (savedKey) return savedKey
+
     var envKey = tokenFromEnvironment(ctx)
     if (envKey) return envKey
 
-    throw "No Cline auth token found. Sign in to Cline or set CLINE_API_KEY."
+    throw "No Cline auth token found. Sign in to Cline, save a ClinePass API key in UsagePal, or set CLINE_API_KEY."
   }
 
   function num(value) {

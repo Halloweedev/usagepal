@@ -3,6 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import { check, type Update } from "@tauri-apps/plugin-updater"
 import { relaunch } from "@tauri-apps/plugin-process"
+import type { BetaUpdateInfo, BetaUpdateProgress } from "@/bindings"
 
 export type UpdateChannel = "stable" | "beta"
 
@@ -33,15 +34,6 @@ export type UpdateStatus =
   | { status: "installing" }
   | { status: "ready"; channel: UpdateChannel; version: string }
   | { status: "error"; message: string }
-
-interface BetaUpdateInfo {
-  version: string
-}
-
-type BetaProgressEvent =
-  | { event: "Started"; data?: { contentLength?: number | null; content_length?: number | null } | null }
-  | { event: "Progress"; data?: { chunkLength?: number; chunk_length?: number } | null }
-  | { event: "Finished"; data?: null }
 
 interface UseAppUpdateOptions {
   betaUpdatesEnabled?: boolean
@@ -229,15 +221,15 @@ export function useAppUpdate({ betaUpdatesEnabled = false }: UseAppUpdateOptions
     let unlisten: (() => void) | undefined
     let disposed = false
 
-    void listen<BetaProgressEvent>("beta-update:progress", (event) => {
+    void listen<BetaUpdateProgress>("beta-update:progress", (event) => {
       if (!mountedRef.current) return
       const payload = event.payload
       if (payload.event === "Started") {
-        totalBytes = payload.data?.contentLength ?? payload.data?.content_length ?? null
+        totalBytes = payload.data.content_length
         downloadedBytes = 0
         setStatus({ status: "downloading", progress: totalBytes ? 0 : INDETERMINATE_PROGRESS })
       } else if (payload.event === "Progress") {
-        downloadedBytes += payload.data?.chunkLength ?? payload.data?.chunk_length ?? 0
+        downloadedBytes += payload.data.chunk_length ?? 0
         const progress = getDownloadProgress(downloadedBytes, totalBytes)
         if (progress !== null) setStatus({ status: "downloading", progress })
       } else if (payload.event === "Finished") {

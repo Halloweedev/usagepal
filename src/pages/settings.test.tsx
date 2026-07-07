@@ -175,6 +175,65 @@ describe("SettingsPage", () => {
     expect(onToggle).toHaveBeenCalledWith("b")
   })
 
+  it("opens the ClinePass key dialog when enabling ClinePass", async () => {
+    const onToggle = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        plugins={[{ id: "cline-pass", name: "ClinePass", enabled: false }]}
+        onToggle={onToggle}
+      />
+    )
+    await openPluginsList()
+
+    await userEvent.click(screen.getByText("ClinePass"))
+
+    expect(onToggle).toHaveBeenCalledWith("cline-pass")
+    expect(screen.getByRole("heading", { name: "ClinePass API Key" })).toBeInTheDocument()
+  })
+
+  it("undoes ClinePass enable when the key dialog is cancelled", async () => {
+    const onToggle = vi.fn()
+    const { rerender } = render(
+      <SettingsPage
+        {...defaultProps}
+        plugins={[{ id: "cline-pass", name: "ClinePass", enabled: false }]}
+        onToggle={onToggle}
+      />
+    )
+    await openPluginsList()
+    await userEvent.click(screen.getByText("ClinePass"))
+
+    rerender(
+      <SettingsPage
+        {...defaultProps}
+        plugins={[{ id: "cline-pass", name: "ClinePass", enabled: true }]}
+        onToggle={onToggle}
+      />
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
+
+    expect(onToggle).toHaveBeenCalledTimes(2)
+    expect(onToggle).toHaveBeenLastCalledWith("cline-pass")
+  })
+
+  it("opens the ClinePass key dialog from the key icon without toggling", async () => {
+    const onToggle = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        plugins={[{ id: "cline-pass", name: "ClinePass", enabled: true }]}
+        onToggle={onToggle}
+      />
+    )
+    await openPluginsList()
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage ClinePass API key" }))
+
+    expect(onToggle).not.toHaveBeenCalled()
+    expect(screen.getByRole("heading", { name: "ClinePass API Key" })).toBeInTheDocument()
+  })
+
   it("keeps the plugin list closed until toggled open", async () => {
     render(<SettingsPage {...defaultProps} />)
 

@@ -118,8 +118,6 @@ export const TIME_FORMAT_OPTIONS: { value: TimeFormatMode; label: string }[] = [
 
 const store = new LazyStore(SETTINGS_STORE_PATH);
 
-const DEFAULT_ENABLED_PLUGINS = new Set(["claude", "codex", "cursor"]);
-
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
   order: [],
   disabled: [],
@@ -218,8 +216,12 @@ export function normalizePluginSettings(
   }
 
   const disabled = settings.disabled.filter((id) => knownSet.has(id));
+  // New plugins default to disabled unless they were detected on this machine
+  // (the Rust side checks for credential/config files and sets `detected`).
   for (const id of newlyAdded) {
-    if (!DEFAULT_ENABLED_PLUGINS.has(id) && !disabled.includes(id)) {
+    const plugin = plugins.find((p) => p.id === id);
+    const isDetected = plugin?.detected ?? false;
+    if (!isDetected && !disabled.includes(id)) {
       disabled.push(id);
     }
   }

@@ -38,6 +38,17 @@ OpenUsage is being rewritten as a native Swift app. During the transition, two e
 - Keep files <~500 LOC; split/refactor as needed
 - Before writing code, strictly follow the below research rules
 
+## IPC Types (specta)
+
+Tauri IPC types are auto-generated from Rust to TypeScript via `tauri-specta`. Rust is the single source of truth — never hand-write TS types that mirror Rust IPC structs.
+
+- **Generated file:** `src/bindings.ts` (do not edit by hand). Contains all command signatures, event types, and type definitions.
+- **When you change a Rust IPC type or command:** add `#[derive(specta::Type)]` to new structs/enums, `#[specta::specta]` to new `#[tauri::command]` functions, and `#[derive(tauri_specta::Event)]` + `#[tauri_specta(event_name = "...")]` to new event types. Then register them in the `Builder::new().commands(...).events(...)` call in `src-tauri/src/lib.rs` `run()` (and in the `export_bindings` test in the same file).
+- **Regenerate bindings:** `cd src-tauri && cargo test test_export_bindings`. The `run()` function also auto-exports on every debug-mode app launch (`npm run tauri dev`), so bindings stay in sync during development.
+- **Frontend usage:** import types from `@/bindings` (e.g., `import type { MetricLine, PluginOutput } from "@/bindings"`). Re-export them through `src/lib/plugin-types.ts` if you need narrowed literal types. Keep using `invoke<T>("command_name", args)` and `listen<T>("event_name", handler)` — do not switch to the generated `commands.foo()` wrappers (they use a `typedError` pattern that would break existing try/catch blocks and test mocks).
+- **specta forbids `u64`/`usize`/`i64`/`isize`** in IPC types (BigInt precision loss in JS). Use `f64` for timestamps, byte sizes, and counts that cross the IPC boundary — safe within JS's 2^53 safe integer range.
+- **`Option<T>` becomes `T | null`** in generated TS (not `T | undefined`). Frontend code must handle `null`, not just `undefined`. Use `?? defaultValue` or null guards.
+
 ## Research
 
 - Check for and prefer available skills over web research.
@@ -54,6 +65,8 @@ Always fail loudly into error logging (e.g., Sentry) and but show friendly error
 Always use titlecase any hardcoded copy for titles.
 
 Strictly use `@hugeicons-pro/core-solid-rounded`. Nothing else. If you come across `lucide-react` or similar, replace it. Pattern: `<HugeiconsIcon icon={FooIcon} className="size-4" />`. Never pass `strokeWidth` (paints an unwanted outline on filled glyphs).
+
+> Note: `@hugeicons-pro` is a paid package on a private registry (`npm.hugeicons.com`) requiring a Universal License Key in `.npmrc`. It is not set up in this repo yet, so `lucide-react` is used in the meantime. When a license is available, add `.npmrc` with `@hugeicons-pro:registry=https://npm.hugeicons.com/` and a token, install `@hugeicons/react` + `@hugeicons-pro/core-solid-rounded`, then migrate all `lucide-react` imports.
 
 ## Automated Testing
 
@@ -107,5 +120,5 @@ When you write the summary at the end, skip the technical jargon. Write like you
 Use below list to store and recall user notes when asked to do so.
 
 - Use this list when asked to remember things. Keep each list item concise.
-- Tauri IPC: JS must use camelCase (`{ batchId, pluginIds }`), Tauri auto-converts to Rust's snake_case. Never send snake_case from JS—params silently won't match.
+- Tauri IPC: JS must use camelCase (`{ batchId, pluginIds }`), Tauri auto-converts to Rust's snake_case. Never send snake_case from JS—params silently won't match. (Note: specta-generated `commands.foo()` wrappers handle this automatically, but we keep manual `invoke()` calls — see the IPC Types section above.)
 - tauri-action `latest.json`: Parallel matrix builds are safe—action fetches existing `latest.json`, merges platform entries, re-uploads. No `max-parallel: 1` needed.

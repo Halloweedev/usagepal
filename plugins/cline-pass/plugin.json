@@ -6,6 +6,11 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#000000",
+  "detect": [
+    { "file": "~/.cline/data/settings/providers.json" },
+    { "file": "~/.config/cline/providers.json" },
+    { "env": "CLINE_API_KEY" }
+  ],
   "links": [
     { "label": "Dashboard", "url": "https://app.cline.bot/dashboard/subscription" },
     { "label": "API Keys", "url": "https://app.cline.bot/dashboard" }

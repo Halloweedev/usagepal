@@ -60,7 +60,7 @@ function createProps(): AppContentProps {
         iconUrl: "/codex.svg",
         brandColor: "#000000",
         lines: [],
-        primaryCandidates: [],
+        primaryCandidates: [], detected: true,
       },
       data: null,
       loading: false,

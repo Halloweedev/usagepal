@@ -11,7 +11,7 @@ function createPluginMeta(id: string, name: string): PluginMeta {
     iconUrl: `/${id}.svg`,
     brandColor: "#000000",
     lines: [],
-    primaryCandidates: [],
+    primaryCandidates: [], detected: true,
   }
 }
 

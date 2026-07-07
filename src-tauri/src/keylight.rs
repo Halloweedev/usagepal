@@ -24,7 +24,13 @@ pub const SUPPORTER_ENTITLEMENT: &str = "supporter";
 /// Build the plugin config, pinning the trusted public key so license
 /// verification works fully offline when the key is configured.
 pub fn config() -> KeylightConfig {
-    let builder = KeylightConfig::builder(TENANT, PRODUCT, SDK_KEY).max_offline_days(14);
+    // `app_version` must be set explicitly or the SDK omits it from the keyless
+    // beacon (and every other request), leaving the dashboard's free-tier
+    // devices with a blank version. Sourced from the crate version so it tracks
+    // the released app build.
+    let builder = KeylightConfig::builder(TENANT, PRODUCT, SDK_KEY)
+        .max_offline_days(14)
+        .app_version(env!("CARGO_PKG_VERSION"));
     let builder = if !PUBKEY_KID.is_empty() && !PUBKEY_B64.is_empty() {
         builder.trusted_key(PUBKEY_KID, PUBKEY_B64)
     } else {

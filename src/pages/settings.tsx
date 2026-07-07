@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { NotificationsSection } from "@/components/notifications-section";
+import { ClinePassKeyDialog } from "@/components/clinepass-key-dialog";
 import { OpenRouterKeyDialog } from "@/components/openrouter-key-dialog";
 import { SettingsAppMenu } from "@/components/settings-app-menu";
 import { SupporterSection } from "@/components/supporter-section";
@@ -227,15 +228,15 @@ function SortablePluginItem({
   };
 
   const referralUrl = getReferralUrl(plugin.id);
-  const needsApiKey = plugin.id === "openrouter";
+  const hasManagedApiKey = plugin.id === "openrouter" || plugin.id === "cline-pass";
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   // True when the dialog was opened by enabling the plugin, so cancelling can undo that enable.
   const [openedViaEnable, setOpenedViaEnable] = useState(false);
 
-  // OpenRouter has no CLI to read credentials from, so enabling it opens a small dialog to add the
-  // API key. The key icon reopens the dialog later to change or clear it.
+  // Some providers can use a UsagePal-managed API key. Enabling them opens a small dialog to add the
+  // key. The key icon reopens the dialog later to change or clear it.
   const handleToggle = () => {
-    if (needsApiKey && !plugin.enabled) {
+    if (hasManagedApiKey && !plugin.enabled) {
       setOpenedViaEnable(true);
       setKeyDialogOpen(true);
     }
@@ -291,7 +292,7 @@ function SortablePluginItem({
         {plugin.name}
       </span>
 
-      {needsApiKey && (
+      {hasManagedApiKey && (
         <Button
           type="button"
           variant="ghost"
@@ -335,7 +336,11 @@ function SortablePluginItem({
 
       {keyDialogOpen && (
         <span onClick={(e) => e.stopPropagation()}>
-          <OpenRouterKeyDialog onClose={closeKeyDialog} onSaved={saveKeyDialog} />
+          {plugin.id === "cline-pass" ? (
+            <ClinePassKeyDialog onClose={closeKeyDialog} onSaved={saveKeyDialog} />
+          ) : (
+            <OpenRouterKeyDialog onClose={closeKeyDialog} onSaved={saveKeyDialog} />
+          )}
         </span>
       )}
     </div>

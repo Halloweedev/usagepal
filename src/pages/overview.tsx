@@ -30,7 +30,7 @@ export function OverviewPage({
           <ProviderCard
             key={plugin.meta.id}
             name={plugin.meta.name}
-            plan={plugin.data?.plan}
+            plan={plugin.data?.plan ?? undefined}
             showSeparator={index < plugins.length - 1}
             loading={plugin.loading}
             error={plugin.error}

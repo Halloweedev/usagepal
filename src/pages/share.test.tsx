@@ -33,7 +33,7 @@ function makePlugin(overrides: Partial<DisplayPluginState> = {}): DisplayPluginS
         { type: "progress", label: "Sonnet", scope: "detail" },
         { type: "barChart", label: "Usage Trend", scope: "detail" },
       ],
-      primaryCandidates: ["Session"],
+      primaryCandidates: ["Session"], detected: true,
     },
     data: {
       providerId: "claude",
@@ -104,7 +104,7 @@ describe("SharePage", () => {
           { type: "progress", label: "Weekly", scope: "overview" },
           { type: "progress", label: "Daily", scope: "detail" },
         ],
-        primaryCandidates: ["Weekly"],
+        primaryCandidates: ["Weekly"], detected: true,
       },
       data: {
         providerId: "codex",

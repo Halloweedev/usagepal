@@ -255,7 +255,7 @@ export function deriveObservation(line: MetricLine, nowMs: number): MetricObserv
   if (line.type !== "progress") return null
 
   const { used, limit } = line
-  if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) {
+  if (used == null || limit == null || !Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) {
     return { bucket: "noData", remainingFraction: 1, resetsAtMs: null }
   }
 

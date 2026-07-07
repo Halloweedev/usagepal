@@ -6,6 +6,7 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#A855F7",
+  "detect": [{ "file": "~/.config/gh/hosts.yml" }],
   "lines": [
     { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
     { "type": "text", "label": "Extra Usage", "scope": "detail" },

@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#4285F4",
+  "detect": [
+    { "file": "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb" },
+    { "file": "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb" }
+  ],
   "lines": [
     { "type": "progress", "label": "Gemini Pro", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Gemini Flash", "scope": "overview" },
