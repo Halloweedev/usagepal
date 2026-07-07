@@ -590,4 +590,20 @@ describe("settings", () => {
     await expect(loadShareSettings()).resolves.toEqual(settings)
     expect(storeSaveMock).toHaveBeenCalled()
   })
+
+  it("round-trips saved share settings with preset: null", async () => {
+    const settings = {
+      selectedId: "codex",
+      preset: null,
+      checkedLabels: ["Session", "claude-sonnet-5"],
+      theme: "dark" as const,
+      showWatermark: false,
+      showPlan: false,
+      modelDisplay: { showPercent: true, showToday: false, showSevenDay: true, showThirtyDay: false },
+    }
+
+    await saveShareSettings(settings)
+
+    await expect(loadShareSettings()).resolves.toEqual(settings)
+  })
 })
