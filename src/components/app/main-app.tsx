@@ -15,6 +15,7 @@ import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
 import { type PluginContextAction } from "@/components/side-nav"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
+import { useAppShareStore } from "@/stores/app-share-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
 
 const TRAY_PROBE_DEBOUNCE_MS = 500
@@ -114,6 +115,11 @@ export function MainApp() {
   })
 
   usePaceNotifications(pluginStates)
+
+  const hydrateShareSettings = useAppShareStore((s) => s.hydrate)
+  useEffect(() => {
+    void hydrateShareSettings()
+  }, [hydrateShareSettings])
 
   const { scheduleTrayIconUpdate, traySettingsPreview } = useTrayIcon({
     pluginsMeta,
