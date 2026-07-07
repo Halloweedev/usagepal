@@ -37,7 +37,7 @@
 - Core app/product branding renamed to UsagePal across desktop metadata, UI copy, docs, and selected plugin identity strings.
 - Upstream retirement banner removed from the overview UI for this fork.
 - Removed changelog, GitHub links, Help button, and aptabase analytics while enabling UsagePal updater releases.
-- Menu bar icon left-click opens the app panel on Home; Settings bottom App Menu holds old tray actions.
+- Menu bar icon left-click opens the app panel on Home; Settings bottom App Menu holds old tray actions. Menubar icon styles: Plugin, Donut, Bars, and **Multi** (up to 3 icons with session + weekly per provider).
 - Frontend and Rust dependency bundles trimmed (aptabase, updater config, permissions).
 ## Fast Locate Cheats
 - Rename/version-sensitive metadata — `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `lutin.yml`.

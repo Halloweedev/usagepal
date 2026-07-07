@@ -139,6 +139,10 @@ It is an **override of the primary metric**, not a standalone mode: the provider
 }
 ```
 
+### Multi Menubar Style
+
+When the user selects **Multi** (Settings → Menubar Icon), the app shows up to **3 separate menu bar icons** — one per enabled provider (in plugin order). Each icon uses the provider logo with **session** (primary) % on top and **weekly** % below when data exists. Missing data omits that text line; zero usage shows `0%`. Providers without a weekly line show only the session value. The Default/Weekly metric toggle is hidden in this mode.
+
 ## Entry Point Structure
 
 Plugins must register themselves on the global object:
