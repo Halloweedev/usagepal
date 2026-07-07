@@ -105,6 +105,7 @@ function getSvgLayout(args: {
   sizePx: number
   style: MenubarIconStyle
   percentText?: string
+  secondaryPercentText?: string
 }): {
   width: number
   height: number
@@ -114,10 +115,19 @@ function getSvgLayout(args: {
   barsWidth: number
   textX: number
   textY: number
+  textYTop?: number
+  textYBottom?: number
   fontSize: number
+  primaryFontSize?: number
+  secondaryFontSize?: number
 } {
-  const { sizePx, style, percentText } = args
-  const hasPercentText = typeof percentText === "string" && percentText.length > 0
+  const { sizePx, style, percentText, secondaryPercentText } = args
+  const topText = normalizePercentText(percentText)
+  const bottomText = normalizePercentText(secondaryPercentText)
+  const hasTopText = typeof topText === "string" && topText.length > 0
+  const hasBottomText = typeof bottomText === "string" && bottomText.length > 0
+  const hasAnyText = hasTopText || hasBottomText
+  const hasDualText = hasTopText && hasBottomText
   const verticalNudgePx = 1
   const pad = Math.max(1, Math.round(sizePx * 0.08)) // ~2px at 24–36px
   const gap = Math.max(1, Math.round(sizePx * 0.03)) // ~1px at 36px
@@ -126,7 +136,16 @@ function getSvgLayout(args: {
   const barsX = pad
   const barsWidth = sizePx - 2 * pad
   const fontSize = Math.max(9, Math.round(sizePx * 0.72))
-  const textWidth = hasPercentText ? estimateTextWidthPx(percentText, fontSize) : 0
+  const primaryFontSize = hasDualText ? Math.max(9, Math.round(sizePx * 0.55)) : fontSize
+  const secondaryFontSize = hasDualText ? Math.max(8, Math.round(sizePx * 0.45)) : fontSize
+  const textYTop = hasDualText ? Math.round(sizePx * 0.38) + verticalNudgePx : undefined
+  const textYBottom = hasDualText ? Math.round(sizePx * 0.68) + verticalNudgePx : undefined
+  const textWidth = hasAnyText
+    ? Math.max(
+        hasTopText ? estimateTextWidthPx(topText!, hasDualText ? primaryFontSize : fontSize) : 0,
+        hasBottomText ? estimateTextWidthPx(bottomText!, hasDualText ? secondaryFontSize : fontSize) : 0,
+      )
+    : 0
   // Optical correction + global nudge down to align with the tray slot center.
   const textY = Math.round(sizePx / 2) + 1 + verticalNudgePx
 
@@ -145,7 +164,43 @@ function getSvgLayout(args: {
     }
   }
 
-  if (!hasPercentText) {
+  if (style === "provider") {
+    if (!hasAnyText) {
+      return {
+        width: sizePx,
+        height,
+        pad,
+        gap,
+        barsX,
+        barsWidth,
+        textX: 0,
+        textY,
+        fontSize,
+      }
+    }
+
+    const textGap = Math.max(2, Math.round(sizePx * 0.08))
+    const textAreaWidth = Math.max(20, Math.round(sizePx * 1.5), textWidth + pad)
+    const rightPad = pad
+
+    return {
+      width: sizePx + textGap + textAreaWidth + rightPad,
+      height,
+      pad,
+      gap,
+      barsX,
+      barsWidth,
+      textX: sizePx + textGap,
+      textY,
+      textYTop,
+      textYBottom,
+      fontSize,
+      primaryFontSize,
+      secondaryFontSize,
+    }
+  }
+
+  if (!hasAnyText) {
     return {
       width: sizePx,
       height,
@@ -181,18 +236,21 @@ export function makeTrayBarsSvg(args: {
   sizePx: number
   style?: MenubarIconStyle
   percentText?: string
+  secondaryPercentText?: string
   providerIconUrl?: string
 }): string {
-  const { bars, sizePx, style = "provider", percentText, providerIconUrl } = args
+  const { bars, sizePx, style = "provider", percentText, secondaryPercentText, providerIconUrl } = args
   const barsForStyle = style === "bars" ? bars : bars.slice(0, 1)
   // Intentionally render a single empty track when bars mode has no data yet
   // so the tray icon keeps a stable shape during loading/initialization.
   const n = Math.max(1, Math.min(4, barsForStyle.length || 1))
-  const text = normalizePercentText(percentText)
+  const top = normalizePercentText(percentText)
+  const bottom = normalizePercentText(secondaryPercentText)
   const layout = getSvgLayout({
     sizePx,
     style,
-    percentText: text,
+    percentText: top,
+    secondaryPercentText: bottom,
   })
 
   const width = layout.width
@@ -205,7 +263,7 @@ export function makeTrayBarsSvg(args: {
   )
 
   if (style === "provider") {
-    const hasText = typeof text === "string" && text.length > 0
+    const hasText = Boolean(top || bottom)
     const iconSize = Math.max(6, Math.round(sizePx - 2 * layout.pad * 0.5) - (hasText ? PROVIDER_ICON_SHRINK_PX : 0))
     const x = layout.barsX
     const y = Math.round((height - iconSize) / 2) + (hasText ? PROVIDER_ICON_VERTICAL_NUDGE_PX : 0)
@@ -222,6 +280,17 @@ export function makeTrayBarsSvg(args: {
       const strokeW = Math.max(1.5, Math.round(iconSize * 0.14))
       parts.push(
         `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="black" stroke-width="${strokeW}" opacity="1" shape-rendering="geometricPrecision" />`
+      )
+    }
+
+    if (top) {
+      parts.push(
+        `<text x="${layout.textX}" y="${layout.textYTop ?? layout.textY}" fill="black" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif" font-size="${layout.primaryFontSize ?? layout.fontSize}" font-weight="700" dominant-baseline="middle">${escapeXmlText(top)}</text>`
+      )
+    }
+    if (bottom) {
+      parts.push(
+        `<text x="${layout.textX}" y="${layout.textYBottom ?? layout.textY}" fill="black" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif" font-size="${layout.secondaryFontSize ?? layout.fontSize}" font-weight="700" dominant-baseline="middle" opacity="0.7">${escapeXmlText(bottom)}</text>`
       )
     }
   } else if (style === "donut") {
@@ -331,9 +400,9 @@ export function makeTrayBarsSvg(args: {
     }
   }
 
-  if (text) {
+  if (top && style !== "provider") {
     parts.push(
-      `<text x="${layout.textX}" y="${layout.textY}" fill="black" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif" font-size="${layout.fontSize}" font-weight="700" dominant-baseline="middle">${escapeXmlText(text)}</text>`
+      `<text x="${layout.textX}" y="${layout.textY}" fill="black" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif" font-size="${layout.fontSize}" font-weight="700" dominant-baseline="middle">${escapeXmlText(top)}</text>`
     )
   }
 
@@ -379,21 +448,25 @@ export async function renderTrayBarsIcon(args: {
   sizePx: number
   style?: MenubarIconStyle
   percentText?: string
+  secondaryPercentText?: string
   providerIconUrl?: string
 }): Promise<Image> {
-  const { bars, sizePx, style = "provider", percentText, providerIconUrl } = args
-  const text = normalizePercentText(percentText)
+  const { bars, sizePx, style = "provider", percentText, secondaryPercentText, providerIconUrl } = args
+  const top = normalizePercentText(percentText)
+  const bottom = normalizePercentText(secondaryPercentText)
   const svg = makeTrayBarsSvg({
     bars,
     sizePx,
     style,
-    percentText: text,
+    percentText: top,
+    secondaryPercentText: bottom,
     providerIconUrl,
   })
   const layout = getSvgLayout({
     sizePx,
     style,
-    percentText: text,
+    percentText: top,
+    secondaryPercentText: bottom,
   })
   const rgba = await rasterizeSvgToRgba(svg, layout.width, layout.height)
   return await Image.new(rgba, layout.width, layout.height)

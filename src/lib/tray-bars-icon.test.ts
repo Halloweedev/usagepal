@@ -140,6 +140,45 @@ describe("tray-bars-icon", () => {
     expect(svg).toContain(">70%</text>")
   })
 
+  it("provider renders two text lines when secondaryPercentText provided", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [],
+      sizePx: 36,
+      style: "provider",
+      percentText: "100%",
+      secondaryPercentText: "36%",
+      providerIconUrl: "data:image/svg+xml;base64,ABC",
+    })
+    expect(svg).toContain(">100%</text>")
+    expect(svg).toContain(">36%</text>")
+    expect(svg.match(/<text /g)?.length).toBe(2)
+  })
+
+  it("provider renders only top line when secondary omitted", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [],
+      sizePx: 36,
+      style: "provider",
+      percentText: "93%",
+      providerIconUrl: "data:image/svg+xml;base64,ABC",
+    })
+    expect(svg).toContain(">93%</text>")
+    expect(svg.match(/<text /g)?.length).toBe(1)
+  })
+
+  it("provider renders logo only when no percent text", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [],
+      sizePx: 36,
+      style: "provider",
+      providerIconUrl: "data:image/svg+xml;base64,ABC",
+    })
+    expect(svg).not.toContain("<text ")
+    expect(svg).toContain("<image ")
+    const viewBox = svg.match(/viewBox="0 0 (\d+) (\d+)"/)
+    expect(viewBox?.[1]).toBe(viewBox?.[2])
+  })
+
   it("renderTrayBarsIcon rasterizes SVG to an Image using canvas", async () => {
     const originalImage = window.Image
     const originalCreateElement = document.createElement.bind(document)
