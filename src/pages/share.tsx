@@ -8,6 +8,7 @@ import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import { buildShareableLines, type ShareableLine, type ShareLineScope } from "@/lib/share-lines"
 import { copyCardImage } from "@/lib/share-image"
 import type { ModelDisplayOptions } from "@/lib/model-breakdown-format"
+import { useAppShareStore } from "@/stores/app-share-store"
 import { cn } from "@/lib/utils"
 
 const CHECKLIST_GROUPS = [
@@ -49,26 +50,26 @@ export type SharePageProps = {
 type CopyState = "idle" | "copying" | "success" | "error"
 
 export function SharePage({ plugins }: SharePageProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(plugins[0]?.meta.id ?? null)
-  const [preset, setPreset] = useState<PresetId | null>("summary")
-  const [checkedLabels, setCheckedLabels] = useState<Set<string>>(new Set())
-  const [theme, setTheme] = useState<ShareCardTheme>("dark")
-  const [showWatermark, setShowWatermark] = useState(true)
-  const [showPlan, setShowPlan] = useState(true)
+  const shareSnapshot = useAppShareStore.getState().settings
+  const patchShare = useAppShareStore((s) => s.patch)
+
+  const [selectedId, setSelectedId] = useState<string | null>(
+    shareSnapshot.selectedId ?? plugins[0]?.meta.id ?? null
+  )
+  const [preset, setPreset] = useState<PresetId | null>(shareSnapshot.preset)
+  const [checkedLabels, setCheckedLabels] = useState<Set<string>>(new Set(shareSnapshot.checkedLabels))
+  const [theme, setTheme] = useState<ShareCardTheme>(shareSnapshot.theme)
+  const [showWatermark, setShowWatermark] = useState(shareSnapshot.showWatermark)
+  const [showPlan, setShowPlan] = useState(shareSnapshot.showPlan)
   const [customizeOpen, setCustomizeOpen] = useState(false)
-  const [modelDisplay, setModelDisplay] = useState<ModelDisplayOptions>({
-    showPercent: true,
-    showToday: true,
-    showSevenDay: true,
-    showThirtyDay: true,
-  })
+  const [modelDisplay, setModelDisplay] = useState<ModelDisplayOptions>(shareSnapshot.modelDisplay)
   const [copyState, setCopyState] = useState<CopyState>("idle")
   const [copyError, setCopyError] = useState<string | null>(null)
   const [cardHeightPx, setCardHeightPx] = useState<number | null>(null)
   const [previewWidthPx, setPreviewWidthPx] = useState<number | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
-  const seededForRef = useRef<string | null>(null)
+  const seededForRef = useRef<string | null>(shareSnapshot.selectedId)
 
   useEffect(() => {
     if (selectedId && plugins.some((plugin) => plugin.meta.id === selectedId)) return
@@ -103,6 +104,23 @@ export function SharePage({ plugins }: SharePageProps) {
     setCopyState("idle")
     setCopyError(null)
   }, [selectedId, shareableLines, preset])
+
+  const didMountPersistRef = useRef(false)
+  useEffect(() => {
+    if (!didMountPersistRef.current) {
+      didMountPersistRef.current = true
+      return
+    }
+    patchShare({
+      selectedId,
+      preset,
+      checkedLabels: Array.from(checkedLabels),
+      theme,
+      showWatermark,
+      showPlan,
+      modelDisplay,
+    })
+  }, [patchShare, selectedId, preset, checkedLabels, theme, showWatermark, showPlan, modelDisplay])
 
   const checkedLines = useMemo(
     () => shareableLines.filter((entry) => checkedLabels.has(entry.line.label)).map((entry) => entry.line),
