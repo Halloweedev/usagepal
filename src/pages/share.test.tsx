@@ -20,6 +20,7 @@ vi.mock("@/lib/share-image", () => ({
 
 import { SharePage } from "@/pages/share"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
+import { useAppShareStore } from "@/stores/app-share-store"
 
 function makePlugin(overrides: Partial<DisplayPluginState> = {}): DisplayPluginState {
   return {
@@ -62,6 +63,7 @@ describe("SharePage", () => {
   beforeEach(() => {
     shareCardMock.mockReset()
     copyCardImageMock.mockReset()
+    useAppShareStore.getState().resetState()
   })
 
   it("defaults to the first provider with the Summary preset (overview lines only)", () => {
@@ -331,5 +333,57 @@ describe("SharePage", () => {
 
     expect(screen.getByText("No data yet for this provider.")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Copy Image" })).not.toBeInTheDocument()
+  })
+
+  it("restores persisted options from the share store on mount", () => {
+    useAppShareStore.setState({
+      hydrated: true,
+      settings: {
+        selectedId: "claude",
+        preset: "detailed",
+        checkedLabels: ["Session", "Sonnet"],
+        theme: "light",
+        showWatermark: false,
+        showPlan: false,
+        modelDisplay: { showPercent: true, showToday: true, showSevenDay: true, showThirtyDay: true },
+      },
+    })
+
+    // ShareCard only receives a `plan` prop (no `showPlan`), gated by the local
+    // showPlan state; use a plugin with plan data so restoring showPlan=false
+    // is observable on the rendered card, matching the existing plan-toggle test.
+    const withPlan = makePlugin({
+      data: {
+        providerId: "claude",
+        displayName: "Claude",
+        iconUrl: "/claude.svg",
+        plan: "Max 5x",
+        lines: [
+          { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
+          { type: "progress", label: "Sonnet", used: 10, limit: 100, format: { kind: "percent" } },
+        ],
+      },
+    })
+
+    render(<SharePage plugins={[withPlan]} />)
+
+    // Persisted metric selection is restored, NOT re-seeded from the Summary preset.
+    const { lines } = lastCardProps<{ lines: { label: string }[] }>()
+    expect(lines.map((line) => line.label)).toEqual(["Session", "Sonnet"])
+    // Persisted theme/toggles reach the card.
+    const props = lastCardProps<{ theme: string; showWatermark: boolean; plan?: string }>()
+    expect(props.theme).toBe("light")
+    expect(props.showWatermark).toBe(false)
+    expect(props.plan).toBeUndefined()
+  })
+
+  it("persists an option change to the share store", async () => {
+    const user = userEvent.setup()
+    useAppShareStore.setState({ hydrated: true })
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    await user.click(screen.getByRole("radio", { name: "Detailed" }))
+
+    expect(useAppShareStore.getState().settings.preset).toBe("detailed")
   })
 })

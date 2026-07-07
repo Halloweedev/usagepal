@@ -46,6 +46,44 @@ export const DEFAULT_PACE_NOTIFICATION_SETTINGS: PaceNotificationSettings = {
   sessionReset: false,
 };
 
+export type SharePreset = "summary" | "detailed" | "models";
+
+export type ShareTheme = "dark" | "light";
+
+export type ShareModelDisplay = {
+  showPercent: boolean;
+  showToday: boolean;
+  showSevenDay: boolean;
+  showThirtyDay: boolean;
+};
+
+/** All user-changeable options in the Share panel, persisted as one object so the
+ * panel restores exactly what the user last left — across remounts and restarts. */
+export type ShareSettings = {
+  selectedId: string | null;
+  preset: SharePreset | null;
+  checkedLabels: string[];
+  theme: ShareTheme;
+  showWatermark: boolean;
+  showPlan: boolean;
+  modelDisplay: ShareModelDisplay;
+};
+
+export const DEFAULT_SHARE_SETTINGS: ShareSettings = {
+  selectedId: null,
+  preset: "summary",
+  checkedLabels: [],
+  theme: "dark",
+  showWatermark: true,
+  showPlan: true,
+  modelDisplay: {
+    showPercent: true,
+    showToday: true,
+    showSevenDay: true,
+    showThirtyDay: true,
+  },
+};
+
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
 const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
@@ -63,6 +101,7 @@ const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
 const PACE_NOTIFICATIONS_KEY = "paceNotifications";
+const SHARE_SETTINGS_KEY = "shareSettings";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_BETA_UPDATES_ENABLED = false;
@@ -429,6 +468,64 @@ export async function savePaceNotificationSettings(
   settings: PaceNotificationSettings
 ): Promise<void> {
   await store.set(PACE_NOTIFICATIONS_KEY, settings);
+  await store.save();
+}
+
+const SHARE_PRESETS: SharePreset[] = ["summary", "detailed", "models"];
+const SHARE_THEMES: ShareTheme[] = ["dark", "light"];
+
+function normalizeShareSettings(value: unknown): ShareSettings {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  const selectedId = typeof record.selectedId === "string" ? record.selectedId : DEFAULT_SHARE_SETTINGS.selectedId;
+
+  const preset =
+    record.preset === undefined
+      ? DEFAULT_SHARE_SETTINGS.preset
+      : SHARE_PRESETS.includes(record.preset as SharePreset)
+        ? (record.preset as SharePreset)
+        : null;
+
+  const checkedLabels = Array.isArray(record.checkedLabels)
+    ? record.checkedLabels.filter((label): label is string => typeof label === "string")
+    : DEFAULT_SHARE_SETTINGS.checkedLabels;
+
+  const theme = SHARE_THEMES.includes(record.theme as ShareTheme)
+    ? (record.theme as ShareTheme)
+    : DEFAULT_SHARE_SETTINGS.theme;
+
+  const readBool = (key: "showWatermark" | "showPlan") =>
+    typeof record[key] === "boolean" ? (record[key] as boolean) : DEFAULT_SHARE_SETTINGS[key];
+
+  const md = record.modelDisplay && typeof record.modelDisplay === "object"
+    ? (record.modelDisplay as Record<string, unknown>)
+    : {};
+  const readMd = (key: keyof ShareModelDisplay) =>
+    typeof md[key] === "boolean" ? (md[key] as boolean) : DEFAULT_SHARE_SETTINGS.modelDisplay[key];
+
+  return {
+    selectedId,
+    preset,
+    checkedLabels,
+    theme,
+    showWatermark: readBool("showWatermark"),
+    showPlan: readBool("showPlan"),
+    modelDisplay: {
+      showPercent: readMd("showPercent"),
+      showToday: readMd("showToday"),
+      showSevenDay: readMd("showSevenDay"),
+      showThirtyDay: readMd("showThirtyDay"),
+    },
+  };
+}
+
+export async function loadShareSettings(): Promise<ShareSettings> {
+  const stored = await store.get<unknown>(SHARE_SETTINGS_KEY);
+  return normalizeShareSettings(stored);
+}
+
+export async function saveShareSettings(settings: ShareSettings): Promise<void> {
+  await store.set(SHARE_SETTINGS_KEY, settings);
   await store.save();
 }
 
