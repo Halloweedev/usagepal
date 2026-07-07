@@ -14,6 +14,7 @@ import type {
   GlobalShortcut,
   MenubarIconStyle,
   MenubarMetric,
+  MultiTrayDisplayMode,
   ResetTimerDisplayMode,
   ThemeMode,
   TimeFormatMode,
@@ -36,6 +37,8 @@ export type AppContentActionProps = {
   onResetTimerDisplayModeToggle: () => void
   onTimeFormatModeChange: (mode: TimeFormatMode) => void
   onMenubarIconStyleChange: (value: MenubarIconStyle) => void
+  onMultiMenubarClick: () => void
+  onMultiTrayDisplayModeChange: (value: MultiTrayDisplayMode) => void
   onMenubarMetricChange: (value: MenubarMetric) => void
   traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
@@ -59,6 +62,8 @@ export function AppContent({
   onResetTimerDisplayModeToggle,
   onTimeFormatModeChange,
   onMenubarIconStyleChange,
+  onMultiMenubarClick,
+  onMultiTrayDisplayModeChange,
   onMenubarMetricChange,
   traySettingsPreview,
   onGlobalShortcutChange,
@@ -79,6 +84,8 @@ export function AppContent({
     timeFormatMode,
     menubarIconStyle,
     menubarMetric,
+    multiTrayProviderCount,
+    multiTrayDisplayMode,
     autoUpdateInterval,
     betaUpdatesEnabled,
     globalShortcut,
@@ -91,6 +98,8 @@ export function AppContent({
       timeFormatMode: state.timeFormatMode,
       menubarIconStyle: state.menubarIconStyle,
       menubarMetric: state.menubarMetric,
+      multiTrayProviderCount: state.multiTrayProviderCount,
+      multiTrayDisplayMode: state.multiTrayDisplayMode,
       autoUpdateInterval: state.autoUpdateInterval,
       betaUpdatesEnabled: state.betaUpdatesEnabled,
       globalShortcut: state.globalShortcut,
@@ -130,6 +139,10 @@ export function AppContent({
         onTimeFormatModeChange={onTimeFormatModeChange}
         menubarIconStyle={menubarIconStyle}
         onMenubarIconStyleChange={onMenubarIconStyleChange}
+        multiTrayProviderCount={multiTrayProviderCount}
+        multiTrayDisplayMode={multiTrayDisplayMode}
+        onMultiMenubarClick={onMultiMenubarClick}
+        onMultiTrayDisplayModeChange={onMultiTrayDisplayModeChange}
         menubarMetric={menubarMetric}
         onMenubarMetricChange={onMenubarMetricChange}
         traySettingsPreview={traySettingsPreview}

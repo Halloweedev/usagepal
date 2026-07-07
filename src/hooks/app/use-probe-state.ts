@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { CachedPluginSnapshot } from "@/bindings"
 import type { PluginOutput } from "@/lib/plugin-types"
 import type { PluginState } from "@/hooks/app/types"
+import { mergeRateLimitedProbeOutput } from "@/lib/probe-output-merge"
 
 export type CachedUsageSnapshot = CachedPluginSnapshot
 
@@ -86,10 +87,13 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
       const now = Date.now()
       updatePluginStates((prev) => {
         const existing = prev[output.providerId]
+        const nextData = errorMessage
+          ? (existing?.data ?? null)
+          : mergeRateLimitedProbeOutput(output, existing?.data)
         return {
           ...prev,
           [output.providerId]: {
-            data: errorMessage ? (existing?.data ?? null) : output,
+            data: nextData,
             loading: false,
             error: errorMessage,
             lastManualRefreshAt: !errorMessage && isManual

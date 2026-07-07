@@ -15,6 +15,8 @@ const {
   loadGlobalShortcutMock,
   loadMenubarIconStyleMock,
   loadMenubarMetricMock,
+  loadMultiTrayDisplayModeMock,
+  loadMultiTrayProviderCountMock,
   loadPluginSettingsMock,
   loadResetTimerDisplayModeMock,
   loadStartOnLoginMock,
@@ -38,6 +40,8 @@ const {
   loadGlobalShortcutMock: vi.fn(),
   loadMenubarIconStyleMock: vi.fn(),
   loadMenubarMetricMock: vi.fn(),
+  loadMultiTrayDisplayModeMock: vi.fn(),
+  loadMultiTrayProviderCountMock: vi.fn(),
   loadPluginSettingsMock: vi.fn(),
   loadResetTimerDisplayModeMock: vi.fn(),
   loadStartOnLoginMock: vi.fn(),
@@ -68,6 +72,8 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_GLOBAL_SHORTCUT: null,
   DEFAULT_MENUBAR_ICON_STYLE: "provider",
   DEFAULT_MENUBAR_METRIC: "default",
+  DEFAULT_MULTI_TRAY_DISPLAY_MODE: "percent",
+  DEFAULT_MULTI_TRAY_PROVIDER_COUNT: 3,
   DEFAULT_RESET_TIMER_DISPLAY_MODE: "relative",
   DEFAULT_START_ON_LOGIN: false,
   DEFAULT_THEME_MODE: "system",
@@ -79,6 +85,8 @@ vi.mock("@/lib/settings", () => ({
   loadGlobalShortcut: loadGlobalShortcutMock,
   loadMenubarIconStyle: loadMenubarIconStyleMock,
   loadMenubarMetric: loadMenubarMetricMock,
+  loadMultiTrayDisplayMode: loadMultiTrayDisplayModeMock,
+  loadMultiTrayProviderCount: loadMultiTrayProviderCountMock,
   loadPluginSettings: loadPluginSettingsMock,
   loadResetTimerDisplayMode: loadResetTimerDisplayModeMock,
   loadStartOnLogin: loadStartOnLoginMock,
@@ -106,6 +114,8 @@ function createArgs() {
     setStartOnLogin: vi.fn(),
     setMenubarIconStyle: vi.fn(),
     setMenubarMetric: vi.fn(),
+    setMultiTrayProviderCount: vi.fn(),
+    setMultiTrayDisplayMode: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -127,6 +137,8 @@ describe("useSettingsBootstrap", () => {
     loadGlobalShortcutMock.mockReset()
     loadMenubarIconStyleMock.mockReset()
     loadMenubarMetricMock.mockReset()
+    loadMultiTrayDisplayModeMock.mockReset()
+    loadMultiTrayProviderCountMock.mockReset()
     loadPluginSettingsMock.mockReset()
     loadResetTimerDisplayModeMock.mockReset()
     loadStartOnLoginMock.mockReset()
@@ -161,6 +173,8 @@ describe("useSettingsBootstrap", () => {
     loadGlobalShortcutMock.mockResolvedValue("CommandOrControl+Shift+O")
     loadMenubarIconStyleMock.mockResolvedValue("provider")
     loadMenubarMetricMock.mockResolvedValue("default")
+    loadMultiTrayDisplayModeMock.mockResolvedValue("percent")
+    loadMultiTrayProviderCountMock.mockResolvedValue(3)
     loadStartOnLoginMock.mockResolvedValue(true)
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     migrateWindsurfToDevinMock.mockImplementation((settings) => settings)
@@ -206,6 +220,47 @@ describe("useSettingsBootstrap", () => {
     await waitFor(() => {
       expect(args.setMenubarMetric).toHaveBeenCalledWith("weekly")
     })
+  })
+
+  it("applies the stored multi tray provider count", async () => {
+    loadMultiTrayProviderCountMock.mockResolvedValueOnce(4)
+    const args = createArgs()
+
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setMultiTrayProviderCount).toHaveBeenCalledWith(4)
+    })
+  })
+
+  it("applies the stored multi tray display mode", async () => {
+    loadMultiTrayDisplayModeMock.mockResolvedValueOnce("bars")
+    const args = createArgs()
+
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setMultiTrayDisplayMode).toHaveBeenCalledWith("bars")
+    })
+  })
+
+  it("falls back to default multi tray provider count when loading fails", async () => {
+    const countError = new Error("multi tray provider count unavailable")
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    loadMultiTrayProviderCountMock.mockRejectedValueOnce(countError)
+    const args = createArgs()
+
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to load multi tray provider count:",
+        countError,
+      )
+      expect(args.setMultiTrayProviderCount).toHaveBeenCalledWith(3)
+    })
+
+    errorSpy.mockRestore()
   })
 
   it("applies the stored beta updates setting", async () => {

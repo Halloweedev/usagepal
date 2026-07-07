@@ -7,6 +7,8 @@
   "icon": "icon.svg",
   "brandColor": "#000000",
   "detect": [{ "file": "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb" }],
+  "multiTrayLines": ["Auto usage", "API usage"],
+  "trayPrimaryLabel": "Total usage",
   "links": [
     { "label": "Status", "url": "https://status.cursor.com/" },
     { "label": "Dashboard", "url": "https://www.cursor.com/dashboard" }

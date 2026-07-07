@@ -81,6 +81,10 @@ const defaultProps = {
   onTimeFormatModeChange: vi.fn(),
   menubarIconStyle: "provider" as const,
   onMenubarIconStyleChange: vi.fn(),
+  multiTrayProviderCount: 3 as const,
+  multiTrayDisplayMode: "percent" as const,
+  onMultiMenubarClick: vi.fn(),
+  onMultiTrayDisplayModeChange: vi.fn(),
   menubarMetric: "default" as const,
   onMenubarMetricChange: vi.fn(),
   traySettingsPreview: {
@@ -509,6 +513,16 @@ describe("SettingsPage", () => {
     expect(screen.getByText("What shows in the menu bar")).toBeInTheDocument()
   })
 
+  it("renders three style buttons on the first menubar icon row", () => {
+    render(<SettingsPage {...defaultProps} />)
+
+    const styleGroup = screen.getByRole("radiogroup", { name: "Menubar icon style" })
+    expect(within(styleGroup).getByRole("radio", { name: "Plugin" })).toBeInTheDocument()
+    expect(within(styleGroup).getByRole("radio", { name: "Donut" })).toBeInTheDocument()
+    expect(within(styleGroup).getByRole("radio", { name: "Bars" })).toBeInTheDocument()
+    expect(within(styleGroup).getAllByRole("radio")).toHaveLength(4)
+  })
+
   it("clicking Bars triggers onMenubarIconStyleChange(\"bars\")", async () => {
     const onMenubarIconStyleChange = vi.fn()
     render(
@@ -562,6 +576,200 @@ describe("SettingsPage", () => {
     expect(screen.queryByText("Metric")).not.toBeInTheDocument()
     expect(screen.queryByRole("radio", { name: "Default" })).not.toBeInTheDocument()
     expect(screen.queryByRole("radio", { name: "Weekly" })).not.toBeInTheDocument()
+  })
+
+  it("uses live provider percent fallback in plugin preview when probe has no fraction yet", () => {
+    render(
+      <SettingsPage
+        {...defaultProps}
+        traySettingsPreview={{
+          ...defaultProps.traySettingsPreview,
+          providerBars: [],
+          providerIconUrl: undefined,
+          providerPercentText: "--%",
+          multiProviders: [
+            { id: "claude", iconUrl: "claude-icon", sessionText: "55%" },
+          ],
+        }}
+      />
+    )
+
+    const pluginRow = screen.getByRole("radio", { name: "Plugin" })
+    expect(within(pluginRow).getByText("55%")).toBeInTheDocument()
+    expect(screen.queryByText("--%")).not.toBeInTheDocument()
+  })
+
+  it("shows multi preview row with live provider data", () => {
+    render(
+      <SettingsPage
+        {...defaultProps}
+        menubarIconStyle="multi"
+        traySettingsPreview={{
+          ...defaultProps.traySettingsPreview,
+          multiProviders: [
+            { id: "claude", iconUrl: "claude-icon", sessionText: "70%", weeklyText: "36%" },
+            { id: "cursor", iconUrl: "cursor-icon", sessionText: "42%" },
+          ],
+        }}
+      />
+    )
+
+    const multiRow = screen.getByRole("radio", { name: "Multi (3)" })
+    expect(multiRow).toHaveAttribute("aria-checked", "true")
+    expect(within(multiRow).getByText("70%")).toBeInTheDocument()
+    expect(within(multiRow).getByText("36%")).toBeInTheDocument()
+    expect(within(multiRow).getByText("42%")).toBeInTheDocument()
+    expect(screen.queryByText("100%")).not.toBeInTheDocument()
+    expect(screen.queryByText("Enable providers to preview")).not.toBeInTheDocument()
+  })
+
+  it("shows empty state in multi preview row when no providers are enabled", () => {
+    render(
+      <SettingsPage
+        {...defaultProps}
+        menubarIconStyle="provider"
+        traySettingsPreview={{
+          ...defaultProps.traySettingsPreview,
+          multiProviders: [],
+        }}
+      />
+    )
+
+    const multiRow = screen.getByRole("radio", { name: "Multi (3)" })
+    expect(within(multiRow).getByText("Enable providers to preview")).toBeInTheDocument()
+    expect(multiRow).toHaveAttribute("aria-checked", "false")
+    expect(screen.queryByText("100%")).not.toBeInTheDocument()
+  })
+
+  it("always shows multi preview row even when another menubar style is selected", () => {
+    render(
+      <SettingsPage
+        {...defaultProps}
+        menubarIconStyle="provider"
+        traySettingsPreview={{
+          ...defaultProps.traySettingsPreview,
+          providerPercentText: "12%",
+          multiProviders: [
+            { id: "claude", iconUrl: "claude-icon", sessionText: "55%", weeklyText: "36%" },
+          ],
+        }}
+      />
+    )
+
+    const multiRow = screen.getByRole("radio", { name: "Multi (3)" })
+    expect(multiRow).toHaveAttribute("aria-checked", "false")
+    expect(within(multiRow).getByText("55%")).toBeInTheDocument()
+    expect(within(multiRow).getByText("36%")).toBeInTheDocument()
+    expect(screen.getByText("12%")).toBeInTheDocument()
+  })
+
+  it("clicking Multi from another style selects multi without cycling count", async () => {
+    const onMultiMenubarClick = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onMultiMenubarClick={onMultiMenubarClick}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Multi (3)" }))
+    expect(onMultiMenubarClick).toHaveBeenCalledTimes(1)
+  })
+
+  it("clicking Multi while already selected cycles provider count", async () => {
+    const onMultiMenubarClick = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        menubarIconStyle="multi"
+        multiTrayProviderCount={3}
+        onMultiMenubarClick={onMultiMenubarClick}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Multi (3)" }))
+    expect(onMultiMenubarClick).toHaveBeenCalledTimes(1)
+  })
+
+  it("renders Numbers and Bars toggle when multi style is selected", () => {
+    render(
+      <SettingsPage
+        {...defaultProps}
+        menubarIconStyle="multi"
+        multiTrayDisplayMode="bars"
+        traySettingsPreview={{
+          ...defaultProps.traySettingsPreview,
+          multiProviders: [
+            {
+              id: "claude",
+              iconUrl: "claude-icon",
+              sessionText: "70%",
+              weeklyText: "36%",
+              sessionFraction: 0.7,
+              weeklyFraction: 0.36,
+            },
+          ],
+        }}
+      />
+    )
+
+    const displayModeGroup = screen.getByRole("radiogroup", { name: "Multi display mode" })
+    expect(within(displayModeGroup).getByRole("radio", { name: "Bars" })).toHaveAttribute("aria-checked", "true")
+    expect(within(displayModeGroup).getByRole("radio", { name: "Numbers" })).toHaveAttribute("aria-checked", "false")
+    const multiRow = screen.getByRole("radio", { name: "Multi (3)" })
+    expect(within(multiRow).queryByText("70%")).not.toBeInTheDocument()
+  })
+
+  it("clicking Numbers in multi display mode calls onMultiTrayDisplayModeChange", async () => {
+    const onMultiTrayDisplayModeChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        menubarIconStyle="multi"
+        multiTrayDisplayMode="bars"
+        onMultiTrayDisplayModeChange={onMultiTrayDisplayModeChange}
+      />
+    )
+
+    await userEvent.click(within(screen.getByRole("radiogroup", { name: "Multi display mode" })).getByRole("radio", { name: "Numbers" }))
+    expect(onMultiTrayDisplayModeChange).toHaveBeenCalledWith("percent")
+  })
+
+  it("multi preview respects configured provider count", () => {
+    render(
+      <SettingsPage
+        {...defaultProps}
+        menubarIconStyle="multi"
+        multiTrayProviderCount={2}
+        traySettingsPreview={{
+          ...defaultProps.traySettingsPreview,
+          multiProviders: [
+            { id: "claude", iconUrl: "claude-icon", sessionText: "70%", weeklyText: "36%" },
+            { id: "cursor", iconUrl: "cursor-icon", sessionText: "42%" },
+            { id: "codex", iconUrl: "codex-icon", sessionText: "12%" },
+          ],
+        }}
+      />
+    )
+
+    const multiRow = screen.getByRole("radio", { name: "Multi (2)" })
+    expect(within(multiRow).getByText("70%")).toBeInTheDocument()
+    expect(within(multiRow).getByText("42%")).toBeInTheDocument()
+    expect(within(multiRow).queryByText("12%")).not.toBeInTheDocument()
+    expect(within(multiRow).getByText("2")).toBeInTheDocument()
+  })
+
+  it("clicking Multi triggers onMenubarIconStyleChange(\"multi\")", async () => {
+    const onMenubarIconStyleChange = vi.fn()
+    const onMultiMenubarClick = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onMenubarIconStyleChange={onMenubarIconStyleChange}
+        onMultiMenubarClick={onMultiMenubarClick}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Multi (3)" }))
+    expect(onMultiMenubarClick).toHaveBeenCalledTimes(1)
+    expect(onMenubarIconStyleChange).not.toHaveBeenCalled()
   })
 
   it("does not render removed bar icon controls", () => {

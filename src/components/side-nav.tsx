@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils"
 import { getRelativeLuminance } from "@/lib/color"
 import { useDarkMode } from "@/hooks/use-dark-mode"
 import { Logo } from "@/components/logo"
+import { ProviderIconMask } from "@/components/provider-icon-mask"
 
 type ActiveView = "home" | "settings" | string
 
@@ -112,21 +113,11 @@ function SortableNavPlugin({ plugin, isActive, isDark, onClick, onContextMenu }:
         onContextMenu={onContextMenu}
         aria-label={plugin.name}
       >
-        <span
-          role="img"
-          aria-label={plugin.name}
-          className="size-6 inline-block"
-          style={{
-            backgroundColor: getIconColor(plugin.brandColor, isDark),
-            WebkitMaskImage: `url(${plugin.iconUrl})`,
-            WebkitMaskSize: "contain",
-            WebkitMaskRepeat: "no-repeat",
-            WebkitMaskPosition: "center",
-            maskImage: `url(${plugin.iconUrl})`,
-            maskSize: "contain",
-            maskRepeat: "no-repeat",
-            maskPosition: "center",
-          }}
+        <ProviderIconMask
+          iconUrl={plugin.iconUrl}
+          pluginId={plugin.id}
+          sizePx={24}
+          style={{ backgroundColor: getIconColor(plugin.brandColor, isDark) }}
         />
       </NavButton>
     </div>

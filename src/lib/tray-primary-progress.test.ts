@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { getTrayPrimaryBars, getTrayWeeklyFraction } from "@/lib/tray-primary-progress"
+import { getTrayPrimaryBars, getTrayWeeklyFraction, getTrayMultiProviderMetrics } from "@/lib/tray-primary-progress"
 
 describe("getTrayPrimaryBars", () => {
   it("returns empty when settings missing", () => {
@@ -657,6 +657,154 @@ describe("getTrayPrimaryBars", () => {
 
     expect(bars).toEqual([{ id: "oc", fraction: 0.2, label: "Session" }])
   })
+
+  describe("trayPrimaryLabel override", () => {
+    const cursorMeta = {
+      id: "cursor",
+      name: "Cursor",
+      iconUrl: "",
+      primaryCandidates: ["Credits", "Total usage", "Requests"],
+      trayPrimaryLabel: "Total usage",
+      multiTrayLines: ["Auto usage", "API usage"],
+      detected: true,
+      lines: [],
+    }
+
+    const cursorData = {
+      providerId: "cursor",
+      displayName: "Cursor",
+      iconUrl: "",
+      lines: [
+        { type: "progress" as const, label: "Credits", used: 10, limit: 100, format: { kind: "dollars" as const } },
+        { type: "progress" as const, label: "Total usage", used: 42, limit: 100, format: { kind: "percent" as const } },
+        { type: "progress" as const, label: "Auto usage", used: 70, limit: 100, format: { kind: "percent" as const } },
+        { type: "progress" as const, label: "API usage", used: 30, limit: 100, format: { kind: "percent" as const } },
+      ],
+    }
+
+    it("uses trayPrimaryLabel for provider/bars styles instead of first primary candidate", () => {
+      const bars = getTrayPrimaryBars({
+        displayMode: "used",
+        pluginsMeta: [cursorMeta],
+        pluginSettings: { order: ["cursor"], disabled: [] },
+        pluginStates: {
+          cursor: { data: cursorData, loading: false, error: null },
+        },
+        pluginId: "cursor",
+      })
+
+      expect(bars).toEqual([{ id: "cursor", fraction: 0.42, label: "Total usage" }])
+    })
+
+    it("keeps non-Cursor primary candidate behavior unchanged", () => {
+      const bars = getTrayPrimaryBars({
+        displayMode: "used",
+        pluginsMeta: [
+          {
+            id: "claude",
+            name: "Claude",
+            iconUrl: "",
+            primaryCandidates: ["Session"],
+            detected: true,
+            lines: [],
+          },
+        ],
+        pluginSettings: { order: ["claude"], disabled: [] },
+        pluginStates: {
+          claude: {
+            data: {
+              providerId: "claude",
+              displayName: "Claude",
+              iconUrl: "",
+              lines: [
+                { type: "progress", label: "Session", used: 25, limit: 100, format: { kind: "percent" } },
+              ],
+            },
+            loading: false,
+            error: null,
+          },
+        },
+      })
+
+      expect(bars).toEqual([{ id: "claude", fraction: 0.25, label: "Session" }])
+    })
+  })
+})
+
+describe("getTrayMultiProviderMetrics", () => {
+  const cursorMeta = {
+    id: "cursor",
+    name: "Cursor",
+    iconUrl: "",
+    primaryCandidates: ["Credits", "Total usage"],
+    trayPrimaryLabel: "Total usage",
+    multiTrayLines: ["Auto usage", "API usage"],
+    detected: true,
+    lines: [],
+  }
+
+  const cursorData = {
+    providerId: "cursor",
+    displayName: "Cursor",
+    iconUrl: "",
+    lines: [
+      { type: "progress" as const, label: "Credits", used: 10, limit: 100, format: { kind: "dollars" as const } },
+      { type: "progress" as const, label: "Total usage", used: 42, limit: 100, format: { kind: "percent" as const } },
+      { type: "progress" as const, label: "Auto usage", used: 70, limit: 100, format: { kind: "percent" as const } },
+      { type: "progress" as const, label: "API usage", used: 30, limit: 100, format: { kind: "percent" as const } },
+    ],
+  }
+
+  it("uses multiTrayLines for Cursor multi style (Auto + API)", () => {
+    const metrics = getTrayMultiProviderMetrics({
+      pluginId: "cursor",
+      pluginsMeta: [cursorMeta],
+      pluginSettings: { order: ["cursor"], disabled: [] },
+      pluginStates: {
+        cursor: { data: cursorData, loading: false, error: null },
+      },
+      displayMode: "used",
+    })
+
+    expect(metrics).toEqual({ sessionFraction: 0.7, weeklyFraction: 0.3 })
+  })
+
+  it("falls back to primary + weekly for providers without multiTrayLines", () => {
+    const metrics = getTrayMultiProviderMetrics({
+      pluginId: "claude",
+      pluginsMeta: [
+        {
+          id: "claude",
+          name: "Claude",
+          iconUrl: "",
+          primaryCandidates: ["Session"],
+          weeklyCandidate: "Weekly",
+          multiTrayLines: [],
+          detected: true,
+          lines: [],
+        },
+      ],
+      pluginSettings: { order: ["claude"], disabled: [] },
+      pluginStates: {
+        claude: {
+          data: {
+            providerId: "claude",
+            displayName: "Claude",
+            iconUrl: "",
+            lines: [
+              { type: "progress", label: "Session", used: 20, limit: 100, format: { kind: "percent" } },
+              { type: "progress", label: "Weekly", used: 60, limit: 100, format: { kind: "percent" } },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+      displayMode: "used",
+    })
+
+    expect(metrics).toEqual({ sessionFraction: 0.2, weeklyFraction: 0.6 })
+  })
 })
 
 const claudeMeta = {
@@ -768,5 +916,78 @@ describe("getTrayWeeklyFraction", () => {
         },
       })
     ).toBe(0.64)
+  })
+})
+
+const cursorMeta = {
+  id: "cursor",
+  name: "Cursor",
+  iconUrl: "",
+  primaryCandidates: ["Credits", "Total usage"],
+  weeklyCandidate: null,
+  multiTrayLines: ["Auto usage", "API usage"],
+  lines: [],
+}
+
+const cursorUsageData = {
+  providerId: "cursor",
+  displayName: "Cursor",
+  iconUrl: "",
+  lines: [
+    { type: "progress" as const, label: "Credits", used: 10, limit: 100, format: { kind: "dollars" as const } },
+    { type: "progress" as const, label: "Total usage", used: 55, limit: 100, format: { kind: "percent" as const } },
+    { type: "progress" as const, label: "Auto usage", used: 42, limit: 100, format: { kind: "percent" as const } },
+    { type: "progress" as const, label: "API usage", used: 18, limit: 100, format: { kind: "percent" as const } },
+  ],
+}
+
+describe("getTrayMultiProviderMetrics", () => {
+  it("uses multiTrayLines for Cursor instead of primary and weekly", () => {
+    expect(
+      getTrayMultiProviderMetrics({
+        displayMode: "used",
+        pluginId: "cursor",
+        pluginsMeta: [cursorMeta],
+        pluginSettings: { order: ["cursor"], disabled: [] },
+        pluginStates: {
+          cursor: { data: cursorUsageData, loading: false, error: null },
+        },
+      })
+    ).toEqual({ sessionFraction: 0.42, weeklyFraction: 0.18 })
+  })
+
+  it("falls back to primary and weekly when multiTrayLines is empty", () => {
+    expect(
+      getTrayMultiProviderMetrics({
+        displayMode: "used",
+        pluginId: "claude",
+        pluginsMeta: [claudeMeta],
+        pluginSettings: { order: ["claude"], disabled: [] },
+        pluginStates: {
+          claude: { data: sessionWeeklyData, loading: false, error: null },
+        },
+      })
+    ).toEqual({ sessionFraction: 1, weeklyFraction: 0.36 })
+  })
+
+  it("omits missing multiTray line when only one label is present in data", () => {
+    expect(
+      getTrayMultiProviderMetrics({
+        displayMode: "used",
+        pluginId: "cursor",
+        pluginsMeta: [cursorMeta],
+        pluginSettings: { order: ["cursor"], disabled: [] },
+        pluginStates: {
+          cursor: {
+            data: {
+              ...cursorUsageData,
+              lines: cursorUsageData.lines.filter((line) => line.label !== "API usage"),
+            },
+            loading: false,
+            error: null,
+          },
+        },
+      })
+    ).toEqual({ sessionFraction: 0.42, weeklyFraction: undefined })
   })
 })

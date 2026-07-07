@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ShareCard, type ShareCardTheme } from "@/components/share-card"
+import { ProviderIconMask } from "@/components/provider-icon-mask"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import { buildShareableLines, type ShareableLine, type ShareLineScope } from "@/lib/share-lines"
 import { copyCardImage } from "@/lib/share-image"
@@ -198,19 +199,11 @@ export function SharePage({ plugins }: SharePageProps) {
                     disabled={copying}
                     onClick={() => setSelectedId(plugin.meta.id)}
                   >
-                    <span
-                      aria-hidden="true"
-                      className="inline-block size-4 bg-current"
-                      style={{
-                        WebkitMaskImage: `url(${plugin.meta.iconUrl})`,
-                        WebkitMaskSize: "contain",
-                        WebkitMaskRepeat: "no-repeat",
-                        WebkitMaskPosition: "center",
-                        maskImage: `url(${plugin.meta.iconUrl})`,
-                        maskSize: "contain",
-                        maskRepeat: "no-repeat",
-                        maskPosition: "center",
-                      }}
+                    <ProviderIconMask
+                      iconUrl={plugin.meta.iconUrl}
+                      pluginId={plugin.meta.id}
+                      sizePx={16}
+                      className="bg-current"
                     />
                   </Button>
                 )
@@ -240,6 +233,7 @@ export function SharePage({ plugins }: SharePageProps) {
                 <div ref={cardRef} className="w-fit">
                   <ShareCard
                     providerName={selected.meta.name}
+                    providerId={selected.meta.id}
                     providerIconUrl={selected.meta.iconUrl}
                     brandColor={selected.meta.brandColor ?? undefined}
                     plan={showPlan ? selected.data.plan ?? undefined : undefined}

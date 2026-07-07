@@ -10,7 +10,9 @@
     "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
-  // Rate-limit state persisted across probe() calls (module scope survives re-invocations).
+  // Rate-limit state for within a single probe runtime. Each probe spins up a
+  // fresh QuickJS context, so this does not survive across scheduled refreshes;
+  // the app preserves last-known progress lines when rate-limited instead.
   const MIN_USAGE_FETCH_INTERVAL_MS = 5 * 60 * 1000  // never poll more than once per 5 min
   const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000 // fallback when no Retry-After header
   let rateLimitedUntilMs = 0  // epoch ms; 0 = not rate-limited

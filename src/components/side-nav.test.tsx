@@ -39,8 +39,8 @@ describe("SideNav", () => {
     const btn = screen.getByRole("button", { name: "Plugin 1" })
     expect(btn).toBeInTheDocument()
 
-    const icon = screen.getByRole("img", { name: "Plugin 1" })
-    expect(icon).toHaveStyle({ backgroundColor: "#ff0000" })
+    const icon = btn.querySelector('[aria-hidden="true"]')
+    expect(icon).toHaveStyle({ backgroundColor: "rgb(255, 0, 0)" })
   })
 
   it("falls back to currentColor (light) or white (dark) for low-contrast brand colors", () => {
@@ -55,7 +55,7 @@ describe("SideNav", () => {
         plugins={[{ id: "p", name: "P", iconUrl: "icon.svg", brandColor: "#ffffff" }]}
       />
     )
-    const pStyle = screen.getByRole("img", { name: "P" }).getAttribute("style") ?? ""
+    const pStyle = screen.getByRole("button", { name: "P" }).querySelector('[aria-hidden="true"]')?.getAttribute("style") ?? ""
     expect(pStyle).toMatch(/background-color:\s*currentcolor/i)
 
     // Dark mode + very dark color => white
@@ -67,7 +67,7 @@ describe("SideNav", () => {
         plugins={[{ id: "p2", name: "P2", iconUrl: "icon.svg", brandColor: "#000000" }]}
       />
     )
-    const p2Style = screen.getByRole("img", { name: "P2" }).getAttribute("style") ?? ""
+    const p2Style = screen.getByRole("button", { name: "P2" }).querySelector('[aria-hidden="true"]')?.getAttribute("style") ?? ""
     expect(p2Style).toContain("rgb(255, 255, 255)")
   })
 

@@ -730,6 +730,19 @@ fn error_line(message: String) -> MetricLine {
     }
 }
 
+/// True when a probe returned a rate-limit status badge instead of failing.
+/// These responses may omit live usage progress and must not overwrite the cache.
+pub fn is_rate_limited_output(output: &PluginOutput) -> bool {
+    output.lines.iter().any(|line| {
+        matches!(
+            line,
+            MetricLine::Badge { label, text, .. }
+                if label == "Status"
+                    && text.to_ascii_lowercase().contains("rate limited")
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -751,6 +764,8 @@ mod tests {
                 lines: vec![],
                 links: vec![],
                 detect: vec![],
+                multi_tray_lines: vec![],
+                tray_primary_label: None,
             },
             plugin_dir: PathBuf::from("."),
             entry_script: entry_script.to_string(),
@@ -899,5 +914,42 @@ mod tests {
             json["points"].as_array().expect("points array").len(),
             MAX_BAR_CHART_POINTS
         );
+    }
+
+    #[test]
+    fn is_rate_limited_output_detects_status_badge() {
+        let output = PluginOutput {
+            provider_id: "claude".to_string(),
+            display_name: "Claude".to_string(),
+            plan: None,
+            lines: vec![MetricLine::Badge {
+                label: "Status".to_string(),
+                text: "Rate limited, retry in ~5m".to_string(),
+                color: Some("#f59e0b".to_string()),
+                subtitle: None,
+            }],
+            icon_url: String::new(),
+        };
+        assert!(is_rate_limited_output(&output));
+    }
+
+    #[test]
+    fn is_rate_limited_output_ignores_successful_probes() {
+        let output = PluginOutput {
+            provider_id: "claude".to_string(),
+            display_name: "Claude".to_string(),
+            plan: None,
+            lines: vec![MetricLine::Progress {
+                label: "Session".to_string(),
+                used: 42.0,
+                limit: 100.0,
+                format: ProgressFormat::Percent,
+                resets_at: None,
+                period_duration_ms: None,
+                color: None,
+            }],
+            icon_url: String::new(),
+        };
+        assert!(!is_rate_limited_output(&output));
     }
 }

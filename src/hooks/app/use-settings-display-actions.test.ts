@@ -3,22 +3,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
   saveDisplayModeMock,
+  saveMenubarIconStyleMock,
   saveMenubarMetricMock,
+  saveMultiTrayDisplayModeMock,
+  saveMultiTrayProviderCountMock,
   saveResetTimerDisplayModeMock,
   saveThemeModeMock,
   saveTimeFormatModeMock,
 } = vi.hoisted(() => ({
   saveThemeModeMock: vi.fn(),
   saveDisplayModeMock: vi.fn(),
+  saveMenubarIconStyleMock: vi.fn(),
   saveMenubarMetricMock: vi.fn(),
+  saveMultiTrayDisplayModeMock: vi.fn(),
+  saveMultiTrayProviderCountMock: vi.fn(),
   saveResetTimerDisplayModeMock: vi.fn(),
   saveTimeFormatModeMock: vi.fn(),
 }))
 
 vi.mock("@/lib/settings", () => ({
+  cycleMultiTrayProviderCount: (current: 2 | 3 | 4) => (current === 2 ? 3 : current === 3 ? 4 : 2),
   saveThemeMode: saveThemeModeMock,
   saveDisplayMode: saveDisplayModeMock,
+  saveMenubarIconStyle: saveMenubarIconStyleMock,
   saveMenubarMetric: saveMenubarMetricMock,
+  saveMultiTrayDisplayMode: saveMultiTrayDisplayModeMock,
+  saveMultiTrayProviderCount: saveMultiTrayProviderCountMock,
   saveResetTimerDisplayMode: saveResetTimerDisplayModeMock,
   saveTimeFormatMode: saveTimeFormatModeMock,
 }))
@@ -29,15 +39,36 @@ describe("useSettingsDisplayActions", () => {
   beforeEach(() => {
     saveThemeModeMock.mockReset()
     saveDisplayModeMock.mockReset()
+    saveMenubarIconStyleMock.mockReset()
     saveMenubarMetricMock.mockReset()
+    saveMultiTrayDisplayModeMock.mockReset()
+    saveMultiTrayProviderCountMock.mockReset()
     saveResetTimerDisplayModeMock.mockReset()
     saveTimeFormatModeMock.mockReset()
     saveThemeModeMock.mockResolvedValue(undefined)
     saveDisplayModeMock.mockResolvedValue(undefined)
+    saveMenubarIconStyleMock.mockResolvedValue(undefined)
     saveMenubarMetricMock.mockResolvedValue(undefined)
+    saveMultiTrayDisplayModeMock.mockResolvedValue(undefined)
+    saveMultiTrayProviderCountMock.mockResolvedValue(undefined)
     saveResetTimerDisplayModeMock.mockResolvedValue(undefined)
     saveTimeFormatModeMock.mockResolvedValue(undefined)
   })
+
+  const baseArgs = {
+    menubarIconStyle: "provider" as const,
+    multiTrayProviderCount: 3 as const,
+    setThemeMode: vi.fn(),
+    setDisplayMode: vi.fn(),
+    resetTimerDisplayMode: "relative" as const,
+    setResetTimerDisplayMode: vi.fn(),
+    setTimeFormatMode: vi.fn(),
+    setMenubarIconStyle: vi.fn(),
+    setMenubarMetric: vi.fn(),
+    setMultiTrayProviderCount: vi.fn(),
+    setMultiTrayDisplayMode: vi.fn(),
+    scheduleTrayIconUpdate: vi.fn(),
+  }
 
   it("applies display-related setting changes", () => {
     const setThemeMode = vi.fn()
@@ -49,12 +80,11 @@ describe("useSettingsDisplayActions", () => {
 
     const { result } = renderHook(() =>
       useSettingsDisplayActions({
+        ...baseArgs,
         setThemeMode,
         setDisplayMode,
-        resetTimerDisplayMode: "relative",
         setResetTimerDisplayMode,
         setTimeFormatMode,
-        setMenubarIconStyle: vi.fn(),
         setMenubarMetric,
         scheduleTrayIconUpdate,
       })
@@ -88,14 +118,9 @@ describe("useSettingsDisplayActions", () => {
     const { result, rerender } = renderHook(
       ({ mode }: { mode: "relative" | "absolute" }) =>
         useSettingsDisplayActions({
-          setThemeMode: vi.fn(),
-          setDisplayMode: vi.fn(),
+          ...baseArgs,
           resetTimerDisplayMode: mode,
           setResetTimerDisplayMode,
-          setTimeFormatMode: vi.fn(),
-          setMenubarIconStyle: vi.fn(),
-          setMenubarMetric: vi.fn(),
-          scheduleTrayIconUpdate: vi.fn(),
         }),
       { initialProps: { mode: "relative" as const } }
     )
@@ -125,16 +150,7 @@ describe("useSettingsDisplayActions", () => {
     saveTimeFormatModeMock.mockRejectedValueOnce(timeFormatError)
 
     const { result } = renderHook(() =>
-      useSettingsDisplayActions({
-        setThemeMode: vi.fn(),
-        setDisplayMode: vi.fn(),
-        resetTimerDisplayMode: "relative",
-        setResetTimerDisplayMode: vi.fn(),
-        setTimeFormatMode: vi.fn(),
-        setMenubarIconStyle: vi.fn(),
-        setMenubarMetric: vi.fn(),
-        scheduleTrayIconUpdate: vi.fn(),
-      })
+      useSettingsDisplayActions(baseArgs)
     )
 
     act(() => {
@@ -152,5 +168,78 @@ describe("useSettingsDisplayActions", () => {
     })
 
     errorSpy.mockRestore()
+  })
+
+  it("selects multi style when clicking Multi from another style", () => {
+    const setMenubarIconStyle = vi.fn()
+    const setMultiTrayProviderCount = vi.fn()
+    const scheduleTrayIconUpdate = vi.fn()
+
+    const { result } = renderHook(() =>
+      useSettingsDisplayActions({
+        ...baseArgs,
+        setMenubarIconStyle,
+        setMultiTrayProviderCount,
+        scheduleTrayIconUpdate,
+      })
+    )
+
+    act(() => {
+      result.current.handleMultiMenubarClick()
+    })
+
+    expect(setMenubarIconStyle).toHaveBeenCalledWith("multi")
+    expect(setMultiTrayProviderCount).not.toHaveBeenCalled()
+    expect(scheduleTrayIconUpdate).toHaveBeenCalledWith("settings", 0)
+    expect(saveMenubarIconStyleMock).toHaveBeenCalledWith("multi")
+    expect(saveMultiTrayProviderCountMock).not.toHaveBeenCalled()
+  })
+
+  it("cycles provider count when Multi is already selected", () => {
+    const setMenubarIconStyle = vi.fn()
+    const setMultiTrayProviderCount = vi.fn()
+    const scheduleTrayIconUpdate = vi.fn()
+
+    const { result } = renderHook(() =>
+      useSettingsDisplayActions({
+        ...baseArgs,
+        menubarIconStyle: "multi",
+        multiTrayProviderCount: 3,
+        setMenubarIconStyle,
+        setMultiTrayProviderCount,
+        scheduleTrayIconUpdate,
+      })
+    )
+
+    act(() => {
+      result.current.handleMultiMenubarClick()
+    })
+
+    expect(setMultiTrayProviderCount).toHaveBeenCalledWith(4)
+    expect(setMenubarIconStyle).not.toHaveBeenCalled()
+    expect(scheduleTrayIconUpdate).toHaveBeenCalledWith("settings", 0)
+    expect(saveMultiTrayProviderCountMock).toHaveBeenCalledWith(4)
+    expect(saveMenubarIconStyleMock).not.toHaveBeenCalled()
+  })
+
+  it("saves multi tray display mode and refreshes tray icon", () => {
+    const setMultiTrayDisplayMode = vi.fn()
+    const scheduleTrayIconUpdate = vi.fn()
+
+    const { result } = renderHook(() =>
+      useSettingsDisplayActions({
+        ...baseArgs,
+        setMultiTrayDisplayMode,
+        scheduleTrayIconUpdate,
+      })
+    )
+
+    act(() => {
+      result.current.handleMultiTrayDisplayModeChange("bars")
+    })
+
+    expect(setMultiTrayDisplayMode).toHaveBeenCalledWith("bars")
+    expect(scheduleTrayIconUpdate).toHaveBeenCalledWith("settings", 0)
+    expect(saveMultiTrayDisplayModeMock).toHaveBeenCalledWith("bars")
   })
 })

@@ -88,6 +88,10 @@ pub struct PluginMeta {
     /// Label of the progress line marked `"period": "weekly"`, if any.
     /// Drives the menubar weekly-metric preference.
     pub weekly_candidate: Option<String>,
+    /// Optional pair of progress-line labels for Multi menubar style.
+    pub multi_tray_lines: Vec<String>,
+    /// Optional progress-line label for single-provider menubar styles.
+    pub tray_primary_label: Option<String>,
     /// Whether the provider's credentials/config were found on this machine.
     /// New users get detected plugins enabled by default; undetected ones start
     /// disabled so they don't show error cards for providers they don't use.
@@ -378,8 +382,16 @@ fn run_probe_batch(
                         let has_error = output.lines.iter().any(|line| {
                             matches!(line, plugin_engine::runtime::MetricLine::Badge { label, .. } if label == "Error")
                         });
+                        let is_rate_limited =
+                            plugin_engine::runtime::is_rate_limited_output(&output);
                         if has_error {
                             log::warn!("probe {} completed with error", plugin_id);
+                        } else if is_rate_limited {
+                            log::warn!(
+                                "probe {} completed rate-limited ({} lines); keeping prior cache",
+                                plugin_id,
+                                output.lines.len()
+                            );
                         } else {
                             log::info!(
                                 "probe {} completed ok ({} lines)",
@@ -769,6 +781,14 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                     .collect(),
                 primary_candidates,
                 weekly_candidate,
+                multi_tray_lines: plugin
+                    .manifest
+                    .multi_tray_lines
+                    .iter()
+                    .take(2)
+                    .cloned()
+                    .collect(),
+                tray_primary_label: plugin.manifest.tray_primary_label.clone(),
                 detected,
             }
         })

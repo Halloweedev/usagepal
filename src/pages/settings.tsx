@@ -26,12 +26,14 @@ import { ClinePassKeyDialog } from "@/components/clinepass-key-dialog";
 import { OpenRouterKeyDialog } from "@/components/openrouter-key-dialog";
 import { SettingsAppMenu } from "@/components/settings-app-menu";
 import { SupporterSection } from "@/components/supporter-section";
+import { ProviderIconMask } from "@/components/provider-icon-mask";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
   MENUBAR_ICON_STYLE_OPTIONS,
   MENUBAR_METRIC_OPTIONS,
+  MULTI_TRAY_DISPLAY_MODE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   THEME_OPTIONS,
   TIME_FORMAT_OPTIONS,
@@ -40,6 +42,8 @@ import {
   type GlobalShortcut,
   type MenubarIconStyle,
   type MenubarMetric,
+  type MultiTrayDisplayMode,
+  type MultiTrayProviderCount,
   type ResetTimerDisplayMode,
   type ThemeMode,
   type TimeFormatMode,
@@ -67,42 +71,19 @@ function getPreviewBarLayout(fraction: number): { fillPercent: number; remainder
   };
 }
 
-function ProviderIconMask({
-  iconUrl,
-  isActive,
-  sizePx,
-}: {
-  iconUrl?: string;
-  isActive: boolean;
-  sizePx: number;
-}) {
-  const colorClass = isActive ? "bg-primary-foreground" : "bg-foreground";
-  if (iconUrl) {
-    return (
-      <div
-        aria-hidden
-        className={cn("shrink-0", colorClass)}
-        style={{
-          width: `${sizePx}px`,
-          height: `${sizePx}px`,
-          WebkitMaskImage: `url(${iconUrl})`,
-          WebkitMaskSize: "contain",
-          WebkitMaskRepeat: "no-repeat",
-          WebkitMaskPosition: "center",
-          maskImage: `url(${iconUrl})`,
-          maskSize: "contain",
-          maskRepeat: "no-repeat",
-          maskPosition: "center",
-        }}
-      />
-    );
+function resolvePreviewProviderIcon(preview: TraySettingsPreview): string | undefined {
+  return preview.providerIconUrl ?? preview.multiProviders[0]?.iconUrl;
+}
+
+function resolvePreviewProviderId(preview: TraySettingsPreview): string | undefined {
+  return preview.providerId ?? preview.multiProviders[0]?.id;
+}
+
+function resolvePreviewProviderPercent(preview: TraySettingsPreview): string {
+  if (preview.providerPercentText !== "--%") {
+    return preview.providerPercentText;
   }
-  const textClass = isActive ? "text-primary-foreground" : "text-foreground";
-  return (
-    <svg aria-hidden viewBox="0 0 26 26" className={cn("shrink-0", textClass)} style={{ width: `${sizePx}px`, height: `${sizePx}px` }}>
-      <circle cx="13" cy="13" r="9" fill="none" stroke="currentColor" strokeWidth="3.5" opacity={0.3} />
-    </svg>
-  );
+  return preview.multiProviders[0]?.sessionText ?? "--%";
 }
 
 function MenubarIconStylePreview({
@@ -120,12 +101,14 @@ function MenubarIconStylePreview({
     return (
       <div className="inline-flex items-center gap-0.5">
         <ProviderIconMask
-          iconUrl={traySettingsPreview.providerIconUrl}
-          isActive={isActive}
+          iconUrl={resolvePreviewProviderIcon(traySettingsPreview)}
+          pluginId={resolvePreviewProviderId(traySettingsPreview)}
+          className={isActive ? "bg-primary-foreground" : "bg-foreground"}
+          fallbackClassName={isActive ? "text-primary-foreground" : "text-foreground"}
           sizePx={TRAY_PREVIEW_SIZE_PX}
         />
         <span className={cn("text-[12px] font-semibold tabular-nums leading-none", textClass)}>
-          {traySettingsPreview.providerPercentText}
+          {resolvePreviewProviderPercent(traySettingsPreview)}
         </span>
       </div>
     );
@@ -137,7 +120,7 @@ function MenubarIconStylePreview({
     const fillClass = isActive ? "bg-primary-foreground" : "bg-foreground";
     const fractions = traySettingsPreview.bars.length > 0
       ? traySettingsPreview.bars.map((b) => b.fraction ?? 0)
-      : [0.83, 0.7, 0.56];
+      : [0];
 
     return (
       <div className="flex items-center">
@@ -178,8 +161,10 @@ function MenubarIconStylePreview({
     return (
       <div className="inline-flex items-center gap-1">
         <ProviderIconMask
-          iconUrl={traySettingsPreview.providerIconUrl}
-          isActive={isActive}
+          iconUrl={resolvePreviewProviderIcon(traySettingsPreview)}
+          pluginId={resolvePreviewProviderId(traySettingsPreview)}
+          className={isActive ? "bg-primary-foreground" : "bg-foreground"}
+          fallbackClassName={isActive ? "text-primary-foreground" : "text-foreground"}
           sizePx={TRAY_PREVIEW_SIZE_PX}
         />
         <svg aria-hidden viewBox="0 0 26 26" className={cn("shrink-0", textClass)} style={{ width: `${TRAY_PREVIEW_SIZE_PX}px`, height: `${TRAY_PREVIEW_SIZE_PX}px` }}>
@@ -203,34 +188,98 @@ function MenubarIconStylePreview({
     );
   }
 
-  if (style === "multi") {
-    const providers = traySettingsPreview.multiProviders.length > 0
-      ? traySettingsPreview.multiProviders
-      : [{ id: "preview", sessionText: "100%", weeklyText: "36%" }];
+  return null;
+}
+
+function MultiMenubarStylePreview({
+  traySettingsPreview,
+  isActive,
+  providerCount,
+  displayMode,
+}: {
+  traySettingsPreview: TraySettingsPreview;
+  isActive: boolean;
+  providerCount: MultiTrayProviderCount;
+  displayMode: MultiTrayDisplayMode;
+}) {
+  const providers = traySettingsPreview.multiProviders.slice(0, providerCount);
+
+  if (providers.length === 0) {
     return (
-      <div className="inline-flex items-center gap-1">
-        {providers.slice(0, 3).map((p) => (
-          <div key={p.id} className="inline-flex items-center gap-0.5">
-            <ProviderIconMask iconUrl={p.iconUrl} isActive={isActive} sizePx={TRAY_PREVIEW_SIZE_PX} />
-            <div className="flex flex-col leading-none">
-              {p.sessionText && (
-                <span className={cn("text-[10px] font-semibold tabular-nums", textClass)}>
-                  {p.sessionText}
-                </span>
-              )}
-              {p.weeklyText && (
-                <span className={cn("text-[9px] font-semibold tabular-nums opacity-70", textClass)}>
-                  {p.weeklyText}
-                </span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      <p
+        className={cn(
+          "text-sm text-center py-1",
+          isActive ? "text-primary-foreground/80" : "text-muted-foreground"
+        )}
+      >
+        Enable providers to preview
+      </p>
     );
   }
 
-  return null;
+  const sessionTextClass = isActive ? "text-primary-foreground" : "text-foreground";
+  const weeklyTextClass = isActive ? "text-primary-foreground/70" : "text-foreground/70";
+  const trackClass = isActive ? "bg-primary-foreground/15" : "bg-foreground/15";
+  const remainderClass = isActive ? "bg-primary-foreground/20" : "bg-foreground/15";
+  const fillClass = isActive ? "bg-primary-foreground" : "bg-foreground";
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2 w-full">
+      {providers.map((provider) => (
+        <div key={provider.id} className="inline-flex items-center gap-1 shrink-0">
+          <ProviderIconMask
+            iconUrl={provider.iconUrl}
+            pluginId={provider.id}
+            className={isActive ? "bg-primary-foreground" : "bg-foreground"}
+            fallbackClassName={isActive ? "text-primary-foreground" : "text-foreground"}
+            sizePx={TRAY_PREVIEW_SIZE_PX}
+          />
+          {displayMode === "bars" ? (
+            <div className="flex flex-col gap-0.5 w-5">
+              {[provider.sessionFraction, provider.weeklyFraction].map((fraction, index) => {
+                const { fillPercent, remainderPercent } = getPreviewBarLayout(fraction ?? 0);
+                return (
+                  <div key={index} className={cn("relative h-1 rounded-sm", trackClass)}>
+                    {remainderPercent > 0 && (
+                      <span
+                        aria-hidden
+                        className={remainderClass}
+                        style={{
+                          position: "absolute",
+                          right: 0,
+                          top: 0,
+                          bottom: 0,
+                          width: `${remainderPercent}%`,
+                          borderRadius: "1px 2px 2px 1px",
+                        }}
+                      />
+                    )}
+                    <div
+                      className={cn("h-1", fillClass)}
+                      style={{ width: `${fillPercent}%`, borderRadius: "2px 1px 1px 2px" }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-px leading-none">
+              {provider.sessionText && (
+                <span className={cn("text-[10px] font-semibold tabular-nums", sessionTextClass)}>
+                  {provider.sessionText}
+                </span>
+              )}
+              {provider.weeklyText && (
+                <span className={cn("text-[9px] font-semibold tabular-nums", weeklyTextClass)}>
+                  {provider.weeklyText}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function SortablePluginItem({
@@ -390,6 +439,10 @@ interface SettingsPageProps {
   onTimeFormatModeChange: (value: TimeFormatMode) => void;
   menubarIconStyle: MenubarIconStyle;
   onMenubarIconStyleChange: (value: MenubarIconStyle) => void;
+  multiTrayProviderCount: MultiTrayProviderCount;
+  multiTrayDisplayMode: MultiTrayDisplayMode;
+  onMultiMenubarClick: () => void;
+  onMultiTrayDisplayModeChange: (value: MultiTrayDisplayMode) => void;
   menubarMetric: MenubarMetric;
   onMenubarMetricChange: (value: MenubarMetric) => void;
   traySettingsPreview: TraySettingsPreview;
@@ -419,6 +472,10 @@ export function SettingsPage({
   onTimeFormatModeChange,
   menubarIconStyle,
   onMenubarIconStyleChange,
+  multiTrayProviderCount,
+  multiTrayDisplayMode,
+  onMultiMenubarClick,
+  onMultiTrayDisplayModeChange,
   menubarMetric,
   onMenubarMetricChange,
   traySettingsPreview,
@@ -587,29 +644,80 @@ export function SettingsPage({
           What shows in the menu bar
         </p>
         <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Menubar icon style">
-            {MENUBAR_ICON_STYLE_OPTIONS.map((option) => {
-              const isActive = option.value === menubarIconStyle;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-label={option.label}
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1 h-9 flex items-center justify-center"
-                  onClick={() => onMenubarIconStyleChange(option.value)}
-                >
-                  <MenubarIconStylePreview
-                    style={option.value}
-                    isActive={isActive}
-                    traySettingsPreview={traySettingsPreview}
-                  />
-                </Button>
-              );
-            })}
+          <div className="space-y-1" role="radiogroup" aria-label="Menubar icon style">
+            <div className="flex gap-1">
+              {MENUBAR_ICON_STYLE_OPTIONS.filter((option) => option.value !== "multi").map((option) => {
+                const isActive = option.value === menubarIconStyle;
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-label={option.label}
+                    aria-checked={isActive}
+                    variant={isActive ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 min-w-0 h-9 flex items-center justify-center overflow-hidden px-1"
+                    onClick={() => onMenubarIconStyleChange(option.value)}
+                  >
+                    <MenubarIconStylePreview
+                      style={option.value}
+                      isActive={isActive}
+                      traySettingsPreview={traySettingsPreview}
+                    />
+                  </Button>
+                );
+              })}
+            </div>
+            <Button
+              type="button"
+              role="radio"
+              aria-label={`Multi (${multiTrayProviderCount})`}
+              aria-checked={menubarIconStyle === "multi"}
+              variant={menubarIconStyle === "multi" ? "default" : "outline"}
+              size="sm"
+              className="w-full h-auto flex items-center justify-center overflow-hidden px-2 py-1.5 gap-2"
+              onClick={onMultiMenubarClick}
+            >
+              <MultiMenubarStylePreview
+                traySettingsPreview={traySettingsPreview}
+                isActive={menubarIconStyle === "multi"}
+                providerCount={multiTrayProviderCount}
+                displayMode={multiTrayDisplayMode}
+              />
+              <span
+                className={cn(
+                  "text-[10px] font-semibold tabular-nums shrink-0",
+                  menubarIconStyle === "multi"
+                    ? "text-primary-foreground/80"
+                    : "text-muted-foreground"
+                )}
+              >
+                {multiTrayProviderCount}
+              </span>
+            </Button>
+            {menubarIconStyle === "multi" && (
+              <div className="flex gap-1" role="radiogroup" aria-label="Multi display mode">
+                {MULTI_TRAY_DISPLAY_MODE_OPTIONS.map((option) => {
+                  const isActive = option.value === multiTrayDisplayMode;
+                  return (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-label={option.label}
+                      aria-checked={isActive}
+                      variant={isActive ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => onMultiTrayDisplayModeChange(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
         {menubarIconStyle !== "multi" && (

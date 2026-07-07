@@ -4,6 +4,7 @@ import type { ModelBreakdownParsed, ModelDisplayOptions } from "@/lib/model-brea
 import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
 import { Logo } from "@/components/logo"
+import { ProviderIconMask } from "@/components/provider-icon-mask"
 
 type ProgressMetricLine = Extract<MetricLine, { type: "progress" }> & { used: number; limit: number }
 type UsableBarChartPoint = Extract<MetricLine, { type: "barChart" }>["points"][number] & { value: number }
@@ -16,6 +17,7 @@ export type ShareCardTheme = "dark" | "light"
 
 export type ShareCardProps = {
   providerName: string
+  providerId?: string
   providerIconUrl: string
   brandColor?: string
   plan?: string
@@ -212,6 +214,7 @@ function BarChartRow({
 
 export function ShareCard({
   providerName,
+  providerId,
   providerIconUrl,
   brandColor,
   plan,
@@ -258,20 +261,12 @@ export function ShareCard({
         className={cn("flex flex-col gap-4 rounded-xl border p-5", styles.bg, styles.border)}
       >
         <div className="flex items-center gap-2">
-        <span
-          aria-hidden="true"
-          className={cn("inline-block size-5", styles.text)}
-          style={{
-            backgroundColor: "currentColor",
-            WebkitMaskImage: `url(${providerIconUrl})`,
-            WebkitMaskSize: "contain",
-            WebkitMaskRepeat: "no-repeat",
-            WebkitMaskPosition: "center",
-            maskImage: `url(${providerIconUrl})`,
-            maskSize: "contain",
-            maskRepeat: "no-repeat",
-            maskPosition: "center",
-          }}
+        <ProviderIconMask
+          iconUrl={providerIconUrl}
+          pluginId={providerId}
+          sizePx={20}
+          className={cn(styles.text)}
+          style={{ backgroundColor: "currentColor" }}
         />
         <span className="text-base font-semibold">{providerName}</span>
         {plan && (

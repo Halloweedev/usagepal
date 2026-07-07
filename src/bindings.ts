@@ -127,6 +127,10 @@ export type PluginMeta = {
 	 *  Drives the menubar weekly-metric preference.
 	 */
 	weeklyCandidate: string | null,
+	/**  Optional pair of progress-line labels for Multi menubar style. */
+	multiTrayLines: string[],
+	/**  Optional progress-line label for single-provider menubar styles. */
+	trayPrimaryLabel: string | null,
 	/**
 	 *  Whether the provider's credentials/config were found on this machine.
 	 *  New users get detected plugins enabled by default; undetected ones start

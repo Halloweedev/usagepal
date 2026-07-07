@@ -67,6 +67,8 @@ Bundled plugins live under `src-tauri/resources/bundled_plugins/<id>/`.
 | `icon`          | string | Yes      | Relative path to SVG icon file             |
 | `links`         | array  | No       | Optional quick links shown on detail page  |
 | `lines`         | array  | Yes      | Output shape used for loading skeletons    |
+| `multiTrayLines` | array | No    | Optional pair of progress-line labels for Multi menubar style (see below) |
+| `trayPrimaryLabel` | string | No | Optional progress-line label for Provider, Donut, and Bars menubar styles (see below) |
 
 Validation rules:
 
@@ -141,7 +143,38 @@ It is an **override of the primary metric**, not a standalone mode: the provider
 
 ### Multi Menubar Style
 
-When the user selects **Multi** (Settings → Menubar Icon), the app shows up to **3 separate menu bar icons** — one per enabled provider (in plugin order). Each icon uses the provider logo with **session** (primary) % on top and **weekly** % below when data exists. Missing data omits that text line; zero usage shows `0%`. Providers without a weekly line show only the session value. The Default/Weekly metric toggle is hidden in this mode.
+When the user selects **Multi** (Settings → Menubar Icon), the app shows **2, 3, or 4 enabled providers** (user-configurable; click the Multi row to cycle the count) in a **single grouped menu bar icon** (in plugin order). Each provider block uses the provider logo with **session** (primary) % on top and **weekly** % below when data exists. Missing data omits that text line; zero usage shows `0%`. Providers without a weekly line show only the session value. The Default/Weekly metric toggle is hidden in this mode.
+
+A provider can override the default primary + weekly pair by setting `multiTrayLines` to two progress-line labels from its manifest. The first label is the top row; the second is the bottom row. Cursor uses this to show **Auto usage** and **API usage** instead of Credits/Total usage and no weekly line.
+
+```json
+{
+  "multiTrayLines": ["Auto usage", "API usage"],
+  "lines": [
+    { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Auto usage", "scope": "detail" },
+    { "type": "progress", "label": "API usage", "scope": "detail" }
+  ]
+}
+```
+
+**Display mode:** Below the Multi preview, choose **Numbers** (default) or **Bars**. Numbers shows the two metric percentages as text lines. Bars shows two thin horizontal progress bars (top metric on top, bottom metric below) instead of percentages. This setting is independent of the provider count control.
+
+### Tray Primary Override (Provider / Donut / Bars)
+
+By default, Provider, Donut, and Bars menubar styles use the first `primaryOrder` candidate that has runtime data. A provider can pin a specific progress line instead by setting `trayPrimaryLabel` to that line's manifest label. The tray then always uses that metric for those styles, ignoring higher-priority `primaryOrder` candidates such as Credits.
+
+Cursor uses `trayPrimaryLabel: "Total usage"` so the menubar shows total plan usage instead of Credits or Requests. Multi style uses `multiTrayLines` instead and is unaffected.
+
+```json
+{
+  "trayPrimaryLabel": "Total usage",
+  "lines": [
+    { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Total usage", "scope": "overview", "primaryOrder": 2 }
+  ]
+}
+```
 
 ## Entry Point Structure
 

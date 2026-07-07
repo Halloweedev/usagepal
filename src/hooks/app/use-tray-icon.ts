@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { invoke } from "@tauri-apps/api/core"
 import { resolveResource } from "@tauri-apps/api/path"
-import { TrayIcon, type TrayIconEvent } from "@tauri-apps/api/tray"
+import { TrayIcon } from "@tauri-apps/api/tray"
 import type { PluginMeta } from "@/lib/plugin-types"
-import type { DisplayMode, MenubarIconStyle, MenubarMetric, PluginSettings } from "@/lib/settings"
+import type { DisplayMode, MenubarIconStyle, MenubarMetric, MultiTrayDisplayMode, PluginSettings } from "@/lib/settings"
 import { getEnabledPluginIds } from "@/lib/settings"
-import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
-import { getTrayPrimaryBars, getTrayWeeklyFraction, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
+import {
+  getTrayIconSizePx,
+  MULTI_TRAY_MAX_PROVIDERS,
+  renderMultiTrayIcon,
+  renderTrayBarsIcon,
+} from "@/lib/tray-bars-icon"
+import { getTrayPrimaryBars, getTrayMultiProviderMetrics, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
 import {
   formatTrayPercentIfPresent,
   formatTrayPercentText,
@@ -18,9 +22,7 @@ import type { PluginState } from "@/hooks/app/types"
 
 type TrayUpdateReason = "probe" | "settings" | "init"
 
-const MULTI_TRAY_IDS = ["tray", "tray-multi-1", "tray-multi-2"] as const
 const MULTI_AUX_TRAY_IDS = ["tray-multi-1", "tray-multi-2"] as const
-const MULTI_MAX_PROVIDERS = 3
 
 type UseTrayIconArgs = {
   pluginsMeta: PluginMeta[]
@@ -29,6 +31,8 @@ type UseTrayIconArgs = {
   displayMode: DisplayMode
   menubarIconStyle: MenubarIconStyle
   menubarMetric: MenubarMetric
+  multiTrayProviderCount: number
+  multiTrayDisplayMode: MultiTrayDisplayMode
   activeView: string
 }
 
@@ -37,11 +41,14 @@ export type TrayMultiProviderPreview = {
   iconUrl?: string
   sessionText?: string
   weeklyText?: string
+  sessionFraction?: number
+  weeklyFraction?: number
 }
 
 export type TraySettingsPreview = {
   bars: TrayPrimaryBar[]
   providerBars: TrayPrimaryBar[]
+  providerId?: string
   providerIconUrl?: string
   providerPercentText: string
   multiProviders: TrayMultiProviderPreview[]
@@ -55,6 +62,7 @@ const EMPTY_TRAY_SETTINGS_PREVIEW: TraySettingsPreview = {
 }
 
 function isSameTraySettingsPreview(a: TraySettingsPreview, b: TraySettingsPreview): boolean {
+  if (a.providerId !== b.providerId) return false
   if (a.providerIconUrl !== b.providerIconUrl) return false
   if (a.providerPercentText !== b.providerPercentText) return false
   if (a.bars.length !== b.bars.length) return false
@@ -75,9 +83,145 @@ function isSameTraySettingsPreview(a: TraySettingsPreview, b: TraySettingsPrevie
     if (left?.iconUrl !== right?.iconUrl) return false
     if (left?.sessionText !== right?.sessionText) return false
     if (left?.weeklyText !== right?.weeklyText) return false
+    if (left?.sessionFraction !== right?.sessionFraction) return false
+    if (left?.weeklyFraction !== right?.weeklyFraction) return false
   }
   return true
 }
+
+type MultiTrayIconInput = {
+  iconUrl?: string
+  sessionText?: string
+  weeklyText?: string
+  sessionFraction?: number
+  weeklyFraction?: number
+}
+
+function getMultiTrayIconFingerprint(
+  providerIds: string[],
+  providers: MultiTrayIconInput[],
+  sizePx: number,
+  providerCount: number,
+  displayMode: MultiTrayDisplayMode,
+): string {
+  return JSON.stringify({ providerIds, providers, sizePx, providerCount, displayMode })
+}
+
+function resolveTrayProviderId(args: {
+  enabledPluginIds: string[]
+  activeView: string
+  lastTrayProviderId: string | null
+}): string | null {
+  const { enabledPluginIds, activeView, lastTrayProviderId } = args
+  const activeProviderId =
+    activeView !== "home" && activeView !== "settings" ? activeView : null
+
+  if (activeProviderId && enabledPluginIds.includes(activeProviderId)) {
+    return activeProviderId
+  }
+  if (lastTrayProviderId && enabledPluginIds.includes(lastTrayProviderId)) {
+    return lastTrayProviderId
+  }
+  return enabledPluginIds[0] ?? null
+}
+
+function getMultiTrayProviderIds(
+  pluginsMeta: PluginMeta[],
+  pluginSettings: PluginSettings,
+  maxProviders = MULTI_TRAY_MAX_PROVIDERS,
+): string[] {
+  const metaIds = new Set(pluginsMeta.map((plugin) => plugin.id))
+  return getEnabledPluginIds(pluginSettings)
+    .filter((id) => metaIds.has(id))
+    .slice(0, maxProviders)
+}
+
+function buildTraySettingsPreview(args: {
+  pluginsMeta: PluginMeta[]
+  pluginSettings: PluginSettings
+  pluginStates: Record<string, PluginState>
+  displayMode: DisplayMode
+  menubarMetric: MenubarMetric
+  activeView: string
+  lastTrayProviderId: string | null
+}): TraySettingsPreview {
+  const {
+    pluginsMeta,
+    pluginSettings,
+    pluginStates,
+    displayMode,
+    menubarMetric,
+    activeView,
+    lastTrayProviderId,
+  } = args
+
+  const enabledPluginIds = getEnabledPluginIds(pluginSettings)
+  const preferWeekly = menubarMetric === "weekly"
+  const trayProviderId = resolveTrayProviderId({
+    enabledPluginIds,
+    activeView,
+    lastTrayProviderId,
+  })
+
+  const bars = getTrayPrimaryBars({
+    pluginsMeta,
+    pluginSettings,
+    pluginStates,
+    maxBars: 4,
+    displayMode,
+    preferWeekly,
+  })
+
+  const providerBars = trayProviderId
+    ? getTrayPrimaryBars({
+        pluginsMeta,
+        pluginSettings,
+        pluginStates,
+        maxBars: 1,
+        displayMode,
+        pluginId: trayProviderId,
+        preferWeekly,
+      })
+    : []
+
+  const providerIconUrl = trayProviderId
+    ? pluginsMeta.find((plugin) => plugin.id === trayProviderId)?.iconUrl
+    : undefined
+  const providerPercentText = formatTrayPercentText(providerBars[0]?.fraction)
+
+  const multiProviders: TrayMultiProviderPreview[] = getMultiTrayProviderIds(
+    pluginsMeta,
+    pluginSettings,
+  ).map((pluginId) => {
+    const { sessionFraction, weeklyFraction } = getTrayMultiProviderMetrics({
+      pluginId,
+      pluginsMeta,
+      pluginSettings,
+      pluginStates,
+      displayMode,
+    })
+
+    return {
+      id: pluginId,
+      iconUrl: pluginsMeta.find((plugin) => plugin.id === pluginId)?.iconUrl,
+      sessionText: formatTrayPercentIfPresent(sessionFraction),
+      weeklyText: formatTrayPercentIfPresent(weeklyFraction),
+      sessionFraction,
+      weeklyFraction,
+    }
+  })
+
+  return {
+    bars,
+    providerBars,
+    providerId: trayProviderId ?? undefined,
+    providerIconUrl,
+    providerPercentText,
+    multiProviders,
+  }
+}
+
+export { buildTraySettingsPreview, getMultiTrayProviderIds }
 
 export function useTrayIcon({
   pluginsMeta,
@@ -86,14 +230,16 @@ export function useTrayIcon({
   displayMode,
   menubarIconStyle,
   menubarMetric,
+  multiTrayProviderCount,
+  multiTrayDisplayMode,
   activeView,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
-  const multiTrayRefs = useRef<Map<string, TrayIcon>>(new Map())
   const trayGaugeIconPathRef = useRef<string | null>(null)
   const trayUpdateTimerRef = useRef<number | null>(null)
   const trayUpdatePendingRef = useRef(false)
   const trayUpdateQueuedRef = useRef(false)
+  const lastMultiTrayIconFingerprintRef = useRef<string | null>(null)
   const [trayReady, setTrayReady] = useState(false)
   const [traySettingsPreview, setTraySettingsPreview] = useState<TraySettingsPreview>(
     EMPTY_TRAY_SETTINGS_PREVIEW
@@ -105,24 +251,10 @@ export function useTrayIcon({
   const displayModeRef = useRef(displayMode)
   const menubarIconStyleRef = useRef(menubarIconStyle)
   const menubarMetricRef = useRef(menubarMetric)
+  const multiTrayProviderCountRef = useRef(multiTrayProviderCount)
+  const multiTrayDisplayModeRef = useRef(multiTrayDisplayMode)
   const activeViewRef = useRef(activeView)
   const lastTrayProviderIdRef = useRef<string | null>(null)
-
-  const handleAuxTrayClick = useCallback((event: TrayIconEvent) => {
-    if (event.type !== "Click") return
-    if (event.button !== "Left" || event.buttonState !== "Up") return
-    const scale = window.devicePixelRatio || 1
-    const pos = event.rect.position
-    const size = event.rect.size
-    void invoke("toggle_panel_at_tray_rect", {
-      rect: {
-        x: pos.x / scale,
-        y: pos.y / scale,
-        width: size.width / scale,
-        height: size.height / scale,
-      },
-    }).catch((e) => console.error("aux tray click failed:", e))
-  }, [])
 
   // Single sync effect replaces 7 individual useRef+useEffect pairs.
   // No deps array = runs after every render, keeping refs current for the
@@ -134,6 +266,8 @@ export function useTrayIcon({
     displayModeRef.current = displayMode
     menubarIconStyleRef.current = menubarIconStyle
     menubarMetricRef.current = menubarMetric
+    multiTrayProviderCountRef.current = multiTrayProviderCount
+    multiTrayDisplayModeRef.current = multiTrayDisplayMode
     activeViewRef.current = activeView
   })
 
@@ -175,28 +309,7 @@ export function useTrayIcon({
           } catch {
             // already removed
           }
-          multiTrayRefs.current.delete(id)
         }
-      }
-
-      async function ensureMultiTray(id: string, isPrimary: boolean): Promise<TrayIcon> {
-        const cached = multiTrayRefs.current.get(id)
-        if (cached) return cached
-
-        if (isPrimary) {
-          const primaryTray = trayRef.current ?? (await TrayIcon.getById("tray"))
-          if (!primaryTray) throw new Error("primary tray icon missing")
-          multiTrayRefs.current.set(id, primaryTray)
-          return primaryTray
-        }
-
-        const auxTray = await TrayIcon.new({
-          id,
-          iconAsTemplate: true,
-          action: handleAuxTrayClick,
-        })
-        multiTrayRefs.current.set(id, auxTray)
-        return auxTray
       }
 
       const maybeSetTitle = (tray as TrayIcon & { setTitle?: (value: string) => Promise<void> }).setTitle
@@ -258,43 +371,35 @@ export function useTrayIcon({
 
       const style = menubarIconStyleRef.current
       const sizePx = getTrayIconSizePx(window.devicePixelRatio)
+      if (style !== "multi") {
+        lastMultiTrayIconFingerprintRef.current = null
+      }
+      const nextPreview = buildTraySettingsPreview({
+        pluginsMeta: pluginsMetaRef.current,
+        pluginSettings: currentSettings,
+        pluginStates: pluginStatesRef.current,
+        displayMode: displayModeRef.current,
+        menubarMetric: menubarMetricRef.current,
+        activeView: activeViewRef.current,
+        lastTrayProviderId: lastTrayProviderIdRef.current,
+      })
+      setTraySettingsPreview((prev) =>
+        isSameTraySettingsPreview(prev, nextPreview) ? prev : nextPreview
+      )
 
       if (style === "multi") {
         try {
-          const providerIds = getTrayPrimaryBars({
-            pluginsMeta: pluginsMetaRef.current,
-            pluginSettings: currentSettings,
-            pluginStates: pluginStatesRef.current,
-            maxBars: MULTI_MAX_PROVIDERS,
-            displayMode: displayModeRef.current,
-            preferWeekly: false,
-          }).map((b) => b.id)
+          await removeAuxTrays()
 
-          const multiRows: TrayMultiProviderRow[] = []
-          const multiPreview: TrayMultiProviderPreview[] = []
+          const providerCount = multiTrayProviderCountRef.current
+          const providerIds = getMultiTrayProviderIds(
+            pluginsMetaRef.current,
+            currentSettings,
+            providerCount,
+          )
 
-          for (let i = 0; i < MULTI_MAX_PROVIDERS; i += 1) {
-            const trayId = MULTI_TRAY_IDS[i]
-            if (i >= providerIds.length) {
-              if (i > 0) {
-                await TrayIcon.removeById(trayId).catch(() => {})
-                multiTrayRefs.current.delete(trayId)
-              }
-              continue
-            }
-
-            const pluginId = providerIds[i]!
-            const sessionFraction = getTrayPrimaryBars({
-              pluginsMeta: pluginsMetaRef.current,
-              pluginSettings: currentSettings,
-              pluginStates: pluginStatesRef.current,
-              maxBars: 1,
-              displayMode: displayModeRef.current,
-              pluginId,
-              preferWeekly: false,
-            })[0]?.fraction
-
-            const weeklyFraction = getTrayWeeklyFraction({
+          const multiRows: TrayMultiProviderRow[] = providerIds.map((pluginId) => {
+            const { sessionFraction, weeklyFraction } = getTrayMultiProviderMetrics({
               pluginId,
               pluginsMeta: pluginsMetaRef.current,
               pluginSettings: currentSettings,
@@ -302,35 +407,46 @@ export function useTrayIcon({
               displayMode: displayModeRef.current,
             })
 
-            const sessionText = formatTrayPercentIfPresent(sessionFraction)
-            const weeklyText = formatTrayPercentIfPresent(weeklyFraction)
-            const providerIconUrl = pluginsMetaRef.current.find((p) => p.id === pluginId)?.iconUrl
+            return { id: pluginId, sessionFraction, weeklyFraction }
+          })
 
-            multiRows.push({ id: pluginId, sessionFraction, weeklyFraction })
-            multiPreview.push({ id: pluginId, iconUrl: providerIconUrl, sessionText, weeklyText })
+          const iconProviders = providerIds.map((_pluginId, i) => {
+            const preview = nextPreview.multiProviders[i]
+            return {
+              id: preview?.id,
+              iconUrl: preview?.iconUrl,
+              sessionText: preview?.sessionText,
+              weeklyText: preview?.weeklyText,
+              sessionFraction: preview?.sessionFraction,
+              weeklyFraction: preview?.weeklyFraction,
+            }
+          })
+          const displayMode = multiTrayDisplayModeRef.current
+          const iconFingerprint = getMultiTrayIconFingerprint(
+            providerIds,
+            iconProviders,
+            sizePx,
+            providerCount,
+            displayMode,
+          )
+          const tooltip = formatTrayTooltipMulti(multiRows, pluginsMetaRef.current)
+          const iconChanged = iconFingerprint !== lastMultiTrayIconFingerprintRef.current
 
-            const img = await renderTrayBarsIcon({
-              bars: [],
+          if (iconChanged) {
+            const compositeIcon = await renderMultiTrayIcon({
+              providers: iconProviders,
               sizePx,
-              style: "provider",
-              percentText: sessionText,
-              secondaryPercentText: weeklyText,
-              providerIconUrl,
+              compact: true,
+              displayMode,
             })
 
-            const trayItem = await ensureMultiTray(trayId, i === 0)
-            await trayItem.setIcon(img)
-            await trayItem.setIconAsTemplate(true)
-            if (setTitleFn) await setTitleFn("")
-            if (i === 0) {
-              await setTrayTooltip(formatTrayTooltipMulti(multiRows, pluginsMetaRef.current))
-            }
+            await tray.setIcon(compositeIcon)
+            await tray.setIconAsTemplate(true)
+            lastMultiTrayIconFingerprintRef.current = iconFingerprint
           }
 
-          setTraySettingsPreview((prev) => {
-            const next = { ...EMPTY_TRAY_SETTINGS_PREVIEW, multiProviders: multiPreview }
-            return isSameTraySettingsPreview(prev, next) ? prev : next
-          })
+          if (setTitleFn) await setTitleFn("")
+          await setTrayTooltip(tooltip)
         } catch (e) {
           console.error("Failed to update multi tray icons:", e)
         } finally {
@@ -342,58 +458,13 @@ export function useTrayIcon({
       await removeAuxTrays()
 
       const preferWeekly = menubarMetricRef.current === "weekly"
-      const nextActiveView = activeViewRef.current
-      const activeProviderId =
-        nextActiveView !== "home" && nextActiveView !== "settings" ? nextActiveView : null
-
-      let trayProviderId: string | null = null
-      if (activeProviderId && enabledPluginIds.includes(activeProviderId)) {
-        trayProviderId = activeProviderId
-      } else if (
-        lastTrayProviderIdRef.current &&
-        enabledPluginIds.includes(lastTrayProviderIdRef.current)
-      ) {
-        trayProviderId = lastTrayProviderIdRef.current
-      } else {
-        trayProviderId = enabledPluginIds[0] ?? null
-      }
-
-      const barsForPreview = getTrayPrimaryBars({
-        pluginsMeta: pluginsMetaRef.current,
-        pluginSettings: currentSettings,
-        pluginStates: pluginStatesRef.current,
-        maxBars: 4,
-        displayMode: displayModeRef.current,
-        preferWeekly,
+      const trayProviderId = resolveTrayProviderId({
+        enabledPluginIds,
+        activeView: activeViewRef.current,
+        lastTrayProviderId: lastTrayProviderIdRef.current,
       })
-
-      const providerBars = trayProviderId
-        ? getTrayPrimaryBars({
-            pluginsMeta: pluginsMetaRef.current,
-            pluginSettings: currentSettings,
-            pluginStates: pluginStatesRef.current,
-            maxBars: 1,
-            displayMode: displayModeRef.current,
-            pluginId: trayProviderId,
-            preferWeekly,
-          })
-        : []
-
-      const providerIconUrl = trayProviderId
-        ? pluginsMetaRef.current.find((plugin) => plugin.id === trayProviderId)?.iconUrl
-        : undefined
-      const providerPercentText = formatTrayPercentText(providerBars[0]?.fraction)
-
-      const nextPreview: TraySettingsPreview = {
-        bars: barsForPreview,
-        providerBars,
-        providerIconUrl,
-        providerPercentText,
-        multiProviders: [],
-      }
-      setTraySettingsPreview((prev) =>
-        isSameTraySettingsPreview(prev, nextPreview) ? prev : nextPreview
-      )
+      const { bars: barsForPreview, providerBars, providerId, providerIconUrl, providerPercentText } =
+        nextPreview
 
       const tooltipBars = getTrayPrimaryBars({
         pluginsMeta: pluginsMetaRef.current,
@@ -439,6 +510,7 @@ export function useTrayIcon({
           sizePx,
           style: "donut",
           providerIconUrl,
+          providerId,
         })
           .then(async (img) => {
             await tray.setIcon(img)
@@ -461,6 +533,7 @@ export function useTrayIcon({
         style: "provider",
         percentText: supportsNativeTrayTitle ? undefined : providerPercentText,
         providerIconUrl,
+        providerId,
       })
         .then(async (img) => {
           await tray.setIcon(img)
@@ -478,7 +551,7 @@ export function useTrayIcon({
         console.error("Failed to schedule tray icon update:", e)
       })
     }, delayMs)
-  }, [handleAuxTrayClick])
+  }, [])
 
   const trayInitializedRef = useRef(false)
   useEffect(() => {
@@ -520,7 +593,14 @@ export function useTrayIcon({
   useEffect(() => {
     if (!trayReady) return
     scheduleTrayIconUpdate("settings", 0)
-  }, [activeView, menubarIconStyle, menubarMetric, scheduleTrayIconUpdate, trayReady])
+  }, [menubarIconStyle, menubarMetric, multiTrayProviderCount, multiTrayDisplayMode, scheduleTrayIconUpdate, trayReady])
+
+  // activeView only affects single-provider tray styles; multi mode ignores it.
+  useEffect(() => {
+    if (!trayReady) return
+    if (menubarIconStyleRef.current === "multi") return
+    scheduleTrayIconUpdate("settings", 0)
+  }, [activeView, scheduleTrayIconUpdate, trayReady])
 
   useEffect(() => {
     return () => {

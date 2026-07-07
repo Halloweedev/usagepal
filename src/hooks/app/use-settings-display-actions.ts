@@ -1,14 +1,19 @@
 import { useCallback } from "react"
 import {
+  cycleMultiTrayProviderCount,
   saveDisplayMode,
   saveMenubarIconStyle,
   saveMenubarMetric,
+  saveMultiTrayDisplayMode,
+  saveMultiTrayProviderCount,
   saveResetTimerDisplayMode,
   saveThemeMode,
   saveTimeFormatMode,
   type DisplayMode,
   type MenubarIconStyle,
   type MenubarMetric,
+  type MultiTrayDisplayMode,
+  type MultiTrayProviderCount,
   type ResetTimerDisplayMode,
   type ThemeMode,
   type TimeFormatMode,
@@ -17,6 +22,8 @@ import {
 type ScheduleTrayIconUpdate = (reason: "probe" | "settings" | "init", delayMs?: number) => void
 
 type UseSettingsDisplayActionsArgs = {
+  menubarIconStyle: MenubarIconStyle
+  multiTrayProviderCount: MultiTrayProviderCount
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
   resetTimerDisplayMode: ResetTimerDisplayMode
@@ -24,10 +31,14 @@ type UseSettingsDisplayActionsArgs = {
   setTimeFormatMode: (value: TimeFormatMode) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   setMenubarMetric: (value: MenubarMetric) => void
+  setMultiTrayProviderCount: (value: MultiTrayProviderCount) => void
+  setMultiTrayDisplayMode: (value: MultiTrayDisplayMode) => void
   scheduleTrayIconUpdate: ScheduleTrayIconUpdate
 }
 
 export function useSettingsDisplayActions({
+  menubarIconStyle,
+  multiTrayProviderCount,
   setThemeMode,
   setDisplayMode,
   resetTimerDisplayMode,
@@ -35,6 +46,8 @@ export function useSettingsDisplayActions({
   setTimeFormatMode,
   setMenubarIconStyle,
   setMenubarMetric,
+  setMultiTrayProviderCount,
+  setMultiTrayDisplayMode,
   scheduleTrayIconUpdate,
 }: UseSettingsDisplayActionsArgs) {
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
@@ -79,6 +92,38 @@ export function useSettingsDisplayActions({
     })
   }, [scheduleTrayIconUpdate, setMenubarIconStyle])
 
+  const handleMultiMenubarClick = useCallback(() => {
+    if (menubarIconStyle === "multi") {
+      const nextCount = cycleMultiTrayProviderCount(multiTrayProviderCount)
+      setMultiTrayProviderCount(nextCount)
+      scheduleTrayIconUpdate("settings", 0)
+      void saveMultiTrayProviderCount(nextCount).catch((error) => {
+        console.error("Failed to save multi tray provider count:", error)
+      })
+      return
+    }
+
+    setMenubarIconStyle("multi")
+    scheduleTrayIconUpdate("settings", 0)
+    void saveMenubarIconStyle("multi").catch((error) => {
+      console.error("Failed to save menubar icon style:", error)
+    })
+  }, [
+    menubarIconStyle,
+    multiTrayProviderCount,
+    scheduleTrayIconUpdate,
+    setMenubarIconStyle,
+    setMultiTrayProviderCount,
+  ])
+
+  const handleMultiTrayDisplayModeChange = useCallback((mode: MultiTrayDisplayMode) => {
+    setMultiTrayDisplayMode(mode)
+    scheduleTrayIconUpdate("settings", 0)
+    void saveMultiTrayDisplayMode(mode).catch((error) => {
+      console.error("Failed to save multi tray display mode:", error)
+    })
+  }, [scheduleTrayIconUpdate, setMultiTrayDisplayMode])
+
   const handleMenubarMetricChange = useCallback((metric: MenubarMetric) => {
     setMenubarMetric(metric)
     scheduleTrayIconUpdate("settings", 0)
@@ -94,6 +139,8 @@ export function useSettingsDisplayActions({
     handleResetTimerDisplayModeToggle,
     handleTimeFormatModeChange,
     handleMenubarIconStyleChange,
+    handleMultiMenubarClick,
+    handleMultiTrayDisplayModeChange,
     handleMenubarMetricChange,
   }
 }

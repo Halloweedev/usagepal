@@ -6,6 +6,8 @@ import {
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_MENUBAR_METRIC,
+  DEFAULT_MULTI_TRAY_DISPLAY_MODE,
+  DEFAULT_MULTI_TRAY_PROVIDER_COUNT,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
@@ -15,6 +17,8 @@ import {
   type GlobalShortcut,
   type MenubarIconStyle,
   type MenubarMetric,
+  type MultiTrayDisplayMode,
+  type MultiTrayProviderCount,
   type ResetTimerDisplayMode,
   type ThemeMode,
   type TimeFormatMode,
@@ -31,6 +35,8 @@ type AppPreferencesStore = {
   startOnLogin: boolean
   menubarIconStyle: MenubarIconStyle
   menubarMetric: MenubarMetric
+  multiTrayProviderCount: MultiTrayProviderCount
+  multiTrayDisplayMode: MultiTrayDisplayMode
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setBetaUpdatesEnabled: (value: boolean) => void
   setThemeMode: (value: ThemeMode) => void
@@ -41,6 +47,8 @@ type AppPreferencesStore = {
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   setMenubarMetric: (value: MenubarMetric) => void
+  setMultiTrayProviderCount: (value: MultiTrayProviderCount) => void
+  setMultiTrayDisplayMode: (value: MultiTrayDisplayMode) => void
   resetState: () => void
 }
 
@@ -55,6 +63,8 @@ const initialState = {
   startOnLogin: DEFAULT_START_ON_LOGIN,
   menubarIconStyle: DEFAULT_MENUBAR_ICON_STYLE,
   menubarMetric: DEFAULT_MENUBAR_METRIC,
+  multiTrayProviderCount: DEFAULT_MULTI_TRAY_PROVIDER_COUNT,
+  multiTrayDisplayMode: DEFAULT_MULTI_TRAY_DISPLAY_MODE,
 }
 
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
@@ -69,5 +79,7 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setStartOnLogin: (value) => set({ startOnLogin: value }),
   setMenubarIconStyle: (value) => set({ menubarIconStyle: value }),
   setMenubarMetric: (value) => set({ menubarMetric: value }),
+  setMultiTrayProviderCount: (value) => set({ multiTrayProviderCount: value }),
+  setMultiTrayDisplayMode: (value) => set({ multiTrayDisplayMode: value }),
   resetState: () => set(initialState),
 }))

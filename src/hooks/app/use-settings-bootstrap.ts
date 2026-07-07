@@ -14,6 +14,8 @@ import {
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_MENUBAR_METRIC,
+  DEFAULT_MULTI_TRAY_DISPLAY_MODE,
+  DEFAULT_MULTI_TRAY_PROVIDER_COUNT,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
@@ -25,6 +27,8 @@ import {
   loadGlobalShortcut,
   loadMenubarIconStyle,
   loadMenubarMetric,
+  loadMultiTrayDisplayMode,
+  loadMultiTrayProviderCount,
   migrateLegacyTraySettings,
   migrateWindsurfToDevin,
   loadPluginSettings,
@@ -39,6 +43,8 @@ import {
   type GlobalShortcut,
   type MenubarIconStyle,
   type MenubarMetric,
+  type MultiTrayDisplayMode,
+  type MultiTrayProviderCount,
   type PluginSettings,
   type ResetTimerDisplayMode,
   type ThemeMode,
@@ -58,6 +64,8 @@ type UseSettingsBootstrapArgs = {
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   setMenubarMetric: (value: MenubarMetric) => void
+  setMultiTrayProviderCount: (value: MultiTrayProviderCount) => void
+  setMultiTrayDisplayMode: (value: MultiTrayDisplayMode) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -76,6 +84,8 @@ export function useSettingsBootstrap({
   setStartOnLogin,
   setMenubarIconStyle,
   setMenubarMetric,
+  setMultiTrayProviderCount,
+  setMultiTrayDisplayMode,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -190,6 +200,20 @@ export function useSettingsBootstrap({
           console.error("Failed to load menubar metric:", error)
         }
 
+        let storedMultiTrayProviderCount = DEFAULT_MULTI_TRAY_PROVIDER_COUNT
+        try {
+          storedMultiTrayProviderCount = await loadMultiTrayProviderCount()
+        } catch (error) {
+          console.error("Failed to load multi tray provider count:", error)
+        }
+
+        let storedMultiTrayDisplayMode = DEFAULT_MULTI_TRAY_DISPLAY_MODE
+        try {
+          storedMultiTrayDisplayMode = await loadMultiTrayDisplayMode()
+        } catch (error) {
+          console.error("Failed to load multi tray display mode:", error)
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
@@ -202,6 +226,8 @@ export function useSettingsBootstrap({
           setStartOnLogin(storedStartOnLogin)
           setMenubarIconStyle(storedMenubarIconStyle)
           setMenubarMetric(storedMenubarMetric)
+          setMultiTrayProviderCount(storedMultiTrayProviderCount)
+          setMultiTrayDisplayMode(storedMultiTrayDisplayMode)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -234,6 +260,8 @@ export function useSettingsBootstrap({
     setLoadingForPlugins,
     setMenubarIconStyle,
     setMenubarMetric,
+    setMultiTrayProviderCount,
+    setMultiTrayDisplayMode,
     migrateWindsurfToDevin,
     migrateLegacyTraySettings,
     setPluginSettings,

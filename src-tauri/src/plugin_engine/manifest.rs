@@ -47,6 +47,15 @@ pub struct PluginManifest {
     /// expansion) or an env var name. Omitting `detect` means always detected.
     #[serde(default)]
     pub detect: Vec<DetectRule>,
+    /// Optional pair of progress-line labels for Multi menubar style. When set,
+    /// the first label is the top row and the second is the bottom row instead
+    /// of the default primary + weekly metrics.
+    #[serde(default)]
+    pub multi_tray_lines: Vec<String>,
+    /// Optional progress-line label for single-provider menubar styles (Provider,
+    /// Donut, Bars). When set, the tray uses this line instead of walking
+    /// `primaryOrder` candidates.
+    pub tray_primary_label: Option<String>,
 }
 
 /// A single availability probe. Exactly one of `file` / `env` is set.
@@ -186,6 +195,39 @@ fn load_single_plugin(
                     percent
                 );
             }
+        }
+    }
+
+    if manifest.multi_tray_lines.len() > 2 {
+        log::warn!(
+            "plugin {} has {} multiTrayLines entries; only the first two are used",
+            manifest.id,
+            manifest.multi_tray_lines.len()
+        );
+    }
+    for label in manifest.multi_tray_lines.iter().take(2) {
+        let is_progress_line = manifest.lines.iter().any(|line| {
+            line.line_type == "progress" && line.label == *label
+        });
+        if !is_progress_line {
+            log::warn!(
+                "plugin {} multiTrayLines entry '{}' does not match a progress line",
+                manifest.id,
+                label
+            );
+        }
+    }
+
+    if let Some(label) = manifest.tray_primary_label.as_deref() {
+        let is_progress_line = manifest.lines.iter().any(|line| {
+            line.line_type == "progress" && line.label == label
+        });
+        if !is_progress_line {
+            log::warn!(
+                "plugin {} trayPrimaryLabel '{}' does not match a progress line",
+                manifest.id,
+                label
+            );
         }
     }
 
@@ -486,6 +528,29 @@ mod tests {
 
         assert_eq!(manifest.lines[0].escalate_at_percent, Some(98.0));
         assert!(manifest.lines[1].escalate_at_percent.is_none());
+    }
+
+    #[test]
+    fn tray_primary_label_parsed_when_present() {
+        let manifest = parse_manifest(
+            r#"
+            {
+              "schemaVersion": 1,
+              "id": "cursor",
+              "name": "Cursor",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "brandColor": null,
+              "trayPrimaryLabel": "Total usage",
+              "lines": [
+                { "type": "progress", "label": "Total usage", "scope": "overview", "primaryOrder": 2 }
+              ]
+            }
+            "#,
+        );
+
+        assert_eq!(manifest.tray_primary_label.as_deref(), Some("Total usage"));
     }
 
     #[test]

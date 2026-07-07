@@ -22,6 +22,10 @@ export type TimeFormatMode = "auto" | "12h" | "24h";
 
 export type MenubarIconStyle = "provider" | "bars" | "donut" | "multi";
 
+export type MultiTrayProviderCount = 2 | 3 | 4;
+
+export type MultiTrayDisplayMode = "percent" | "bars";
+
 export type MenubarMetric = "default" | "weekly";
 
 export type GlobalShortcut = string | null;
@@ -51,6 +55,8 @@ const DISPLAY_MODE_KEY = "displayMode";
 const RESET_TIMER_DISPLAY_MODE_KEY = "resetTimerDisplayMode";
 const TIME_FORMAT_MODE_KEY = "timeFormatMode";
 const MENUBAR_ICON_STYLE_KEY = "menubarIconStyle";
+const MULTI_TRAY_PROVIDER_COUNT_KEY = "multiTrayProviderCount";
+const MULTI_TRAY_DISPLAY_MODE_KEY = "multiTrayDisplayMode";
 const MENUBAR_METRIC_KEY = "menubarMetric";
 const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
@@ -65,6 +71,8 @@ export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
 export const DEFAULT_TIME_FORMAT_MODE: TimeFormatMode = "auto";
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "provider";
+export const DEFAULT_MULTI_TRAY_PROVIDER_COUNT: MultiTrayProviderCount = 3;
+export const DEFAULT_MULTI_TRAY_DISPLAY_MODE: MultiTrayDisplayMode = "percent";
 export const DEFAULT_MENUBAR_METRIC: MenubarMetric = "default";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
@@ -75,7 +83,14 @@ const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
 const TIME_FORMAT_MODES: TimeFormatMode[] = ["auto", "12h", "24h"];
 const MENUBAR_ICON_STYLES: MenubarIconStyle[] = ["provider", "donut", "bars", "multi"];
+const MULTI_TRAY_PROVIDER_COUNTS: MultiTrayProviderCount[] = [2, 3, 4];
+const MULTI_TRAY_DISPLAY_MODES: MultiTrayDisplayMode[] = ["percent", "bars"];
 const MENUBAR_METRICS: MenubarMetric[] = ["default", "weekly"];
+
+export const MULTI_TRAY_DISPLAY_MODE_OPTIONS: { value: MultiTrayDisplayMode; label: string }[] = [
+  { value: "percent", label: "Numbers" },
+  { value: "bars", label: "Bars" },
+];
 
 export const MENUBAR_ICON_STYLE_OPTIONS: { value: MenubarIconStyle; label: string }[] = [
   { value: "provider", label: "Plugin" },
@@ -325,6 +340,54 @@ export async function loadMenubarIconStyle(): Promise<MenubarIconStyle> {
 
 export async function saveMenubarIconStyle(style: MenubarIconStyle): Promise<void> {
   await store.set(MENUBAR_ICON_STYLE_KEY, style);
+  await store.save();
+}
+
+function isMultiTrayProviderCount(value: unknown): value is MultiTrayProviderCount {
+  return (
+    typeof value === "number" &&
+    MULTI_TRAY_PROVIDER_COUNTS.includes(value as MultiTrayProviderCount)
+  );
+}
+
+export function cycleMultiTrayProviderCount(
+  current: MultiTrayProviderCount,
+): MultiTrayProviderCount {
+  if (current === 2) return 3;
+  if (current === 3) return 4;
+  return 2;
+}
+
+export async function loadMultiTrayProviderCount(): Promise<MultiTrayProviderCount> {
+  const stored = await store.get<unknown>(MULTI_TRAY_PROVIDER_COUNT_KEY);
+  if (isMultiTrayProviderCount(stored)) return stored;
+  return DEFAULT_MULTI_TRAY_PROVIDER_COUNT;
+}
+
+export async function saveMultiTrayProviderCount(
+  count: MultiTrayProviderCount,
+): Promise<void> {
+  await store.set(MULTI_TRAY_PROVIDER_COUNT_KEY, count);
+  await store.save();
+}
+
+function isMultiTrayDisplayMode(value: unknown): value is MultiTrayDisplayMode {
+  return (
+    typeof value === "string" &&
+    MULTI_TRAY_DISPLAY_MODES.includes(value as MultiTrayDisplayMode)
+  );
+}
+
+export async function loadMultiTrayDisplayMode(): Promise<MultiTrayDisplayMode> {
+  const stored = await store.get<unknown>(MULTI_TRAY_DISPLAY_MODE_KEY);
+  if (isMultiTrayDisplayMode(stored)) return stored;
+  return DEFAULT_MULTI_TRAY_DISPLAY_MODE;
+}
+
+export async function saveMultiTrayDisplayMode(
+  mode: MultiTrayDisplayMode,
+): Promise<void> {
+  await store.set(MULTI_TRAY_DISPLAY_MODE_KEY, mode);
   await store.save();
 }
 

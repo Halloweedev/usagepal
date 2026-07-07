@@ -6,6 +6,8 @@ import {
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_MENUBAR_METRIC,
+  DEFAULT_MULTI_TRAY_DISPLAY_MODE,
+  DEFAULT_MULTI_TRAY_PROVIDER_COUNT,
   DEFAULT_PACE_NOTIFICATION_SETTINGS,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
@@ -20,11 +22,14 @@ import {
   loadGlobalShortcut,
   loadMenubarIconStyle,
   loadMenubarMetric,
+  loadMultiTrayDisplayMode,
+  loadMultiTrayProviderCount,
   loadPaceNotificationSettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
   loadTimeFormatMode,
+  cycleMultiTrayProviderCount,
   migrateLegacyTraySettings,
   migrateWindsurfToDevin,
   loadThemeMode,
@@ -35,6 +40,8 @@ import {
   saveGlobalShortcut,
   saveMenubarIconStyle,
   saveMenubarMetric,
+  saveMultiTrayDisplayMode,
+  saveMultiTrayProviderCount,
   savePaceNotificationSettings,
   savePluginSettings,
   saveResetTimerDisplayMode,
@@ -353,6 +360,50 @@ describe("settings", () => {
   it("accepts multi menubar icon style", async () => {
     await saveMenubarIconStyle("multi")
     expect(await loadMenubarIconStyle()).toBe("multi")
+  })
+
+  it("loads default multi tray provider count when missing", async () => {
+    await expect(loadMultiTrayProviderCount()).resolves.toBe(DEFAULT_MULTI_TRAY_PROVIDER_COUNT)
+  })
+
+  it("loads stored multi tray provider count", async () => {
+    storeState.set("multiTrayProviderCount", 4)
+    await expect(loadMultiTrayProviderCount()).resolves.toBe(4)
+  })
+
+  it("saves multi tray provider count", async () => {
+    await saveMultiTrayProviderCount(2)
+    await expect(loadMultiTrayProviderCount()).resolves.toBe(2)
+  })
+
+  it("falls back to default for invalid multi tray provider count", async () => {
+    storeState.set("multiTrayProviderCount", 5)
+    await expect(loadMultiTrayProviderCount()).resolves.toBe(DEFAULT_MULTI_TRAY_PROVIDER_COUNT)
+  })
+
+  it("cycles multi tray provider count 2 to 3 to 4 to 2", () => {
+    expect(cycleMultiTrayProviderCount(2)).toBe(3)
+    expect(cycleMultiTrayProviderCount(3)).toBe(4)
+    expect(cycleMultiTrayProviderCount(4)).toBe(2)
+  })
+
+  it("loads default multi tray display mode when missing", async () => {
+    await expect(loadMultiTrayDisplayMode()).resolves.toBe(DEFAULT_MULTI_TRAY_DISPLAY_MODE)
+  })
+
+  it("loads stored multi tray display mode", async () => {
+    storeState.set("multiTrayDisplayMode", "bars")
+    await expect(loadMultiTrayDisplayMode()).resolves.toBe("bars")
+  })
+
+  it("saves multi tray display mode", async () => {
+    await saveMultiTrayDisplayMode("bars")
+    await expect(loadMultiTrayDisplayMode()).resolves.toBe("bars")
+  })
+
+  it("falls back to default for invalid multi tray display mode", async () => {
+    storeState.set("multiTrayDisplayMode", "invalid")
+    await expect(loadMultiTrayDisplayMode()).resolves.toBe(DEFAULT_MULTI_TRAY_DISPLAY_MODE)
   })
 
   it("falls back to default for invalid menubar icon style", async () => {

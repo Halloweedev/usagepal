@@ -83,18 +83,26 @@ export function getTrayPrimaryBars(args: {
             : escalated.limit - escalated.used
         fraction = clamp01(shownAmount / escalated.limit)
       } else {
+        const trayPrimaryLabel = meta.trayPrimaryLabel ?? undefined
+        const hasTrayPrimary =
+          trayPrimaryLabel !== undefined &&
+          data.lines.some((line) => isUsableProgressLine(line) && line.label === trayPrimaryLabel)
+
         // Prefer the declared weekly line when requested and present in data.
         const weeklyLabel = preferWeekly ? meta.weeklyCandidate : undefined
         const usesWeekly =
+          !hasTrayPrimary &&
           weeklyLabel !== undefined &&
           data.lines.some((line) => isUsableProgressLine(line) && line.label === weeklyLabel)
 
         // Otherwise fall back to the first primary candidate that exists in data.
-        const metricLabel = usesWeekly
-          ? weeklyLabel
-          : meta.primaryCandidates.find((candidate) =>
-              data.lines.some((line) => isUsableProgressLine(line) && line.label === candidate)
-            )
+        const metricLabel = hasTrayPrimary
+          ? trayPrimaryLabel
+          : usesWeekly
+            ? weeklyLabel
+            : meta.primaryCandidates.find((candidate) =>
+                data.lines.some((line) => isUsableProgressLine(line) && line.label === candidate)
+              )
 
         if (metricLabel) {
           label = metricLabel
@@ -156,4 +164,81 @@ export function getTrayWeeklyFraction(args: {
       ? metricLine.used
       : metricLine.limit - metricLine.used
   return clamp01(shownAmount / metricLine.limit)
+}
+
+function getProgressLineFraction(
+  data: PluginOutput | null,
+  label: string,
+  displayMode: DisplayMode,
+): number | undefined {
+  if (!data) return undefined
+
+  const metricLine = data.lines.find(
+    (line): line is UsableProgressLine =>
+      isUsableProgressLine(line) && line.label === label
+  )
+  if (!metricLine || metricLine.limit <= 0) return undefined
+
+  const shownAmount =
+    displayMode === "used"
+      ? metricLine.used
+      : metricLine.limit - metricLine.used
+  return clamp01(shownAmount / metricLine.limit)
+}
+
+export type TrayMultiProviderMetrics = {
+  sessionFraction?: number
+  weeklyFraction?: number
+}
+
+export function getTrayMultiProviderMetrics(args: {
+  pluginId: string
+  pluginsMeta: PluginMeta[]
+  pluginSettings: PluginSettings | null
+  pluginStates: Record<string, PluginState | undefined>
+  displayMode?: DisplayMode
+}): TrayMultiProviderMetrics {
+  const {
+    pluginId,
+    pluginsMeta,
+    pluginSettings,
+    pluginStates,
+    displayMode = DEFAULT_DISPLAY_MODE,
+  } = args
+  if (!pluginSettings) return {}
+  if (pluginSettings.disabled.includes(pluginId)) return {}
+
+  const meta = pluginsMeta.find((p) => p.id === pluginId)
+  const multiTrayLines = meta?.multiTrayLines ?? []
+  if (multiTrayLines.length > 0) {
+    const data = pluginStates[pluginId]?.data ?? null
+    return {
+      sessionFraction: multiTrayLines[0]
+        ? getProgressLineFraction(data, multiTrayLines[0], displayMode)
+        : undefined,
+      weeklyFraction: multiTrayLines[1]
+        ? getProgressLineFraction(data, multiTrayLines[1], displayMode)
+        : undefined,
+    }
+  }
+
+  const sessionFraction = getTrayPrimaryBars({
+    pluginsMeta,
+    pluginSettings,
+    pluginStates,
+    maxBars: 1,
+    displayMode,
+    pluginId,
+    preferWeekly: false,
+  })[0]?.fraction
+
+  const weeklyFraction = getTrayWeeklyFraction({
+    pluginId,
+    pluginsMeta,
+    pluginSettings,
+    pluginStates,
+    displayMode,
+  })
+
+  return { sessionFraction, weeklyFraction }
 }
