@@ -10,6 +10,13 @@ export function formatTrayPercentText(fraction: number | undefined): string {
   return `${Math.round(clampedFraction * 100)}%`
 }
 
+export function formatTrayPercentIfPresent(
+  fraction: number | undefined,
+): string | undefined {
+  if (typeof fraction !== "number" || !Number.isFinite(fraction)) return undefined
+  return formatTrayPercentText(fraction)
+}
+
 /**
  * Creates a multi-line tooltip string for the tray icon.
  * Lists the app name followed by enabled plugins and their usage percentages.

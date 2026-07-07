@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatTrayPercentText, formatTrayTooltip } from "./tray-tooltip"
+import { formatTrayPercentIfPresent, formatTrayPercentText, formatTrayTooltip } from "./tray-tooltip"
 import type { PluginMeta } from "./plugin-types"
 import type { TrayPrimaryBar } from "./tray-primary-progress"
 
@@ -24,6 +24,22 @@ describe("tray-tooltip", () => {
     it("should handle undefined and NaN", () => {
       expect(formatTrayPercentText(undefined)).toBe("--%")
       expect(formatTrayPercentText(NaN)).toBe("--%")
+    })
+  })
+
+  describe("formatTrayPercentIfPresent", () => {
+    it("returns undefined when fraction missing", () => {
+      expect(formatTrayPercentIfPresent(undefined)).toBeUndefined()
+      expect(formatTrayPercentIfPresent(NaN)).toBeUndefined()
+    })
+
+    it("returns 0% for zero", () => {
+      expect(formatTrayPercentIfPresent(0)).toBe("0%")
+    })
+
+    it("formats normal fractions", () => {
+      expect(formatTrayPercentIfPresent(0.36)).toBe("36%")
+      expect(formatTrayPercentIfPresent(1)).toBe("100%")
     })
   })
 
