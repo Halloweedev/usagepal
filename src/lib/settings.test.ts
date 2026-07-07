@@ -350,6 +350,11 @@ describe("settings", () => {
     await expect(loadMenubarIconStyle()).resolves.toBe("donut")
   })
 
+  it("accepts multi menubar icon style", async () => {
+    await saveMenubarIconStyle("multi")
+    expect(await loadMenubarIconStyle()).toBe("multi")
+  })
+
   it("falls back to default for invalid menubar icon style", async () => {
     storeState.set("menubarIconStyle", "invalid")
     await expect(loadMenubarIconStyle()).resolves.toBe(DEFAULT_MENUBAR_ICON_STYLE)
