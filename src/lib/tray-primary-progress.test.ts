@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { getTrayPrimaryBars } from "@/lib/tray-primary-progress"
+import { getTrayPrimaryBars, getTrayWeeklyFraction } from "@/lib/tray-primary-progress"
 
 describe("getTrayPrimaryBars", () => {
   it("returns empty when settings missing", () => {
@@ -656,5 +656,117 @@ describe("getTrayPrimaryBars", () => {
     })
 
     expect(bars).toEqual([{ id: "oc", fraction: 0.2, label: "Session" }])
+  })
+})
+
+const claudeMeta = {
+  id: "claude",
+  name: "Claude",
+  iconUrl: "",
+  primaryCandidates: ["Session"],
+  weeklyCandidate: "Weekly",
+  lines: [],
+}
+
+const sessionWeeklyData = {
+  providerId: "claude",
+  displayName: "Claude",
+  iconUrl: "",
+  lines: [
+    { type: "progress" as const, label: "Session", used: 100, limit: 100, format: { kind: "percent" as const } },
+    { type: "progress" as const, label: "Weekly", used: 36, limit: 100, format: { kind: "percent" as const } },
+  ],
+}
+
+describe("getTrayWeeklyFraction", () => {
+  it("returns undefined when weeklyCandidate missing", () => {
+    expect(
+      getTrayWeeklyFraction({
+        pluginId: "a",
+        pluginsMeta: [{ id: "a", name: "A", iconUrl: "", primaryCandidates: ["Session"], lines: [] }],
+        pluginSettings: { order: ["a"], disabled: [] },
+        pluginStates: {},
+      })
+    ).toBeUndefined()
+  })
+
+  it("returns weekly fraction with displayMode left (default)", () => {
+    expect(
+      getTrayWeeklyFraction({
+        pluginId: "claude",
+        pluginsMeta: [claudeMeta],
+        pluginSettings: { order: ["claude"], disabled: [] },
+        pluginStates: {
+          claude: { data: sessionWeeklyData, loading: false, error: null },
+        },
+      })
+    ).toBe(0.64)
+  })
+
+  it("returns 0 when weekly usage is full (left mode)", () => {
+    expect(
+      getTrayWeeklyFraction({
+        pluginId: "claude",
+        pluginsMeta: [claudeMeta],
+        pluginSettings: { order: ["claude"], disabled: [] },
+        pluginStates: {
+          claude: {
+            data: {
+              ...sessionWeeklyData,
+              lines: [
+                sessionWeeklyData.lines[0],
+                { type: "progress", label: "Weekly", used: 100, limit: 100, format: { kind: "percent" } },
+              ],
+            },
+            loading: false,
+            error: null,
+          },
+        },
+      })
+    ).toBe(0)
+  })
+
+  it("returns undefined when weekly line absent from runtime data", () => {
+    expect(
+      getTrayWeeklyFraction({
+        pluginId: "claude",
+        pluginsMeta: [claudeMeta],
+        pluginSettings: { order: ["claude"], disabled: [] },
+        pluginStates: {
+          claude: {
+            data: { ...sessionWeeklyData, lines: [sessionWeeklyData.lines[0]] },
+            loading: false,
+            error: null,
+          },
+        },
+      })
+    ).toBeUndefined()
+  })
+
+  it("does not return escalated primary fraction when escalation active", () => {
+    const metaWithEscalation = {
+      ...claudeMeta,
+      lines: [{ type: "progress" as const, label: "Monthly", scope: "detail", escalateAtPercent: 98 }],
+    }
+    expect(
+      getTrayWeeklyFraction({
+        pluginId: "claude",
+        pluginsMeta: [metaWithEscalation],
+        pluginSettings: { order: ["claude"], disabled: [] },
+        pluginStates: {
+          claude: {
+            data: {
+              ...sessionWeeklyData,
+              lines: [
+                ...sessionWeeklyData.lines,
+                { type: "progress", label: "Monthly", used: 99, limit: 100, format: { kind: "percent" } },
+              ],
+            },
+            loading: false,
+            error: null,
+          },
+        },
+      })
+    ).toBe(0.64)
   })
 })

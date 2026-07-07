@@ -120,3 +120,40 @@ export function getTrayPrimaryBars(args: {
 
   return out
 }
+
+export function getTrayWeeklyFraction(args: {
+  pluginId: string
+  pluginsMeta: PluginMeta[]
+  pluginSettings: PluginSettings | null
+  pluginStates: Record<string, PluginState | undefined>
+  displayMode?: DisplayMode
+}): number | undefined {
+  const {
+    pluginId,
+    pluginsMeta,
+    pluginSettings,
+    pluginStates,
+    displayMode = DEFAULT_DISPLAY_MODE,
+  } = args
+  if (!pluginSettings) return undefined
+  if (pluginSettings.disabled.includes(pluginId)) return undefined
+
+  const meta = pluginsMeta.find((p) => p.id === pluginId)
+  const weeklyLabel = meta?.weeklyCandidate
+  if (!weeklyLabel) return undefined
+
+  const data = pluginStates[pluginId]?.data ?? null
+  if (!data) return undefined
+
+  const metricLine = data.lines.find(
+    (line): line is UsableProgressLine =>
+      isUsableProgressLine(line) && line.label === weeklyLabel
+  )
+  if (!metricLine || metricLine.limit <= 0) return undefined
+
+  const shownAmount =
+    displayMode === "used"
+      ? metricLine.used
+      : metricLine.limit - metricLine.used
+  return clamp01(shownAmount / metricLine.limit)
+}
