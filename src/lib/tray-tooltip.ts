@@ -1,6 +1,12 @@
 import type { PluginMeta } from "@/lib/plugin-types"
 import type { TrayPrimaryBar } from "@/lib/tray-primary-progress"
 
+export type TrayMultiProviderRow = {
+  id: string
+  sessionFraction?: number
+  weeklyFraction?: number
+}
+
 /**
  * Formats a fraction (0.0 - 1.0) into a percentage string (0% - 100%).
  */
@@ -46,6 +52,30 @@ export function formatTrayTooltip(
       lines.push(`${meta.name}: ${percent} · ${bar.label}`)
     } else {
       lines.push(`${meta.name}: ${percent}`)
+    }
+  }
+  return lines.join("\n")
+}
+
+export function formatTrayTooltipMulti(
+  rows: TrayMultiProviderRow[],
+  pluginsMeta: PluginMeta[],
+): string {
+  const lines = ["UsagePal"]
+  const metaById = new Map(pluginsMeta.map((p) => [p.id, p]))
+
+  for (const row of rows) {
+    const session = formatTrayPercentIfPresent(row.sessionFraction)
+    const weekly = formatTrayPercentIfPresent(row.weeklyFraction)
+    if (!session && !weekly) continue
+
+    const name = metaById.get(row.id)?.name ?? row.id
+    if (session && weekly) {
+      lines.push(`${name}: ${session} · ${weekly}`)
+    } else if (session) {
+      lines.push(`${name}: ${session}`)
+    } else {
+      lines.push(`${name}: ${weekly}`)
     }
   }
   return lines.join("\n")

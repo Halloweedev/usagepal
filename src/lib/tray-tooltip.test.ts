@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatTrayPercentIfPresent, formatTrayPercentText, formatTrayTooltip } from "./tray-tooltip"
+import { formatTrayPercentIfPresent, formatTrayPercentText, formatTrayTooltip, formatTrayTooltipMulti } from "./tray-tooltip"
 import type { PluginMeta } from "./plugin-types"
 import type { TrayPrimaryBar } from "./tray-primary-progress"
 
@@ -104,6 +104,37 @@ describe("tray-tooltip", () => {
       ]
       const tooltip = formatTrayTooltip(bars, mockMeta, false)
       expect(tooltip).toBe("UsagePal\nPlugin 1: 42%\nPlugin 2: 30%")
+    })
+  })
+
+  describe("formatTrayTooltipMulti", () => {
+    const meta = [{ id: "claude", name: "Claude", iconUrl: "", primaryCandidates: ["Session"], lines: [] }]
+
+    it("omits providers with no data lines", () => {
+      expect(
+        formatTrayTooltipMulti(
+          [{ id: "claude", sessionFraction: undefined, weeklyFraction: undefined }],
+          meta
+        )
+      ).toBe("UsagePal")
+    })
+
+    it("formats session and weekly when both present", () => {
+      expect(
+        formatTrayTooltipMulti(
+          [{ id: "claude", sessionFraction: 1, weeklyFraction: 0.36 }],
+          meta
+        )
+      ).toBe("UsagePal\nClaude: 100% · 36%")
+    })
+
+    it("formats session only when weekly missing", () => {
+      expect(
+        formatTrayTooltipMulti(
+          [{ id: "claude", sessionFraction: 0.93, weeklyFraction: undefined }],
+          meta
+        )
+      ).toBe("UsagePal\nClaude: 93%")
     })
   })
 })
