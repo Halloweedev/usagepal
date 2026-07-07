@@ -203,6 +203,33 @@ function MenubarIconStylePreview({
     );
   }
 
+  if (style === "multi") {
+    const providers = traySettingsPreview.multiProviders.length > 0
+      ? traySettingsPreview.multiProviders
+      : [{ id: "preview", sessionText: "100%", weeklyText: "36%" }];
+    return (
+      <div className="inline-flex items-center gap-1">
+        {providers.slice(0, 3).map((p) => (
+          <div key={p.id} className="inline-flex items-center gap-0.5">
+            <ProviderIconMask iconUrl={p.iconUrl} isActive={isActive} sizePx={TRAY_PREVIEW_SIZE_PX} />
+            <div className="flex flex-col leading-none">
+              {p.sessionText && (
+                <span className={cn("text-[10px] font-semibold tabular-nums", textClass)}>
+                  {p.sessionText}
+                </span>
+              )}
+              {p.weeklyText && (
+                <span className={cn("text-[9px] font-semibold tabular-nums opacity-70", textClass)}>
+                  {p.weeklyText}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -585,29 +612,33 @@ export function SettingsPage({
             })}
           </div>
         </div>
-        <p className="text-sm text-muted-foreground mt-3 mb-2">Metric</p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Menubar metric">
-            {MENUBAR_METRIC_OPTIONS.map((option) => {
-              const isActive = option.value === menubarMetric;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-label={option.label}
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => onMenubarMetricChange(option.value)}
-                >
-                  {option.label}
-                </Button>
-              );
-            })}
-          </div>
-        </div>
+        {menubarIconStyle !== "multi" && (
+          <>
+            <p className="text-sm text-muted-foreground mt-3 mb-2">Metric</p>
+            <div className="bg-muted/50 rounded-lg p-1">
+              <div className="flex gap-1" role="radiogroup" aria-label="Menubar metric">
+                {MENUBAR_METRIC_OPTIONS.map((option) => {
+                  const isActive = option.value === menubarMetric;
+                  return (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-label={option.label}
+                      aria-checked={isActive}
+                      variant={isActive ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => onMenubarMetricChange(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">App Theme</h3>

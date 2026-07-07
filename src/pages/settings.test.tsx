@@ -88,6 +88,7 @@ const defaultProps = {
     providerBars: [{ id: "a", fraction: 0.7 }],
     providerIconUrl: "icon-a",
     providerPercentText: "70%",
+    multiProviders: [],
   },
   globalShortcut: null,
   onGlobalShortcutChange: vi.fn(),
@@ -549,6 +550,18 @@ describe("SettingsPage", () => {
     )
     await userEvent.click(screen.getByRole("radio", { name: "Weekly" }))
     expect(onMenubarMetricChange).toHaveBeenCalledWith("weekly")
+  })
+
+  it("hides the menubar metric control when multi style is selected", () => {
+    render(
+      <SettingsPage
+        {...defaultProps}
+        menubarIconStyle="multi"
+      />
+    )
+    expect(screen.queryByText("Metric")).not.toBeInTheDocument()
+    expect(screen.queryByRole("radio", { name: "Default" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("radio", { name: "Weekly" })).not.toBeInTheDocument()
   })
 
   it("does not render removed bar icon controls", () => {
