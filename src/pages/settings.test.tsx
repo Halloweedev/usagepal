@@ -109,7 +109,7 @@ async function openPluginsList() {
 }
 
 async function openAdvanced() {
-  await userEvent.click(screen.getByRole("button", { name: "Show Advanced" }))
+  await userEvent.click(screen.getByRole("button", { name: "Advanced" }))
 }
 
 afterEach(() => {
@@ -272,28 +272,29 @@ describe("SettingsPage", () => {
     expect(screen.queryByText("Alpha")).not.toBeInTheDocument()
   })
 
-  it("keeps the advanced section closed until toggled open", async () => {
+  it("opens the advanced modal only when the Advanced button is clicked", async () => {
     render(<SettingsPage {...defaultProps} />)
 
-    expect(screen.getByRole("button", { name: "Show Advanced" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("dialog", { name: "Advanced" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Debug Error" })).not.toBeInTheDocument()
 
     await openAdvanced()
 
-    expect(screen.getByRole("button", { name: "Hide Advanced" })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByRole("dialog", { name: "Advanced" })).toHaveAttribute("aria-modal", "true")
     expect(screen.getByRole("button", { name: "Debug Error" })).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole("button", { name: "Hide Advanced" }))
-    expect(screen.getByRole("button", { name: "Show Advanced" })).toHaveAttribute("aria-expanded", "false")
+    await userEvent.keyboard("{Escape}")
+    expect(screen.queryByRole("dialog", { name: "Advanced" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Debug Error" })).not.toBeInTheDocument()
   })
 
-  it("renders Show Stats/About/Quit outside the advanced disclosure", () => {
+  it("renders Show Stats/About/Advanced/Quit as top-level buttons, not inside the advanced modal", () => {
     render(<SettingsPage {...defaultProps} />)
 
     const advancedSection = screen.getByRole("heading", { name: "Advanced" }).closest("section")!
     expect(within(advancedSection).getByRole("button", { name: "Show Stats" })).toBeInTheDocument()
     expect(within(advancedSection).getByRole("button", { name: "About UsagePal" })).toBeInTheDocument()
+    expect(within(advancedSection).getByRole("button", { name: "Advanced" })).toBeInTheDocument()
     expect(within(advancedSection).getByRole("button", { name: "Quit UsagePal" })).toBeInTheDocument()
     expect(within(advancedSection).queryByRole("button", { name: "Debug Error" })).not.toBeInTheDocument()
   })
@@ -331,6 +332,26 @@ describe("SettingsPage", () => {
     expect(trigger).toHaveFocus()
   })
 
+  it("traps Tab focus in the advanced modal including the Beta Updates checkbox", async () => {
+    const user = userEvent.setup()
+    render(<SettingsPage {...defaultProps} />)
+    await openAdvanced()
+
+    expect(screen.getByRole("button", { name: "Debug Error" })).toHaveFocus()
+
+    await user.tab()
+    expect(screen.getByRole("button", { name: "Copy Log Path" })).toHaveFocus()
+
+    await user.tab()
+    expect(screen.getByRole("checkbox", { name: "Get Beta Updates" })).toHaveFocus()
+
+    await user.tab()
+    expect(screen.getByRole("button", { name: "Debug Error" })).toHaveFocus()
+
+    await user.keyboard("{Shift>}{Tab}{/Shift}")
+    expect(screen.getByRole("checkbox", { name: "Get Beta Updates" })).toHaveFocus()
+  })
+
   it("runs advanced section actions", async () => {
     const onShowStats = vi.fn()
     const onShowAbout = vi.fn()
@@ -354,6 +375,9 @@ describe("SettingsPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Copy Log Path" }))
     expect(invokeMock).toHaveBeenCalledWith("copy_log_path")
+
+    await userEvent.keyboard("{Escape}")
+    expect(screen.queryByRole("dialog", { name: "Advanced" })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole("button", { name: "About UsagePal" }))
     expect(onShowAbout).toHaveBeenCalledTimes(1)

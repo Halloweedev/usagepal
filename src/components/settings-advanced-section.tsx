@@ -67,13 +67,19 @@ export function SettingsAdvancedSection({
 }: SettingsAdvancedSectionProps) {
   const [debugLevel, setDebugLevel] = useState<DebugLevel>("error")
   const [showDebugDialog, setShowDebugDialog] = useState(false)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [showAdvancedDialog, setShowAdvancedDialog] = useState(false)
   const debugLevelButtonRef = useRef<HTMLButtonElement>(null)
+  const advancedButtonRef = useRef<HTMLButtonElement>(null)
   const selectedDebugLevelLabel = DEBUG_LEVEL_OPTIONS.find((option) => option.value === debugLevel)!.label
 
   const closeDebugDialog = useCallback(() => {
     setShowDebugDialog(false)
     debugLevelButtonRef.current?.focus()
+  }, [])
+
+  const closeAdvancedDialog = useCallback(() => {
+    setShowAdvancedDialog(false)
+    advancedButtonRef.current?.focus()
   }, [])
 
   const handleDebugLevelChange = (level: DebugLevel) => {
@@ -98,54 +104,8 @@ export function SettingsAdvancedSection({
 
   return (
     <section>
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-lg font-semibold mb-0">Advanced</h3>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          aria-expanded={advancedOpen}
-          aria-controls="settings-advanced-content"
-          onClick={() => setAdvancedOpen((open) => !open)}
-        >
-          {advancedOpen ? "Hide Advanced" : "Show Advanced"}
-        </Button>
-      </div>
+      <h3 className="text-lg font-semibold mb-0">Advanced</h3>
       <p className="text-sm text-muted-foreground mb-2">Debugging and diagnostics</p>
-      {advancedOpen && (
-        <div id="settings-advanced-content" className="bg-muted/50 rounded-lg p-1 space-y-2 mb-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label={`Debug ${selectedDebugLevelLabel}`}
-            className="w-full justify-center"
-            ref={debugLevelButtonRef}
-            onClick={() => setShowDebugDialog(true)}
-          >
-            <span>Debug</span>
-          </Button>
-          <Button type="button" variant="outline" size="sm" className="w-full" onClick={handleCopyLogPath}>
-            Copy Log Path
-          </Button>
-          <div className="rounded-md border border-border/60 bg-background px-3 py-2 text-left">
-            <label className="flex items-center gap-2 text-sm select-none text-foreground">
-              <Checkbox
-                key={`beta-updates-${betaUpdatesEnabled}`}
-                aria-label="Get Beta Updates"
-                checked={betaUpdatesEnabled}
-                onCheckedChange={(checked) => onBetaUpdatesEnabledChange(checked === true)}
-              />
-              Get Beta Updates
-            </label>
-            {betaUpdatesEnabled && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Beta updates will appear in the normal update button.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
       <div className="space-y-2">
         <Button type="button" variant="outline" size="sm" className="w-full" onClick={onShowStats}>
           Show Stats
@@ -153,10 +113,63 @@ export function SettingsAdvancedSection({
         <Button type="button" variant="outline" size="sm" className="w-full" onClick={onShowAbout}>
           About UsagePal
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full"
+          ref={advancedButtonRef}
+          onClick={() => setShowAdvancedDialog(true)}
+        >
+          Advanced
+        </Button>
         <Button type="button" variant="destructive" size="sm" className="w-full" onClick={handleQuit}>
           Quit UsagePal
         </Button>
       </div>
+      {showAdvancedDialog && (
+        <FocusTrapDialog
+          label="Advanced"
+          focusableSelector='button, [role="checkbox"]'
+          onClose={() => {
+            if (!showDebugDialog) closeAdvancedDialog()
+          }}
+        >
+          <h2 className="text-lg font-semibold mb-3">Advanced</h2>
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label={`Debug ${selectedDebugLevelLabel}`}
+              className="w-full justify-center"
+              ref={debugLevelButtonRef}
+              onClick={() => setShowDebugDialog(true)}
+            >
+              <span>Debug</span>
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="w-full" onClick={handleCopyLogPath}>
+              Copy Log Path
+            </Button>
+            <div className="rounded-md border border-border/60 bg-background px-3 py-2 text-left">
+              <label className="flex items-center gap-2 text-sm select-none text-foreground">
+                <Checkbox
+                  key={`beta-updates-${betaUpdatesEnabled}`}
+                  aria-label="Get Beta Updates"
+                  checked={betaUpdatesEnabled}
+                  onCheckedChange={(checked) => onBetaUpdatesEnabledChange(checked === true)}
+                />
+                Get Beta Updates
+              </label>
+              {betaUpdatesEnabled && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Beta updates will appear in the normal update button.
+                </p>
+              )}
+            </div>
+          </div>
+        </FocusTrapDialog>
+      )}
       {showDebugDialog && (
         <DebugDialog
           selectedLevel={debugLevel}
