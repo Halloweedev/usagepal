@@ -308,7 +308,6 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("radiogroup", { name: "Debug level" })).toBeInTheDocument()
     expect(screen.getByRole("radio", { name: "Error" })).toHaveAttribute("aria-checked", "true")
     expect(screen.getByRole("radio", { name: "Trace" })).toBeInTheDocument()
-    expect(screen.queryByRole("checkbox", { name: "Get Beta Updates" })).not.toBeInTheDocument()
   })
 
   it("keeps focus inside the debug level modal and returns it on close", async () => {

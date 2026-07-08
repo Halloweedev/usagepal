@@ -128,24 +128,22 @@ export function SettingsAdvancedSection({
           <Button type="button" variant="outline" size="sm" className="w-full" onClick={handleCopyLogPath}>
             Copy Log Path
           </Button>
-          {!showDebugDialog && (
-            <div className="rounded-md border border-border/60 bg-background px-3 py-2 text-left">
-              <label className="flex items-center gap-2 text-sm select-none text-foreground">
-                <Checkbox
-                  key={`beta-updates-${betaUpdatesEnabled}`}
-                  aria-label="Get Beta Updates"
-                  checked={betaUpdatesEnabled}
-                  onCheckedChange={(checked) => onBetaUpdatesEnabledChange(checked === true)}
-                />
-                Get Beta Updates
-              </label>
-              {betaUpdatesEnabled && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Beta updates will appear in the normal update button.
-                </p>
-              )}
-            </div>
-          )}
+          <div className="rounded-md border border-border/60 bg-background px-3 py-2 text-left">
+            <label className="flex items-center gap-2 text-sm select-none text-foreground">
+              <Checkbox
+                key={`beta-updates-${betaUpdatesEnabled}`}
+                aria-label="Get Beta Updates"
+                checked={betaUpdatesEnabled}
+                onCheckedChange={(checked) => onBetaUpdatesEnabledChange(checked === true)}
+              />
+              Get Beta Updates
+            </label>
+            {betaUpdatesEnabled && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Beta updates will appear in the normal update button.
+              </p>
+            )}
+          </div>
         </div>
       )}
       <div className="space-y-2">
