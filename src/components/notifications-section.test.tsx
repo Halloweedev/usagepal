@@ -19,6 +19,10 @@ vi.mock("@/stores/app-notifications-store", () => ({
 
 import { NotificationsSection } from "./notifications-section"
 
+async function openNotificationsDialog() {
+  await userEvent.click(screen.getByRole("button", { name: "Notifications" }))
+}
+
 describe("NotificationsSection", () => {
   beforeEach(() => {
     state.invokeMock.mockReset()
@@ -26,13 +30,30 @@ describe("NotificationsSection", () => {
     state.setToggleMock.mockReset()
   })
 
-  it("does not show the modal just from rendering", () => {
+  it("does not show the dialog or checkboxes just from rendering", () => {
     render(<NotificationsSection />)
-    expect(screen.queryByText(/Allow Notifications/i)).toBeNull()
+    expect(screen.queryByRole("dialog", { name: "Notifications" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
+  })
+
+  it("opens a modal with the 4 alert checkboxes on button click", async () => {
+    render(<NotificationsSection />)
+    await openNotificationsDialog()
+
+    expect(screen.getByRole("dialog", { name: "Notifications" })).toHaveAttribute("aria-modal", "true")
+    expect(screen.getAllByRole("checkbox")).toHaveLength(4)
+  })
+
+  it("closes the notifications dialog on Escape", async () => {
+    render(<NotificationsSection />)
+    await openNotificationsDialog()
+    await userEvent.keyboard("{Escape}")
+    expect(screen.queryByRole("dialog", { name: "Notifications" })).not.toBeInTheDocument()
   })
 
   it("persists the toggle and shows the allow-notifications modal when turned on", async () => {
     render(<NotificationsSection />)
+    await openNotificationsDialog()
     await userEvent.click(screen.getAllByRole("checkbox")[0])
     expect(state.setToggleMock).toHaveBeenCalledWith("underTenPercent", true)
     expect(await screen.findByText(/Allow Notifications/i)).toBeTruthy()
@@ -40,6 +61,7 @@ describe("NotificationsSection", () => {
 
   it("opens the macOS notification settings from the modal and closes it", async () => {
     render(<NotificationsSection />)
+    await openNotificationsDialog()
     await userEvent.click(screen.getAllByRole("checkbox")[0])
     await userEvent.click(await screen.findByRole("button", { name: "Open Settings" }))
     expect(state.invokeMock).toHaveBeenCalledWith("open_notification_settings")
@@ -48,6 +70,7 @@ describe("NotificationsSection", () => {
 
   it("dismisses with Done without opening settings", async () => {
     render(<NotificationsSection />)
+    await openNotificationsDialog()
     await userEvent.click(screen.getAllByRole("checkbox")[0])
     await userEvent.click(await screen.findByRole("button", { name: "Done" }))
     expect(state.invokeMock).not.toHaveBeenCalledWith("open_notification_settings")
