@@ -50,5 +50,6 @@ describe("WelcomeStep", () => {
   it("disables Skip setup while busy", () => {
     render(<WelcomeStep onContinue={() => {}} onSkip={() => {}} skipBusy={true} />)
     expect(screen.getByRole("button", { name: "Skip setup" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled()
   })
 })

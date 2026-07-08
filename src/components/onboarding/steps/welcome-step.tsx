@@ -30,7 +30,7 @@ export function WelcomeStep({ onContinue, onSkip, skipBusy }: WelcomeStepProps) 
       description="UsagePal lives in your menu bar and keeps your AI usage one glance away. Here's what it looks like."
       actions={
         <>
-          <Button size="lg" onClick={onContinue}>
+          <Button size="lg" onClick={onContinue} disabled={skipBusy}>
             Continue
           </Button>
           <Button size="lg" variant="ghost" onClick={onSkip} disabled={skipBusy}>

@@ -23,10 +23,10 @@ export function DoneStep({ alertsEnabled, startOnLogin, onFinish, busyAction }: 
       description="UsagePal now lives in your menu bar, keeping your usage one glance away."
       actions={
         <>
-          <Button size="lg" onClick={() => onFinish(false)} disabled={busyAction === "finish"}>
+          <Button size="lg" onClick={() => onFinish(false)} disabled={busyAction !== null}>
             Open UsagePal
           </Button>
-          <Button size="lg" variant="ghost" onClick={() => onFinish(true)} disabled={busyAction === "settings"}>
+          <Button size="lg" variant="ghost" onClick={() => onFinish(true)} disabled={busyAction !== null}>
             Open Settings
           </Button>
         </>

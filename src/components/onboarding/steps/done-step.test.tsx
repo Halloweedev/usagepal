@@ -34,9 +34,11 @@ describe("DoneStep", () => {
       <DoneStep alertsEnabled={0} startOnLogin={false} onFinish={() => {}} busyAction="finish" />
     )
     expect(screen.getByRole("button", { name: "Open UsagePal" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Open Settings" })).toBeDisabled()
     rerender(
       <DoneStep alertsEnabled={0} startOnLogin={false} onFinish={() => {}} busyAction="settings" />
     )
+    expect(screen.getByRole("button", { name: "Open UsagePal" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Open Settings" })).toBeDisabled()
   })
 })
