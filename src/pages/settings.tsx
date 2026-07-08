@@ -24,7 +24,7 @@ import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { NotificationsSection } from "@/components/notifications-section";
 import { ClinePassKeyDialog } from "@/components/clinepass-key-dialog";
 import { OpenRouterKeyDialog } from "@/components/openrouter-key-dialog";
-import { SettingsAppMenu } from "@/components/settings-app-menu";
+import { SettingsAdvancedSection } from "@/components/settings-advanced-section";
 import { SupporterSection } from "@/components/supporter-section";
 import { ProviderIconMask } from "@/components/provider-icon-mask";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
@@ -835,7 +835,7 @@ export function SettingsPage({
         )}
       </section>
       <SupporterSection />
-      <SettingsAppMenu
+      <SettingsAdvancedSection
         onShowStats={onShowStats}
         onShowAbout={onShowAbout}
         betaUpdatesEnabled={betaUpdatesEnabled}

@@ -108,6 +108,10 @@ async function openPluginsList() {
   await userEvent.click(screen.getByRole("button", { name: "Show Plugins" }))
 }
 
+async function openAdvanced() {
+  await userEvent.click(screen.getByRole("button", { name: "Show Advanced" }))
+}
+
 afterEach(() => {
   cleanup()
 })
@@ -268,23 +272,35 @@ describe("SettingsPage", () => {
     expect(screen.queryByText("Alpha")).not.toBeInTheDocument()
   })
 
-  it("renders the full app menu at the bottom", () => {
+  it("keeps the advanced section closed until toggled open", async () => {
     render(<SettingsPage {...defaultProps} />)
 
-    const appMenu = screen.getByRole("heading", { name: "App Menu" }).closest("section")!
-    expect(appMenu).toBeInTheDocument()
-    expect(within(appMenu).getByRole("button", { name: "Show Stats" })).toBeInTheDocument()
-    expect(within(appMenu).getByRole("button", { name: "Debug Error" })).toBeInTheDocument()
-    expect(within(appMenu).queryByRole("checkbox", { name: "Get Beta Updates" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("radiogroup", { name: "Debug level" })).not.toBeInTheDocument()
-    expect(within(appMenu).getByRole("button", { name: "Copy Log Path" })).toBeInTheDocument()
-    expect(within(appMenu).getByRole("button", { name: "About UsagePal" })).toBeInTheDocument()
-    expect(within(appMenu).getByRole("button", { name: "Quit UsagePal" })).toBeInTheDocument()
-    expect(screen.queryByRole("heading", { name: "Beta Updates" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Show Advanced" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("button", { name: "Debug Error" })).not.toBeInTheDocument()
+
+    await openAdvanced()
+
+    expect(screen.getByRole("button", { name: "Hide Advanced" })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByRole("button", { name: "Debug Error" })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: "Hide Advanced" }))
+    expect(screen.getByRole("button", { name: "Show Advanced" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("button", { name: "Debug Error" })).not.toBeInTheDocument()
+  })
+
+  it("renders Show Stats/About/Quit outside the advanced disclosure", () => {
+    render(<SettingsPage {...defaultProps} />)
+
+    const advancedSection = screen.getByRole("heading", { name: "Advanced" }).closest("section")!
+    expect(within(advancedSection).getByRole("button", { name: "Show Stats" })).toBeInTheDocument()
+    expect(within(advancedSection).getByRole("button", { name: "About UsagePal" })).toBeInTheDocument()
+    expect(within(advancedSection).getByRole("button", { name: "Quit UsagePal" })).toBeInTheDocument()
+    expect(within(advancedSection).queryByRole("button", { name: "Debug Error" })).not.toBeInTheDocument()
   })
 
   it("opens debug level choices in a modal", async () => {
     render(<SettingsPage {...defaultProps} />)
+    await openAdvanced()
 
     await userEvent.click(screen.getByRole("button", { name: "Debug Error" }))
 
@@ -292,12 +308,13 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("radiogroup", { name: "Debug level" })).toBeInTheDocument()
     expect(screen.getByRole("radio", { name: "Error" })).toHaveAttribute("aria-checked", "true")
     expect(screen.getByRole("radio", { name: "Trace" })).toBeInTheDocument()
-    expect(screen.getByRole("checkbox", { name: "Get Beta Updates" })).toBeInTheDocument()
+    expect(screen.queryByRole("checkbox", { name: "Get Beta Updates" })).not.toBeInTheDocument()
   })
 
   it("keeps focus inside the debug level modal and returns it on close", async () => {
     const user = userEvent.setup()
     render(<SettingsPage {...defaultProps} />)
+    await openAdvanced()
 
     const trigger = screen.getByRole("button", { name: "Debug Error" })
     await user.click(trigger)
@@ -305,7 +322,7 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("radio", { name: "Error" })).toHaveFocus()
 
     await user.keyboard("{Shift>}{Tab}{/Shift}")
-    expect(screen.getByRole("checkbox", { name: "Get Beta Updates" })).toHaveFocus()
+    expect(screen.getByRole("radio", { name: "Trace" })).toHaveFocus()
 
     await user.tab()
     expect(screen.getByRole("radio", { name: "Error" })).toHaveFocus()
@@ -315,7 +332,7 @@ describe("SettingsPage", () => {
     expect(trigger).toHaveFocus()
   })
 
-  it("runs app menu actions", async () => {
+  it("runs advanced section actions", async () => {
     const onShowStats = vi.fn()
     const onShowAbout = vi.fn()
     render(
@@ -329,6 +346,7 @@ describe("SettingsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Show Stats" }))
     expect(onShowStats).toHaveBeenCalledTimes(1)
 
+    await openAdvanced()
     await userEvent.click(screen.getByRole("button", { name: "Debug Error" }))
     await userEvent.click(screen.getByRole("radio", { name: "Debug" }))
     expect(invokeMock).toHaveBeenCalledWith("set_log_level", { level: "debug" })
@@ -403,21 +421,19 @@ describe("SettingsPage", () => {
       />
     )
 
-    await userEvent.click(screen.getByRole("button", { name: "Debug Error" }))
+    await openAdvanced()
     await userEvent.click(screen.getByRole("checkbox", { name: "Get Beta Updates" }))
 
     expect(onBetaUpdatesEnabledChange).toHaveBeenCalledWith(true)
   })
 
-  it("explains beta updates without opening release downloads", async () => {
+  it("explains beta updates without opening the debug dialog", async () => {
     render(<SettingsPage {...defaultProps} betaUpdatesEnabled />)
-    const appMenu = screen.getByRole("heading", { name: "App Menu" }).closest("section")!
 
-    expect(within(appMenu).queryByText("Beta updates will appear in the normal update button."))
-      .not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Debug Error" }))
-    expect(screen.getByText("Beta updates will appear in the normal update button."))
-      .toBeInTheDocument()
+    await openAdvanced()
+
+    expect(screen.getByText("Beta updates will appear in the normal update button.")).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Debug" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Download Latest Beta" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Download Latest Stable" })).not.toBeInTheDocument()
   })
