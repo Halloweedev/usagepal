@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ExternalLink, KeyRound } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -423,6 +423,15 @@ function SortablePluginItem({
   );
 }
 
+function SettingsGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-4">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h2>
+      {children}
+    </div>
+  );
+}
+
 interface SettingsPageProps {
   plugins: PluginConfig[];
   onReorder: (orderedIds: string[]) => void;
@@ -509,332 +518,341 @@ export function SettingsPage({
   };
 
   return (
-    <div className="py-3 space-y-4">
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Auto Refresh</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          How obsessive are you
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Auto-update interval">
-            {AUTO_UPDATE_OPTIONS.map((option) => {
-              const isActive = option.value === autoUpdateInterval;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => onAutoUpdateIntervalChange(option.value)}
-                >
-                  {option.label}
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Usage Mode</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          Glass half full or half empty
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Usage display mode">
-            {DISPLAY_MODE_OPTIONS.map((option) => {
-              const isActive = option.value === displayMode;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => onDisplayModeChange(option.value)}
-                >
-                  {option.label}
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Reset Timers</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          Countdown or clock time
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Reset timer display mode">
-            {RESET_TIMER_DISPLAY_OPTIONS.map((option) => {
-              const isActive = option.value === resetTimerDisplayMode;
-              const absoluteTimeExample = getTimeFormatter(timeFormatMode).format(new Date(2026, 1, 2, 11, 4));
-              const example = option.value === "relative" ? "5h 12m" : `today at ${absoluteTimeExample}`;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1 flex flex-col items-center gap-0 py-2 h-auto"
-                  onClick={() => onResetTimerDisplayModeChange(option.value)}
-                >
-                  <span>{option.label}</span>
-                  <span
-                    className={cn(
-                      "text-xs font-normal",
-                      isActive ? "text-primary-foreground/80" : "text-muted-foreground"
-                    )}
-                  >
-                    {example}
-                  </span>
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Time Format</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          12-hour or 24-hour clock
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Time format">
-            {TIME_FORMAT_OPTIONS.map((option) => {
-              const isActive = option.value === timeFormatMode;
-              const example = getTimeFormatter(option.value).format(new Date(2026, 1, 2, 11, 4));
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  aria-label={option.label}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1 flex flex-col items-center gap-0 py-2 h-auto"
-                  onClick={() => onTimeFormatModeChange(option.value)}
-                >
-                  <span>{option.label}</span>
-                  <span
-                    className={cn(
-                      "text-xs font-normal",
-                      isActive ? "text-primary-foreground/80" : "text-muted-foreground"
-                    )}
-                  >
-                    {example}
-                  </span>
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Menubar Icon</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          What shows in the menu bar
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="space-y-1" role="radiogroup" aria-label="Menubar icon style">
-            <div className="flex gap-1">
-              {MENUBAR_ICON_STYLE_OPTIONS.filter((option) => option.value !== "multi").map((option) => {
-                const isActive = option.value === menubarIconStyle;
+    <div className="py-3 space-y-6">
+      <SettingsGroup label="Display">
+        <section>
+          <h3 className="text-lg font-semibold mb-0">Auto Refresh</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            How obsessive are you
+          </p>
+          <div className="bg-muted/50 rounded-lg p-1">
+            <div className="flex gap-1" role="radiogroup" aria-label="Auto-update interval">
+              {AUTO_UPDATE_OPTIONS.map((option) => {
+                const isActive = option.value === autoUpdateInterval;
                 return (
                   <Button
                     key={option.value}
                     type="button"
                     role="radio"
-                    aria-label={option.label}
                     aria-checked={isActive}
                     variant={isActive ? "default" : "outline"}
                     size="sm"
-                    className="flex-1 min-w-0 h-9 flex items-center justify-center overflow-hidden px-1"
-                    onClick={() => onMenubarIconStyleChange(option.value)}
+                    className="flex-1"
+                    onClick={() => onAutoUpdateIntervalChange(option.value)}
                   >
-                    <MenubarIconStylePreview
-                      style={option.value}
-                      isActive={isActive}
-                      traySettingsPreview={traySettingsPreview}
-                    />
+                    {option.label}
                   </Button>
                 );
               })}
             </div>
+          </div>
+        </section>
+        <section>
+          <h3 className="text-lg font-semibold mb-0">Usage Mode</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            Glass half full or half empty
+          </p>
+          <div className="bg-muted/50 rounded-lg p-1">
+            <div className="flex gap-1" role="radiogroup" aria-label="Usage display mode">
+              {DISPLAY_MODE_OPTIONS.map((option) => {
+                const isActive = option.value === displayMode;
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    variant={isActive ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => onDisplayModeChange(option.value)}
+                  >
+                    {option.label}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+        <section>
+          <h3 className="text-lg font-semibold mb-0">Reset Timers</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            Countdown or clock time
+          </p>
+          <div className="bg-muted/50 rounded-lg p-1">
+            <div className="flex gap-1" role="radiogroup" aria-label="Reset timer display mode">
+              {RESET_TIMER_DISPLAY_OPTIONS.map((option) => {
+                const isActive = option.value === resetTimerDisplayMode;
+                const absoluteTimeExample = getTimeFormatter(timeFormatMode).format(new Date(2026, 1, 2, 11, 4));
+                const example = option.value === "relative" ? "5h 12m" : `today at ${absoluteTimeExample}`;
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    variant={isActive ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 flex flex-col items-center gap-0 py-2 h-auto"
+                    onClick={() => onResetTimerDisplayModeChange(option.value)}
+                  >
+                    <span>{option.label}</span>
+                    <span
+                      className={cn(
+                        "text-xs font-normal",
+                        isActive ? "text-primary-foreground/80" : "text-muted-foreground"
+                      )}
+                    >
+                      {example}
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+        <section>
+          <h3 className="text-lg font-semibold mb-0">Time Format</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            12-hour or 24-hour clock
+          </p>
+          <div className="bg-muted/50 rounded-lg p-1">
+            <div className="flex gap-1" role="radiogroup" aria-label="Time format">
+              {TIME_FORMAT_OPTIONS.map((option) => {
+                const isActive = option.value === timeFormatMode;
+                const example = getTimeFormatter(option.value).format(new Date(2026, 1, 2, 11, 4));
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    aria-label={option.label}
+                    variant={isActive ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 flex flex-col items-center gap-0 py-2 h-auto"
+                    onClick={() => onTimeFormatModeChange(option.value)}
+                  >
+                    <span>{option.label}</span>
+                    <span
+                      className={cn(
+                        "text-xs font-normal",
+                        isActive ? "text-primary-foreground/80" : "text-muted-foreground"
+                      )}
+                    >
+                      {example}
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+        <section>
+          <h3 className="text-lg font-semibold mb-0">Menubar Icon</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            What shows in the menu bar
+          </p>
+          <div className="bg-muted/50 rounded-lg p-1">
+            <div className="space-y-1" role="radiogroup" aria-label="Menubar icon style">
+              <div className="flex gap-1">
+                {MENUBAR_ICON_STYLE_OPTIONS.filter((option) => option.value !== "multi").map((option) => {
+                  const isActive = option.value === menubarIconStyle;
+                  return (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-label={option.label}
+                      aria-checked={isActive}
+                      variant={isActive ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1 min-w-0 h-9 flex items-center justify-center overflow-hidden px-1"
+                      onClick={() => onMenubarIconStyleChange(option.value)}
+                    >
+                      <MenubarIconStylePreview
+                        style={option.value}
+                        isActive={isActive}
+                        traySettingsPreview={traySettingsPreview}
+                      />
+                    </Button>
+                  );
+                })}
+              </div>
+              <Button
+                type="button"
+                role="radio"
+                aria-label={`Multi (${multiTrayProviderCount})`}
+                aria-checked={menubarIconStyle === "multi"}
+                variant={menubarIconStyle === "multi" ? "default" : "outline"}
+                size="sm"
+                className="w-full h-auto flex items-center justify-center overflow-hidden px-2 py-1.5 gap-2"
+                onClick={onMultiMenubarClick}
+              >
+                <MultiMenubarStylePreview
+                  traySettingsPreview={traySettingsPreview}
+                  isActive={menubarIconStyle === "multi"}
+                  providerCount={multiTrayProviderCount}
+                  displayMode={multiTrayDisplayMode}
+                />
+                <span
+                  className={cn(
+                    "text-[10px] font-semibold tabular-nums shrink-0",
+                    menubarIconStyle === "multi"
+                      ? "text-primary-foreground/80"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {multiTrayProviderCount}
+                </span>
+              </Button>
+              {menubarIconStyle === "multi" && (
+                <div className="flex gap-1" role="radiogroup" aria-label="Multi display mode">
+                  {MULTI_TRAY_DISPLAY_MODE_OPTIONS.map((option) => {
+                    const isActive = option.value === multiTrayDisplayMode;
+                    return (
+                      <Button
+                        key={option.value}
+                        type="button"
+                        role="radio"
+                        aria-label={option.label}
+                        aria-checked={isActive}
+                        variant={isActive ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => onMultiTrayDisplayModeChange(option.value)}
+                      >
+                        {option.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          {menubarIconStyle !== "multi" && (
+            <>
+              <p className="text-sm text-muted-foreground mt-3 mb-2">Metric</p>
+              <div className="bg-muted/50 rounded-lg p-1">
+                <div className="flex gap-1" role="radiogroup" aria-label="Menubar metric">
+                  {MENUBAR_METRIC_OPTIONS.map((option) => {
+                    const isActive = option.value === menubarMetric;
+                    return (
+                      <Button
+                        key={option.value}
+                        type="button"
+                        role="radio"
+                        aria-label={option.label}
+                        aria-checked={isActive}
+                        variant={isActive ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => onMenubarMetricChange(option.value)}
+                      >
+                        {option.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+        <section>
+          <h3 className="text-lg font-semibold mb-0">App Theme</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            How it looks around here
+          </p>
+          <div className="bg-muted/50 rounded-lg p-1">
+            <div className="flex gap-1" role="radiogroup" aria-label="Theme mode">
+              {THEME_OPTIONS.map((option) => {
+                const isActive = option.value === themeMode;
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    variant={isActive ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => onThemeModeChange(option.value)}
+                  >
+                    {option.label}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      </SettingsGroup>
+
+      <SettingsGroup label="System">
+        <section>
+          <h3 className="text-lg font-semibold mb-0">Start on Login</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            UsagePal starts when you sign in
+          </p>
+          <label className="flex items-center gap-2 text-sm select-none text-foreground">
+            <Checkbox
+              key={`start-on-login-${startOnLogin}`}
+              checked={startOnLogin}
+              onCheckedChange={(checked) => onStartOnLoginChange(checked === true)}
+            />
+            Start on login
+          </label>
+        </section>
+        <GlobalShortcutSection
+          globalShortcut={globalShortcut}
+          onGlobalShortcutChange={onGlobalShortcutChange}
+        />
+        <NotificationsSection />
+      </SettingsGroup>
+
+      <SettingsGroup label="Extensions">
+        <section>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold mb-0">Plugins</h3>
             <Button
               type="button"
-              role="radio"
-              aria-label={`Multi (${multiTrayProviderCount})`}
-              aria-checked={menubarIconStyle === "multi"}
-              variant={menubarIconStyle === "multi" ? "default" : "outline"}
+              variant="outline"
               size="sm"
-              className="w-full h-auto flex items-center justify-center overflow-hidden px-2 py-1.5 gap-2"
-              onClick={onMultiMenubarClick}
+              aria-expanded={pluginsOpen}
+              aria-controls="settings-plugins-list"
+              onClick={() => setPluginsOpen((open) => !open)}
             >
-              <MultiMenubarStylePreview
-                traySettingsPreview={traySettingsPreview}
-                isActive={menubarIconStyle === "multi"}
-                providerCount={multiTrayProviderCount}
-                displayMode={multiTrayDisplayMode}
-              />
-              <span
-                className={cn(
-                  "text-[10px] font-semibold tabular-nums shrink-0",
-                  menubarIconStyle === "multi"
-                    ? "text-primary-foreground/80"
-                    : "text-muted-foreground"
-                )}
-              >
-                {multiTrayProviderCount}
-              </span>
+              {pluginsOpen ? "Hide Plugins" : "Show Plugins"}
             </Button>
-            {menubarIconStyle === "multi" && (
-              <div className="flex gap-1" role="radiogroup" aria-label="Multi display mode">
-                {MULTI_TRAY_DISPLAY_MODE_OPTIONS.map((option) => {
-                  const isActive = option.value === multiTrayDisplayMode;
-                  return (
-                    <Button
-                      key={option.value}
-                      type="button"
-                      role="radio"
-                      aria-label={option.label}
-                      aria-checked={isActive}
-                      variant={isActive ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => onMultiTrayDisplayModeChange(option.value)}
-                    >
-                      {option.label}
-                    </Button>
-                  );
-                })}
-              </div>
-            )}
           </div>
-        </div>
-        {menubarIconStyle !== "multi" && (
-          <>
-            <p className="text-sm text-muted-foreground mt-3 mb-2">Metric</p>
-            <div className="bg-muted/50 rounded-lg p-1">
-              <div className="flex gap-1" role="radiogroup" aria-label="Menubar metric">
-                {MENUBAR_METRIC_OPTIONS.map((option) => {
-                  const isActive = option.value === menubarMetric;
-                  return (
-                    <Button
-                      key={option.value}
-                      type="button"
-                      role="radio"
-                      aria-label={option.label}
-                      aria-checked={isActive}
-                      variant={isActive ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => onMenubarMetricChange(option.value)}
-                    >
-                      {option.label}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">App Theme</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          How it looks around here
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Theme mode">
-            {THEME_OPTIONS.map((option) => {
-              const isActive = option.value === themeMode;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => onThemeModeChange(option.value)}
-                >
-                  {option.label}
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-      <GlobalShortcutSection
-        globalShortcut={globalShortcut}
-        onGlobalShortcutChange={onGlobalShortcutChange}
-      />
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Start on Login</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          UsagePal starts when you sign in
-        </p>
-        <label className="flex items-center gap-2 text-sm select-none text-foreground">
-          <Checkbox
-            key={`start-on-login-${startOnLogin}`}
-            checked={startOnLogin}
-            onCheckedChange={(checked) => onStartOnLoginChange(checked === true)}
-          />
-          Start on login
-        </label>
-      </section>
-      <NotificationsSection />
-      <section>
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold mb-0">Plugins</h3>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-expanded={pluginsOpen}
-            aria-controls="settings-plugins-list"
-            onClick={() => setPluginsOpen((open) => !open)}
-          >
-            {pluginsOpen ? "Hide Plugins" : "Show Plugins"}
-          </Button>
-        </div>
-        <p className="text-sm text-muted-foreground mb-2">
-          Your AI coding lineup
-        </p>
-        {pluginsOpen && (
-          <div id="settings-plugins-list" className="bg-muted/50 rounded-lg p-1 space-y-1">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={plugins.map((p) => p.id)}
-                strategy={verticalListSortingStrategy}
+          <p className="text-sm text-muted-foreground mb-2">
+            Your AI coding lineup
+          </p>
+          {pluginsOpen && (
+            <div id="settings-plugins-list" className="bg-muted/50 rounded-lg p-1 space-y-1">
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                {plugins.map((plugin) => (
-                  <SortablePluginItem
-                    key={plugin.id}
-                    plugin={plugin}
-                    onToggle={onToggle}
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
-          </div>
-        )}
-      </section>
-      <SupporterSection />
+                <SortableContext
+                  items={plugins.map((p) => p.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {plugins.map((plugin) => (
+                    <SortablePluginItem
+                      key={plugin.id}
+                      plugin={plugin}
+                      onToggle={onToggle}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
+          )}
+        </section>
+        <SupporterSection />
+      </SettingsGroup>
+
       <SettingsAdvancedSection
         onShowStats={onShowStats}
         onShowAbout={onShowAbout}

@@ -439,11 +439,17 @@ describe("SettingsPage", () => {
 
   it("renders app theme section with theme options", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("App Theme")).toBeInTheDocument()
-    expect(screen.getByText("How it looks around here")).toBeInTheDocument()
-    expect(screen.getByText("System")).toBeInTheDocument()
-    expect(screen.getByText("Light")).toBeInTheDocument()
-    expect(screen.getByText("Dark")).toBeInTheDocument()
+    const themeSection = screen.getByText("App Theme").closest("section")!
+    expect(within(themeSection).getByText("How it looks around here")).toBeInTheDocument()
+    expect(within(themeSection).getByText("System")).toBeInTheDocument()
+    expect(within(themeSection).getByText("Light")).toBeInTheDocument()
+    expect(within(themeSection).getByText("Dark")).toBeInTheDocument()
+  })
+
+  it("renders the four settings groups in order", () => {
+    render(<SettingsPage {...defaultProps} />)
+    const groupHeadings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)
+    expect(groupHeadings).toEqual(["Display", "System", "Extensions"])
   })
 
   it("updates theme mode", async () => {
