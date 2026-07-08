@@ -36,6 +36,7 @@ export function usePanel({
   displayPlugins,
 }: UsePanelArgs) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const focusContainer = useCallback(() => {
@@ -47,8 +48,15 @@ export function usePanel({
   const focusHomeView = useCallback(() => {
     setActiveView("home")
     setShowAbout(false)
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0
     focusContainer()
   }, [focusContainer, setActiveView, setShowAbout])
+
+  // SideNav and other view switches call setActiveView directly, bypassing focusHomeView —
+  // reset scroll on every view change so leftover scroll from the previous view never carries over.
+  useEffect(() => {
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0
+  }, [activeView])
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -93,6 +101,7 @@ export function usePanel({
     async function setup() {
       const u1 = await listen<string>("tray:navigate", (event) => {
         setActiveView(event.payload as ActiveView)
+        if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0
         focusContainer()
       })
       if (cancelled) {
@@ -210,6 +219,7 @@ export function usePanel({
 
   return {
     containerRef,
+    scrollContainerRef,
     maxPanelHeightPx,
   }
 }

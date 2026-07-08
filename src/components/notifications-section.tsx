@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { FocusTrapDialog } from "@/components/ui/focus-trap-dialog"
 import { MILESTONE_META, PACE_MILESTONES } from "@/lib/pace-notifications"
 import type { PaceNotificationSettings } from "@/lib/settings"
 import { useAppNotificationsStore } from "@/stores/app-notifications-store"
@@ -13,6 +14,7 @@ export function NotificationsSection() {
   const settings = useAppNotificationsStore((s) => s.settings)
   const setToggle = useAppNotificationsStore((s) => s.setToggle)
   const hydrate = useAppNotificationsStore((s) => s.hydrate)
+  const [showNotificationsDialog, setShowNotificationsDialog] = useState(false)
   const [showPermissionModal, setShowPermissionModal] = useState(false)
 
   useEffect(() => {
@@ -29,34 +31,49 @@ export function NotificationsSection() {
   }
 
   return (
-    <section>
-      <h3 className="text-lg font-semibold mb-0">Notifications</h3>
-      <p className="text-sm text-muted-foreground mb-2">
-        Get alerted as a limit is on pace to run out
-      </p>
-      <div className="space-y-2">
-        {MILESTONE_KEYS.map((key) => {
-          const meta = MILESTONE_META[key]
-          return (
-            <label
-              key={key}
-              title={meta.tooltip}
-              className="flex items-center gap-2 text-sm select-none text-foreground"
-            >
-              <Checkbox
-                key={`notif-${key}-${settings[key]}`}
-                checked={settings[key]}
-                onCheckedChange={(checked) => handleToggle(key, checked === true)}
-              />
-              {meta.label}
-            </label>
-          )
-        })}
-      </div>
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-full"
+        onClick={() => setShowNotificationsDialog(true)}
+      >
+        Notifications
+      </Button>
+
+      {showNotificationsDialog && (
+        <FocusTrapDialog
+          label="Notifications"
+          onClose={() => {
+            if (!showPermissionModal) setShowNotificationsDialog(false)
+          }}
+        >
+          <h2 className="text-lg font-semibold mb-3">Notifications</h2>
+          <div className="space-y-3">
+            {MILESTONE_KEYS.map((key) => {
+              const meta = MILESTONE_META[key]
+              return (
+                <div key={key}>
+                  <label className="flex items-center gap-2 text-sm select-none text-foreground">
+                    <Checkbox
+                      key={`notif-${key}-${settings[key]}`}
+                      checked={settings[key]}
+                      onCheckedChange={(checked) => handleToggle(key, checked === true)}
+                    />
+                    {meta.label}
+                  </label>
+                  <p className="pl-6 text-xs text-muted-foreground">{meta.tooltip}</p>
+                </div>
+              )
+            })}
+          </div>
+        </FocusTrapDialog>
+      )}
 
       {showPermissionModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-xl"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowPermissionModal(false)
           }}
@@ -86,6 +103,6 @@ export function NotificationsSection() {
           </div>
         </div>
       )}
-    </section>
+    </>
   )
 }

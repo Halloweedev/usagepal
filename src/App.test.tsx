@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
@@ -261,6 +261,17 @@ import { useAppUiStore } from "@/stores/app-ui-store"
 
 async function openSettingsPlugins() {
   await userEvent.click(await screen.findByRole("button", { name: "Show Plugins" }))
+}
+
+async function openSettingsAdvanced() {
+  await userEvent.click(await screen.findByRole("button", { name: "Advanced" }))
+}
+
+// Scoped to the plugins list: other settings checkboxes (Start on login, Beta
+// Updates, notification alerts) render elsewhere on the page and would otherwise
+// be mistaken for a plugin's toggle by an unscoped last-checkbox lookup.
+async function getPluginCheckboxes() {
+  return within(document.getElementById("settings-plugins-list")!).findAllByRole("checkbox")
 }
 
 describe("App", () => {
@@ -918,9 +929,9 @@ describe("App", () => {
     await openSettingsPlugins()
     // Re-query before each click: the Checkbox remounts on each toggle because
     // its key includes plugin.enabled, so the reference goes stale after click 1.
-    await userEvent.click((await screen.findAllByRole("checkbox")).at(-1)!)
+    await userEvent.click((await getPluginCheckboxes()).at(-1)!)
     expect(state.savePluginSettingsMock).toHaveBeenCalledTimes(1)
-    await userEvent.click((await screen.findAllByRole("checkbox")).at(-1)!)
+    await userEvent.click((await getPluginCheckboxes()).at(-1)!)
     expect(state.savePluginSettingsMock).toHaveBeenCalledTimes(2)
   })
 
@@ -947,6 +958,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
+    await openSettingsAdvanced()
     await userEvent.click(await screen.findByText("Start on login"))
     expect(state.saveStartOnLoginMock).toHaveBeenCalledWith(true)
   })
@@ -970,6 +982,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
+    await openSettingsAdvanced()
     await userEvent.click(await screen.findByText("Start on login"))
 
     await waitFor(() =>
@@ -1003,6 +1016,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
+    await openSettingsAdvanced()
     await userEvent.click(await screen.findByText("Start on login"))
 
     await waitFor(() =>
@@ -1270,7 +1284,7 @@ describe("App", () => {
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
     await openSettingsPlugins()
-    const checkboxes = await screen.findAllByRole("checkbox")
+    const checkboxes = await getPluginCheckboxes()
     const targetCheckbox = checkboxes[checkboxes.length - 1]
     await userEvent.click(targetCheckbox)
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
@@ -1284,7 +1298,7 @@ describe("App", () => {
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
     await openSettingsPlugins()
-    const checkboxes = await screen.findAllByRole("checkbox")
+    const checkboxes = await getPluginCheckboxes()
     const targetCheckbox = checkboxes[checkboxes.length - 1]
     await userEvent.click(targetCheckbox)
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
@@ -1440,7 +1454,7 @@ describe("App", () => {
     await openSettingsPlugins()
 
     // Toggle then reorder quickly (within debounce window) to force timer replacement.
-    const checkboxes = await screen.findAllByRole("checkbox")
+    const checkboxes = await getPluginCheckboxes()
     const pluginCheckbox = checkboxes[checkboxes.length - 1]
     await userEvent.click(pluginCheckbox)
     dndState.latestOnDragEnd?.({ active: { id: "a" }, over: { id: "b" } })
