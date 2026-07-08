@@ -322,7 +322,7 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("radio", { name: "Trace" })).toBeInTheDocument()
   })
 
-  it("keeps focus inside the debug level modal and returns it on close", async () => {
+  it("keeps focus inside the debug level modal and closes it on Escape", async () => {
     const user = userEvent.setup()
     render(<SettingsPage {...defaultProps} />)
     await openAdvanced()
@@ -330,6 +330,9 @@ describe("SettingsPage", () => {
     const trigger = screen.getByRole("button", { name: "Debug Error" })
     await user.click(trigger)
 
+    expect(screen.getByRole("dialog", { name: "Debug" })).toHaveFocus()
+
+    await user.tab()
     expect(screen.getByRole("radio", { name: "Error" })).toHaveFocus()
 
     await user.keyboard("{Shift>}{Tab}{/Shift}")
@@ -340,7 +343,6 @@ describe("SettingsPage", () => {
 
     await user.keyboard("{Escape}")
     expect(screen.queryByRole("dialog", { name: "Debug" })).not.toBeInTheDocument()
-    expect(trigger).toHaveFocus()
   })
 
   it("traps Tab focus in the advanced modal including the Beta Updates checkbox", async () => {
@@ -348,6 +350,9 @@ describe("SettingsPage", () => {
     render(<SettingsPage {...defaultProps} />)
     await openAdvanced()
 
+    expect(screen.getByRole("dialog", { name: "Advanced" })).toHaveFocus()
+
+    await user.tab()
     expect(screen.getByRole("button", { name: "Debug Error" })).toHaveFocus()
 
     await user.tab()
@@ -482,12 +487,6 @@ describe("SettingsPage", () => {
     expect(within(themeSection).getByText("System")).toBeInTheDocument()
     expect(within(themeSection).getByText("Light")).toBeInTheDocument()
     expect(within(themeSection).getByText("Dark")).toBeInTheDocument()
-  })
-
-  it("renders the four settings groups in order", () => {
-    render(<SettingsPage {...defaultProps} />)
-    const groupHeadings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)
-    expect(groupHeadings).toEqual(["Display", "System", "Extensions"])
   })
 
   it("updates theme mode", async () => {

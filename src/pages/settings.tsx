@@ -422,13 +422,8 @@ function SortablePluginItem({
   );
 }
 
-function SettingsGroup({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="space-y-4">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h2>
-      {children}
-    </div>
-  );
+function SettingsGroup({ children }: { children: ReactNode }) {
+  return <div className="space-y-4">{children}</div>;
 }
 
 interface SettingsPageProps {
@@ -518,7 +513,7 @@ export function SettingsPage({
 
   return (
     <div className="py-3 space-y-6">
-      <SettingsGroup label="Display">
+      <SettingsGroup>
         <section>
           <h3 className="text-lg font-semibold mb-0">Auto Refresh</h3>
           <p className="text-sm text-muted-foreground mb-2">
@@ -731,7 +726,7 @@ export function SettingsPage({
           </div>
           {menubarIconStyle !== "multi" && (
             <>
-              <p className="text-sm text-muted-foreground mt-3 mb-2">Metric</p>
+              <h3 className="text-lg font-semibold mt-3 mb-2">Metric</h3>
               <div className="bg-muted/50 rounded-lg p-1">
                 <div className="flex gap-1" role="radiogroup" aria-label="Menubar metric">
                   {MENUBAR_METRIC_OPTIONS.map((option) => {
@@ -786,20 +781,20 @@ export function SettingsPage({
         </section>
       </SettingsGroup>
 
-      <SettingsGroup label="System">
+      <SettingsGroup>
         <GlobalShortcutSection
           globalShortcut={globalShortcut}
           onGlobalShortcutChange={onGlobalShortcutChange}
         />
       </SettingsGroup>
 
-      <SettingsGroup label="Extensions">
+      <SettingsGroup>
         <section>
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-lg font-semibold mb-0">Plugins</h3>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
               aria-expanded={pluginsOpen}
               aria-controls="settings-plugins-list"
