@@ -43,7 +43,12 @@ export function NotificationsSection() {
       </p>
 
       {showNotificationsDialog && (
-        <FocusTrapDialog label="Notifications" onClose={() => setShowNotificationsDialog(false)}>
+        <FocusTrapDialog
+          label="Notifications"
+          onClose={() => {
+            if (!showPermissionModal) setShowNotificationsDialog(false)
+          }}
+        >
           <h2 className="text-lg font-semibold mb-3">Notifications</h2>
           <div className="space-y-2">
             {MILESTONE_KEYS.map((key) => {

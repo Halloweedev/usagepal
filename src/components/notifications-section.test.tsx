@@ -76,4 +76,15 @@ describe("NotificationsSection", () => {
     expect(state.invokeMock).not.toHaveBeenCalledWith("open_notification_settings")
     expect(screen.queryByText(/Allow Notifications/i)).toBeNull()
   })
+
+  it("keeps the notifications dialog open when Escape is pressed while the permission modal is open", async () => {
+    render(<NotificationsSection />)
+    await openNotificationsDialog()
+    await userEvent.click(screen.getAllByRole("checkbox")[0])
+    expect(await screen.findByText(/Allow Notifications/i)).toBeTruthy()
+
+    await userEvent.keyboard("{Escape}")
+
+    expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument()
+  })
 })
