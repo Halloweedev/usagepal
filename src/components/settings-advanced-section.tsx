@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react"
+import { useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -33,10 +33,8 @@ function DebugDialog({
   onSelect: (level: DebugLevel) => void
   onClose: () => void
 }) {
-  const selectedRadioRef = useRef<HTMLButtonElement | null>(null)
-
   return (
-    <FocusTrapDialog label="Debug" onClose={onClose} initialFocusRef={selectedRadioRef}>
+    <FocusTrapDialog label="Debug" onClose={onClose}>
       <h2 className="text-lg font-semibold mb-3">Debug</h2>
       <div className="grid grid-cols-1 gap-1" role="radiogroup" aria-label="Debug level">
         {DEBUG_LEVEL_OPTIONS.map((option) => {
@@ -50,7 +48,6 @@ function DebugDialog({
               variant={isActive ? "default" : "outline"}
               size="sm"
               className="w-full justify-start"
-              ref={isActive ? selectedRadioRef : undefined}
               onClick={() => onSelect(option.value)}
             >
               {option.label}
@@ -73,19 +70,11 @@ export function SettingsAdvancedSection({
   const [debugLevel, setDebugLevel] = useState<DebugLevel>("error")
   const [showDebugDialog, setShowDebugDialog] = useState(false)
   const [showAdvancedDialog, setShowAdvancedDialog] = useState(false)
-  const debugLevelButtonRef = useRef<HTMLButtonElement>(null)
-  const advancedButtonRef = useRef<HTMLButtonElement>(null)
   const selectedDebugLevelLabel = DEBUG_LEVEL_OPTIONS.find((option) => option.value === debugLevel)!.label
 
-  const closeDebugDialog = useCallback(() => {
-    setShowDebugDialog(false)
-    debugLevelButtonRef.current?.focus()
-  }, [])
+  const closeDebugDialog = () => setShowDebugDialog(false)
 
-  const closeAdvancedDialog = useCallback(() => {
-    setShowAdvancedDialog(false)
-    advancedButtonRef.current?.focus()
-  }, [])
+  const closeAdvancedDialog = () => setShowAdvancedDialog(false)
 
   const handleDebugLevelChange = (level: DebugLevel) => {
     setDebugLevel(level)
@@ -121,7 +110,6 @@ export function SettingsAdvancedSection({
           variant="outline"
           size="sm"
           className="w-full"
-          ref={advancedButtonRef}
           onClick={() => setShowAdvancedDialog(true)}
         >
           Advanced
@@ -147,7 +135,6 @@ export function SettingsAdvancedSection({
               size="sm"
               aria-label={`Debug ${selectedDebugLevelLabel}`}
               className="w-full"
-              ref={debugLevelButtonRef}
               onClick={() => setShowDebugDialog(true)}
             >
               Debug

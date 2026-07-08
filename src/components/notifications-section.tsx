@@ -73,7 +73,7 @@ export function NotificationsSection() {
 
       {showPermissionModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-xl"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowPermissionModal(false)
           }}

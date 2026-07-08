@@ -1,17 +1,5 @@
 import { useEffect, useRef, type ReactNode, type RefObject } from "react"
 
-// WebKit (Tauri's WKWebView) sometimes leaves a stale paint on elements that sat behind or inside a
-// `backdrop-blur` compositing layer once it mounts/unmounts — a button's border/background can render
-// as invisible until something else forces a repaint. A synchronous reflow clears it without any
-// visible flicker.
-function forceRepaint() {
-  const { body } = document
-  const previousDisplay = body.style.display
-  body.style.display = "none"
-  void body.offsetHeight
-  body.style.display = previousDisplay
-}
-
 export function FocusTrapDialog({
   label,
   onClose,
@@ -31,13 +19,16 @@ export function FocusTrapDialog({
     Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [])
 
   // Run once on mount only. Re-running this on every dependency-identity change would
-  // steal focus back to the first control whenever the parent re-renders — e.g. a
-  // consumer passing an inline `onClose` arrow gets a new identity on every re-render,
-  // which would otherwise snap focus back to the first control mid-interaction.
+  // steal focus back whenever the parent re-renders — e.g. a consumer passing an inline
+  // `onClose` arrow gets a new identity on every re-render, which would otherwise snap
+  // focus back mid-interaction.
+  //
+  // Default to focusing the dialog container itself, not the first focusable control —
+  // landing programmatic focus on one of a list of independent action buttons (like
+  // "Debug" here) has no more claim to being "the" default than its siblings, and
+  // singling one out this way is what a WebKit repaint bug had been exploiting.
   useEffect(() => {
-    (initialFocusRef?.current ?? focusableControls()[0])?.focus()
-    forceRepaint()
-    return forceRepaint
+    (initialFocusRef?.current ?? dialogRef.current)?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -74,7 +65,8 @@ export function FocusTrapDialog({
       role="dialog"
       aria-label={label}
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      tabIndex={-1}
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-xl"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}

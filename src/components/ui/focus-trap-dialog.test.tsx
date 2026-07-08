@@ -55,9 +55,9 @@ describe("FocusTrapDialog", () => {
     expect(screen.getByRole("dialog", { name: "Test Dialog" })).toHaveAttribute("aria-modal", "true")
   })
 
-  it("focuses the first focusable control by default", () => {
+  it("focuses the dialog container by default", () => {
     render(<TestDialog onClose={vi.fn()} />)
-    expect(screen.getByRole("radio", { name: "First" })).toHaveFocus()
+    expect(screen.getByRole("dialog", { name: "Test Dialog" })).toHaveFocus()
   })
 
   it("focuses the initialFocusRef control when provided", () => {
@@ -85,6 +85,8 @@ describe("FocusTrapDialog", () => {
   it("traps Tab focus between first and last controls", async () => {
     const user = userEvent.setup()
     render(<TestDialog onClose={vi.fn()} />)
+
+    await user.tab()
     expect(screen.getByRole("radio", { name: "First" })).toHaveFocus()
 
     await user.keyboard("{Shift>}{Tab}{/Shift}")
@@ -98,6 +100,7 @@ describe("FocusTrapDialog", () => {
     const user = userEvent.setup()
     render(<ReRenderingTestDialog />)
 
+    await user.tab()
     expect(screen.getByRole("radio", { name: "First" })).toHaveFocus()
     await user.tab()
     expect(screen.getByRole("radio", { name: "Second" })).toHaveFocus()
