@@ -265,6 +265,7 @@ async function openSettingsPlugins() {
 
 describe("App", () => {
   beforeEach(() => {
+    window.location.hash = ""
     useAppUiStore.getState().resetState()
     useAppPluginStore.getState().resetState()
     useAppPreferencesStore.getState().resetState()
@@ -380,6 +381,7 @@ describe("App", () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    window.location.hash = ""
     delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollHeight
   })
 
@@ -430,6 +432,24 @@ describe("App", () => {
   it("renders the main app instead of crashing when running outside Tauri (browser dev)", async () => {
     state.isTauriMock.mockReturnValue(false)
     expect(() => render(<App />)).not.toThrow()
+    expect(await screen.findByText("Alpha")).toBeInTheDocument()
+  })
+
+  it("renders onboarding app on setup route", async () => {
+    window.location.hash = "#/setup"
+
+    render(<App />)
+
+    expect(await screen.findByRole("heading", { name: "Welcome to UsagePal" })).toBeInTheDocument()
+    expect(screen.queryByText("Alpha")).not.toBeInTheDocument()
+  })
+
+  it("renders normal app outside setup route", async () => {
+    window.location.hash = "#/settings"
+
+    render(<App />)
+
+    expect(screen.queryByRole("heading", { name: "Welcome to UsagePal" })).not.toBeInTheDocument()
     expect(await screen.findByText("Alpha")).toBeInTheDocument()
   })
 
