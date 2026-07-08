@@ -15,12 +15,19 @@ export function FocusTrapDialog({
 }) {
   const dialogRef = useRef<HTMLDivElement>(null)
 
+  const focusableControls = () =>
+    Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [])
+
+  // Run once on mount only. Re-running this on every dependency-identity change would
+  // steal focus back to the first control whenever the parent re-renders — e.g. a
+  // consumer passing an inline `onClose` arrow gets a new identity on every re-render,
+  // which would otherwise snap focus back to the first control mid-interaction.
   useEffect(() => {
-    const focusableControls = () =>
-      Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [])
+    (initialFocusRef?.current ?? focusableControls()[0])?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-    ;(initialFocusRef?.current ?? focusableControls()[0])?.focus()
-
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault()
@@ -45,7 +52,7 @@ export function FocusTrapDialog({
 
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [onClose, initialFocusRef, focusableSelector])
+  }, [onClose, focusableSelector])
 
   return (
     <div

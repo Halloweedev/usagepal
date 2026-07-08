@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { FocusTrapDialog } from "./focus-trap-dialog"
 
@@ -25,6 +25,26 @@ function TestDialog({
       <button type="button" role="radio" aria-checked={false} ref={secondRef}>
         Second
       </button>
+    </FocusTrapDialog>
+  )
+}
+
+function ReRenderingTestDialog() {
+  const [renderCount, setRenderCount] = useState(0)
+  return (
+    <FocusTrapDialog label="Test Dialog" onClose={() => {}}>
+      <h2>Test Dialog</h2>
+      <button type="button" role="radio" aria-checked={false}>
+        First
+      </button>
+      <button type="button" role="radio" aria-checked={false}>
+        Second
+      </button>
+      <button type="button" role="radio" aria-checked={false} onClick={() => setRenderCount((c) => c + 1)}>
+        Trigger Re-render
+      </button>
+      {/* renderCount is just here to ensure the component actually re-renders */}
+      <div aria-label={`render-count-${renderCount}`} />
     </FocusTrapDialog>
   )
 }
@@ -72,5 +92,26 @@ describe("FocusTrapDialog", () => {
 
     await user.tab()
     expect(screen.getByRole("radio", { name: "First" })).toHaveFocus()
+  })
+
+  it("does not steal focus back to the first control when a re-render gives onClose a new identity", async () => {
+    const user = userEvent.setup()
+    render(<ReRenderingTestDialog />)
+
+    expect(screen.getByRole("radio", { name: "First" })).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole("radio", { name: "Second" })).toHaveFocus()
+    await user.tab()
+    const triggerButton = screen.getByRole("radio", { name: "Trigger Re-render" })
+    expect(triggerButton).toHaveFocus()
+
+    // Clicking this button triggers a re-render of the parent component, which re-creates
+    // the inline onClose passed to FocusTrapDialog. Without the fix, this re-render would
+    // steal focus back to "First" because the effect would re-run on onClose identity change.
+    await user.click(triggerButton)
+
+    // After the re-render, focus should still be on the Trigger Re-render button,
+    // not stolen back to "First".
+    expect(triggerButton).toHaveFocus()
   })
 })
