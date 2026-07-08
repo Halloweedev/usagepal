@@ -288,15 +288,26 @@ describe("SettingsPage", () => {
     expect(screen.queryByRole("button", { name: "Debug Error" })).not.toBeInTheDocument()
   })
 
-  it("renders Show Stats/About/Advanced/Quit as top-level buttons, not inside the advanced modal", () => {
+  it("renders Show Stats/About/Advanced/Notifications/Quit as top-level controls, not inside the advanced modal", () => {
     render(<SettingsPage {...defaultProps} />)
 
-    const advancedSection = screen.getByRole("heading", { name: "Advanced" }).closest("section")!
-    expect(within(advancedSection).getByRole("button", { name: "Show Stats" })).toBeInTheDocument()
-    expect(within(advancedSection).getByRole("button", { name: "About UsagePal" })).toBeInTheDocument()
-    expect(within(advancedSection).getByRole("button", { name: "Advanced" })).toBeInTheDocument()
-    expect(within(advancedSection).getByRole("button", { name: "Quit UsagePal" })).toBeInTheDocument()
-    expect(within(advancedSection).queryByRole("button", { name: "Debug Error" })).not.toBeInTheDocument()
+    const bottomSection = screen.getByRole("button", { name: "Show Stats" }).closest("section")!
+    expect(within(bottomSection).getByRole("button", { name: "About UsagePal" })).toBeInTheDocument()
+    expect(within(bottomSection).getByRole("button", { name: "Advanced" })).toBeInTheDocument()
+    expect(within(bottomSection).getByRole("button", { name: "Notifications" })).toBeInTheDocument()
+    expect(within(bottomSection).getByRole("button", { name: "Quit UsagePal" })).toBeInTheDocument()
+    expect(within(bottomSection).queryByText("Start on login")).not.toBeInTheDocument()
+    expect(within(bottomSection).queryByRole("button", { name: "Debug Error" })).not.toBeInTheDocument()
+  })
+
+  it("puts Start on login inside the Advanced modal, not the top-level section", async () => {
+    render(<SettingsPage {...defaultProps} />)
+
+    expect(screen.queryByText("Start on login")).not.toBeInTheDocument()
+
+    await openAdvanced()
+
+    expect(screen.getByText("Start on login")).toBeInTheDocument()
   })
 
   it("opens debug level choices in a modal", async () => {
@@ -341,6 +352,9 @@ describe("SettingsPage", () => {
 
     await user.tab()
     expect(screen.getByRole("button", { name: "Copy Log Path" })).toHaveFocus()
+
+    await user.tab()
+    expect(screen.getByRole("checkbox", { name: "Start on login" })).toHaveFocus()
 
     await user.tab()
     expect(screen.getByRole("checkbox", { name: "Get Beta Updates" })).toHaveFocus()
@@ -831,6 +845,7 @@ describe("SettingsPage", () => {
         onStartOnLoginChange={onStartOnLoginChange}
       />
     )
+    await openAdvanced()
     await userEvent.click(screen.getByText("Start on login"))
     expect(onStartOnLoginChange).toHaveBeenCalledWith(true)
   })

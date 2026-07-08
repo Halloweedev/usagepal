@@ -1,5 +1,17 @@
 import { useEffect, useRef, type ReactNode, type RefObject } from "react"
 
+// WebKit (Tauri's WKWebView) sometimes leaves a stale paint on elements that sat behind or inside a
+// `backdrop-blur` compositing layer once it mounts/unmounts — a button's border/background can render
+// as invisible until something else forces a repaint. A synchronous reflow clears it without any
+// visible flicker.
+function forceRepaint() {
+  const { body } = document
+  const previousDisplay = body.style.display
+  body.style.display = "none"
+  void body.offsetHeight
+  body.style.display = previousDisplay
+}
+
 export function FocusTrapDialog({
   label,
   onClose,
@@ -24,6 +36,8 @@ export function FocusTrapDialog({
   // which would otherwise snap focus back to the first control mid-interaction.
   useEffect(() => {
     (initialFocusRef?.current ?? focusableControls()[0])?.focus()
+    forceRepaint()
+    return forceRepaint
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

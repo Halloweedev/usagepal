@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { FocusTrapDialog } from "@/components/ui/focus-trap-dialog"
+import { NotificationsSection } from "@/components/notifications-section"
 
 const DEBUG_LEVEL_OPTIONS = [
   { label: "Error", value: "error" },
@@ -19,6 +20,8 @@ type SettingsAdvancedSectionProps = {
   onShowAbout: () => void
   betaUpdatesEnabled: boolean
   onBetaUpdatesEnabledChange: (value: boolean) => void
+  startOnLogin: boolean
+  onStartOnLoginChange: (value: boolean) => void
 }
 
 function DebugDialog({
@@ -64,6 +67,8 @@ export function SettingsAdvancedSection({
   onShowAbout,
   betaUpdatesEnabled,
   onBetaUpdatesEnabledChange,
+  startOnLogin,
+  onStartOnLoginChange,
 }: SettingsAdvancedSectionProps) {
   const [debugLevel, setDebugLevel] = useState<DebugLevel>("error")
   const [showDebugDialog, setShowDebugDialog] = useState(false)
@@ -104,8 +109,6 @@ export function SettingsAdvancedSection({
 
   return (
     <section>
-      <h3 className="text-lg font-semibold mb-0">Advanced</h3>
-      <p className="text-sm text-muted-foreground mb-2">Debugging and diagnostics</p>
       <div className="space-y-2">
         <Button type="button" variant="outline" size="sm" className="w-full" onClick={onShowStats}>
           Show Stats
@@ -123,6 +126,7 @@ export function SettingsAdvancedSection({
         >
           Advanced
         </Button>
+        <NotificationsSection />
         <Button type="button" variant="destructive" size="sm" className="w-full" onClick={handleQuit}>
           Quit UsagePal
         </Button>
@@ -142,15 +146,26 @@ export function SettingsAdvancedSection({
               variant="outline"
               size="sm"
               aria-label={`Debug ${selectedDebugLevelLabel}`}
-              className="w-full justify-center"
+              className="w-full"
               ref={debugLevelButtonRef}
               onClick={() => setShowDebugDialog(true)}
             >
-              <span>Debug</span>
+              Debug
             </Button>
             <Button type="button" variant="outline" size="sm" className="w-full" onClick={handleCopyLogPath}>
               Copy Log Path
             </Button>
+            <div className="rounded-md border border-border/60 bg-background px-3 py-2 text-left">
+              <label className="flex items-center gap-2 text-sm select-none text-foreground">
+                <Checkbox
+                  key={`start-on-login-${startOnLogin}`}
+                  aria-label="Start on login"
+                  checked={startOnLogin}
+                  onCheckedChange={(checked) => onStartOnLoginChange(checked === true)}
+                />
+                Start on login
+              </label>
+            </div>
             <div className="rounded-md border border-border/60 bg-background px-3 py-2 text-left">
               <label className="flex items-center gap-2 text-sm select-none text-foreground">
                 <Checkbox

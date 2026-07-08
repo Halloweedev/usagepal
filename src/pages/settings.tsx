@@ -21,7 +21,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
-import { NotificationsSection } from "@/components/notifications-section";
 import { ClinePassKeyDialog } from "@/components/clinepass-key-dialog";
 import { OpenRouterKeyDialog } from "@/components/openrouter-key-dialog";
 import { SettingsAdvancedSection } from "@/components/settings-advanced-section";
@@ -788,25 +787,10 @@ export function SettingsPage({
       </SettingsGroup>
 
       <SettingsGroup label="System">
-        <section>
-          <h3 className="text-lg font-semibold mb-0">Start on Login</h3>
-          <p className="text-sm text-muted-foreground mb-2">
-            UsagePal starts when you sign in
-          </p>
-          <label className="flex items-center gap-2 text-sm select-none text-foreground">
-            <Checkbox
-              key={`start-on-login-${startOnLogin}`}
-              checked={startOnLogin}
-              onCheckedChange={(checked) => onStartOnLoginChange(checked === true)}
-            />
-            Start on login
-          </label>
-        </section>
         <GlobalShortcutSection
           globalShortcut={globalShortcut}
           onGlobalShortcutChange={onGlobalShortcutChange}
         />
-        <NotificationsSection />
       </SettingsGroup>
 
       <SettingsGroup label="Extensions">
@@ -858,6 +842,8 @@ export function SettingsPage({
         onShowAbout={onShowAbout}
         betaUpdatesEnabled={betaUpdatesEnabled}
         onBetaUpdatesEnabledChange={onBetaUpdatesEnabledChange}
+        startOnLogin={startOnLogin}
+        onStartOnLoginChange={onStartOnLoginChange}
       />
     </div>
   );
