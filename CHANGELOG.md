@@ -1,6 +1,11 @@
 # Changelog
 
-## v0.7.31-beta.1
+## v0.7.31
+
+Stable release consolidating the v0.7.31 beta line plus Cursor GPT-5.6 pricing.
+
+### New Features
+- Cursor plugin now prices the GPT-5.6 tiers (Sol, Terra, Luna), including their cache-write and cache-read billing, so Cursor spend stays accurate on the newest models by @Halloweedev
 
 ### Improvements
 - Regrouped and decluttered the Settings page — Advanced tucked into its own modal alongside Debug and Notifications, and the Display/System/Extensions group labels dropped for a cleaner layout by @Halloweedev
@@ -15,7 +20,7 @@
 
 ### Changelog
 
-**Full Changelog**: [v0.7.30...v0.7.31-beta.1](https://github.com/Halloweedev/usagepal/compare/v0.7.30...v0.7.31-beta.1)
+**Full Changelog**: [v0.7.30...v0.7.31](https://github.com/Halloweedev/usagepal/compare/v0.7.30...v0.7.31)
 
 ## v0.7.30
 
