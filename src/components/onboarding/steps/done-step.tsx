@@ -116,12 +116,12 @@ export function DoneStep({
       title="You're all set"
       description="UsagePal now lives in your menu bar, keeping your usage one glance away."
       actions={
-        <Button size="lg" onClick={() => handleFinish(false)} disabled={busy}>
+        <Button size="sm" onClick={() => handleFinish(false)} disabled={busy}>
           Open UsagePal
         </Button>
       }
       secondaryAction={
-        <Button size="lg" variant="ghost" onClick={() => handleFinish(true)} disabled={busy}>
+        <Button size="sm" variant="ghost" onClick={() => handleFinish(true)} disabled={busy}>
           Open Settings
         </Button>
       }

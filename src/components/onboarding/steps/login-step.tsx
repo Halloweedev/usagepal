@@ -22,7 +22,7 @@ export function LoginStep({ onContinue, busy, backButton }: LoginStepProps) {
       actions={
         <>
           {backButton}
-          <Button size="lg" onClick={() => onContinue(enabled)} disabled={busy}>
+          <Button size="sm" onClick={() => onContinue(enabled)} disabled={busy}>
             Continue
           </Button>
         </>

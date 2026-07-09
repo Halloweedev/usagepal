@@ -31,12 +31,12 @@ export function WelcomeStep({ onContinue, onSkip, skipBusy, menubarCycleMs = 180
       title="Welcome to UsagePal"
       description="UsagePal lives in your menu bar and keeps your AI usage one glance away. Here's what it looks like."
       actions={
-        <Button size="lg" onClick={onContinue} disabled={skipBusy}>
+        <Button size="sm" onClick={onContinue} disabled={skipBusy}>
           Continue
         </Button>
       }
       secondaryAction={
-        <Button size="lg" variant="ghost" onClick={onSkip} disabled={skipBusy}>
+        <Button size="sm" variant="ghost" onClick={onSkip} disabled={skipBusy}>
           Skip setup
         </Button>
       }

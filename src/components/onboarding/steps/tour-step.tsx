@@ -150,14 +150,14 @@ export function TourStep({ onContinue, backButton, armDelayMs = 600, hoverDwellM
       actions={
         <>
           {backButton}
-          <Button size="lg" onClick={onContinue} disabled={!allDone}>
+          <Button size="sm" onClick={onContinue} disabled={!allDone}>
             Continue
           </Button>
         </>
       }
       secondaryAction={
         !allDone && (
-          <Button size="lg" variant="ghost" onClick={onContinue}>
+          <Button size="sm" variant="ghost" onClick={onContinue}>
             Skip tour
           </Button>
         )

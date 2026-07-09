@@ -62,7 +62,9 @@ export function NotificationsStep({
       })
     }, previewCycleMs)
     return () => window.clearInterval(timer)
-  }, [selection, preview, previewCycleMs])
+    // `preview` is deliberately not a dep: the updater reads it via `current`,
+    // and including it would tear down and recreate the interval every tick.
+  }, [selection, previewCycleMs])
 
   const anySelected = PACE_MILESTONES.some((key) => selection[key])
 
@@ -73,13 +75,13 @@ export function NotificationsStep({
       actions={
         <>
           {backButton}
-          <Button size="lg" onClick={() => onEnable(selection)} disabled={busy || !anySelected}>
+          <Button size="sm" onClick={() => onEnable(selection)} disabled={busy || !anySelected}>
             Enable notifications
           </Button>
         </>
       }
       secondaryAction={
-        <Button size="lg" variant="ghost" onClick={onSkip} disabled={busy}>
+        <Button size="sm" variant="ghost" onClick={onSkip} disabled={busy}>
           Not now
         </Button>
       }

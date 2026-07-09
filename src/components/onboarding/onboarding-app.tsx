@@ -98,7 +98,7 @@ function OnboardingApp() {
   // Footer Back button, rendered by the steps left of their primary action.
   const backButton =
     step !== "welcome" && step !== "done" && busyAction === null ? (
-      <Button size="lg" variant="outline" onClick={back}>
+      <Button size="sm" variant="outline" onClick={back}>
         <ChevronLeft className="size-4" aria-hidden />
         Back
       </Button>

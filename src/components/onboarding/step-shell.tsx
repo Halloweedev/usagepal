@@ -28,7 +28,7 @@ export function StepShell({ title, description, children, actions, secondaryActi
         <div className="mx-auto w-full max-w-sm">{children}</div>
       </div>
       <div
-        className="shrink-0 border-t pt-4 animate-in fade-in duration-300"
+        className="shrink-0 border-t pt-3 animate-in fade-in duration-300"
         style={{ animationDelay: "240ms", animationFillMode: "both" }}
       >
         <div className="flex items-center justify-between gap-3">
