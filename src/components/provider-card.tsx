@@ -44,6 +44,7 @@ interface ProviderCardProps {
   resetTimerDisplayMode?: ResetTimerDisplayMode
   timeFormatMode?: TimeFormatMode
   onResetTimerDisplayModeToggle?: () => void
+  onUsageValueToggle?: () => void
 }
 
 // "behind" (run out soon) renders a flame instead of a dot — see PaceIndicator.
@@ -125,6 +126,7 @@ export function ProviderCard({
   resetTimerDisplayMode = "relative",
   timeFormatMode = "auto",
   onResetTimerDisplayModeToggle,
+  onUsageValueToggle,
 }: ProviderCardProps) {
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
@@ -342,6 +344,7 @@ export function ProviderCard({
                       resetTimerDisplayMode={resetTimerDisplayMode}
                       timeFormatMode={timeFormatMode}
                       onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+                      onUsageValueToggle={onUsageValueToggle}
                       now={now}
                       refreshing={isRefreshingWithData}
                     />
@@ -358,6 +361,7 @@ export function ProviderCard({
                       resetTimerDisplayMode={resetTimerDisplayMode}
                       timeFormatMode={timeFormatMode}
                       onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+                      onUsageValueToggle={onUsageValueToggle}
                       now={now}
                       refreshing={isRefreshingWithData}
                     />
@@ -381,6 +385,7 @@ function MetricLineRenderer({
   resetTimerDisplayMode,
   timeFormatMode,
   onResetTimerDisplayModeToggle,
+  onUsageValueToggle,
   now,
   refreshing,
 }: {
@@ -390,6 +395,7 @@ function MetricLineRenderer({
   resetTimerDisplayMode: ResetTimerDisplayMode
   timeFormatMode: TimeFormatMode
   onResetTimerDisplayModeToggle?: () => void
+  onUsageValueToggle?: () => void
   now: number
   refreshing?: boolean
 }) {
@@ -654,9 +660,20 @@ function MetricLineRenderer({
           refreshing={refreshing}
         />
         <div className="flex justify-between items-center mt-1.5">
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {primaryText}
-          </span>
+          {onUsageValueToggle ? (
+            <button
+              type="button"
+              data-usage-toggle
+              onClick={onUsageValueToggle}
+              className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors"
+            >
+              {primaryText}
+            </button>
+          ) : (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {primaryText}
+            </span>
+          )}
           {secondaryText && (
             resetTooltipText ? (
               <Tooltip>

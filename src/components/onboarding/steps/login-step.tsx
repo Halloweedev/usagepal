@@ -1,4 +1,6 @@
 import { useState } from "react"
+import { EyeOff, Zap } from "lucide-react"
+import { Logo } from "@/components/logo"
 import { Button } from "@/components/ui/button"
 import { StepShell } from "@/components/onboarding/step-shell"
 import { cn } from "@/lib/utils"
@@ -21,30 +23,61 @@ export function LoginStep({ onContinue, busy }: LoginStepProps) {
         </Button>
       }
     >
-      <div className="mx-auto w-full max-w-sm rounded-2xl border bg-card p-2 shadow-sm">
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          onClick={() => setEnabled((value) => !value)}
-          className="flex w-full items-center justify-between rounded-xl px-4 py-3 transition-colors hover:bg-muted/60"
+      <div className="mx-auto w-full max-w-sm space-y-4">
+        <div
+          className={cn(
+            "flex items-center justify-end gap-3 rounded-lg border px-3 py-1.5 transition-colors",
+            enabled ? "bg-muted/60" : "bg-muted/20"
+          )}
         >
-          <span className="text-sm font-medium text-foreground">Start UsagePal at login</span>
           <span
-            aria-hidden
             className={cn(
-              "relative h-6 w-10 shrink-0 rounded-full transition-colors",
-              enabled ? "bg-primary" : "bg-border"
+              "flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium transition-all",
+              enabled ? "bg-background shadow-sm" : "opacity-30"
             )}
           >
-            <span
-              className={cn(
-                "absolute top-0.5 left-0.5 size-5 rounded-full bg-background shadow transition-transform",
-                enabled && "translate-x-4"
-              )}
-            />
+            <Logo className="size-3.5" aria-hidden />
+            68%
           </span>
-        </button>
+          <span className="text-xs text-muted-foreground tabular-nums">Wed 9:41 AM</span>
+        </div>
+
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2.5">
+            <Zap className="size-4 shrink-0 text-primary" aria-hidden />
+            <span>Your usage is in the menu bar the moment you sign in.</span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <EyeOff className="size-4 shrink-0 text-primary" aria-hidden />
+            <span>Starts hidden — no window, no Dock icon.</span>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-card p-2 shadow-sm">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            onClick={() => setEnabled((value) => !value)}
+            className="flex w-full items-center justify-between rounded-xl px-4 py-3 transition-colors hover:bg-muted/60"
+          >
+            <span className="text-sm font-medium text-foreground">Start UsagePal at login</span>
+            <span
+              aria-hidden
+              className={cn(
+                "relative h-6 w-10 shrink-0 rounded-full transition-colors",
+                enabled ? "bg-primary" : "bg-border"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 left-0.5 size-5 rounded-full bg-background shadow transition-transform",
+                  enabled && "translate-x-4"
+                )}
+              />
+            </span>
+          </button>
+        </div>
       </div>
     </StepShell>
   )

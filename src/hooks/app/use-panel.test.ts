@@ -85,6 +85,58 @@ describe("usePanel", () => {
     expect(setShowAbout).toHaveBeenCalledWith(true)
   })
 
+  it("lets a tray navigate win over the focus home-reset", async () => {
+    const setActiveView = vi.fn()
+    const callbacks = new Map<string, (event: { payload: unknown }) => void>()
+
+    listenMock.mockImplementation(async (event: string, callback: (event: { payload: unknown }) => void) => {
+      callbacks.set(event, callback)
+      return vi.fn()
+    })
+
+    renderHook(() =>
+      usePanel({
+        activeView: "home",
+        setActiveView,
+        showAbout: false,
+        setShowAbout: vi.fn(),
+        displayPlugins: [],
+      })
+    )
+
+    await waitFor(() => {
+      expect(listenMock).toHaveBeenCalledTimes(2)
+    })
+
+    act(() => {
+      callbacks.get("tray:navigate")?.({ payload: "settings" })
+      window.dispatchEvent(new Event("focus"))
+    })
+
+    expect(setActiveView).toHaveBeenCalledWith("settings")
+    expect(setActiveView).not.toHaveBeenCalledWith("home")
+  })
+
+  it("still resets to home on focus without a recent navigate", () => {
+    const setActiveView = vi.fn()
+
+    renderHook(() =>
+      usePanel({
+        activeView: "settings",
+        setActiveView,
+        showAbout: false,
+        setShowAbout: vi.fn(),
+        displayPlugins: [],
+      })
+    )
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"))
+    })
+
+    expect(setActiveView).toHaveBeenCalledWith("home")
+  })
+
   it("cleans first listener if hook unmounts before setup resolves", async () => {
     const unlistenNavigate = vi.fn()
     let resolveNavigate: ((value: () => void) => void) | null = null

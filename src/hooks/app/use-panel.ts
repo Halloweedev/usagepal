@@ -44,7 +44,16 @@ export function usePanel({
     })
   }, [])
 
+  const lastTrayNavigateAtRef = useRef(0)
+
   const focusHomeView = useCallback(() => {
+    // An explicit tray:navigate (e.g. onboarding's "Open Settings") arrives in
+    // the same window activation that fires this reset — let it win instead of
+    // stomping the requested view back to home.
+    if (Date.now() - lastTrayNavigateAtRef.current < 1000) {
+      focusContainer()
+      return
+    }
     setActiveView("home")
     setShowAbout(false)
     focusContainer()
@@ -92,6 +101,7 @@ export function usePanel({
 
     async function setup() {
       const u1 = await listen<string>("tray:navigate", (event) => {
+        lastTrayNavigateAtRef.current = Date.now()
         setActiveView(event.payload as ActiveView)
         focusContainer()
       })

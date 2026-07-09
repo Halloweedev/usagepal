@@ -1,8 +1,9 @@
 // src/components/onboarding/onboarding-app.tsx
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import { enable as enableAutostart } from "@tauri-apps/plugin-autostart"
-import { ChevronLeft } from "lucide-react"
+import { ChevronLeft, X } from "lucide-react"
 
 import { Logo } from "@/components/logo"
 import { Button } from "@/components/ui/button"
@@ -84,13 +85,31 @@ function OnboardingApp() {
 
   const showBack = step !== "welcome" && step !== "done" && busyAction === null
 
+  // The setup window is undecorated, so Escape and the ✕ button stand in for
+  // the macOS chrome. Closing without finishing reshows onboarding next launch.
+  function closeSetup() {
+    if (!isTauri()) return
+    getCurrentWindow()
+      .close()
+      .catch((error) => console.error("Failed to close setup window:", error))
+  }
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeSetup()
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [])
+
   return (
-    <main className="h-screen overflow-hidden bg-background p-4 text-foreground">
-      <section className="mx-auto flex h-full max-w-2xl flex-col overflow-hidden rounded-3xl border bg-card shadow-xl">
-        <div className="flex shrink-0 items-center justify-between border-b px-6 py-4">
-          <div className="flex items-center gap-2">
+    <main className="flex h-screen flex-col overflow-hidden bg-card text-foreground">
+      <section className="flex h-full min-h-0 flex-col">
+        {/* data-tauri-drag-region makes the header the window's drag handle. */}
+        <div data-tauri-drag-region className="flex shrink-0 items-center justify-between border-b px-6 py-4">
+          <div className="pointer-events-none flex items-center gap-2">
             {showBack && (
-              <Button variant="ghost" size="icon-xs" aria-label="Back" onClick={back}>
+              <Button variant="ghost" size="icon-xs" aria-label="Back" onClick={back} className="pointer-events-auto">
                 <ChevronLeft className="size-4" />
               </Button>
             )}
@@ -99,16 +118,27 @@ function OnboardingApp() {
               UsagePal setup
             </div>
           </div>
-          <div className="flex w-32 gap-1.5" aria-label={`Step ${stepIndex(step) + 1} of ${steps.length}`}>
-            {steps.map((item) => (
-              <span
-                key={item}
-                className={cn(
-                  "h-1.5 flex-1 rounded-full bg-border transition-colors duration-500",
-                  stepIndex(item) <= stepIndex(step) && "bg-primary"
-                )}
-              />
-            ))}
+          <div className="flex items-center gap-4">
+            <div className="pointer-events-none flex w-28 gap-1.5" aria-label={`Step ${stepIndex(step) + 1} of ${steps.length}`}>
+              {steps.map((item) => (
+                <span
+                  key={item}
+                  className={cn(
+                    "h-1.5 flex-1 rounded-full bg-border transition-colors duration-500",
+                    stepIndex(item) <= stepIndex(step) && "bg-primary"
+                  )}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              aria-label="Close setup"
+              onClick={closeSetup}
+              className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <X className="size-4" aria-hidden />
+              <kbd className="text-[10px] font-medium uppercase tracking-wide">esc</kbd>
+            </button>
           </div>
         </div>
 

@@ -62,4 +62,21 @@ describe("onboarding mock data", () => {
     expect(screen.getByText("Credits")).toBeInTheDocument()
     expect(screen.getByText("$38.20 left")).toBeInTheDocument()
   })
+
+  it("puts the Codex weekly line over pace so the flame and deficit show", () => {
+    render(
+      <ProviderCard
+        name="Codex"
+        plan="Plus"
+        showSeparator={false}
+        lines={makeMockCodexLines()}
+        skeletonLines={[]}
+        displayMode="left"
+        resetTimerDisplayMode="relative"
+      />
+    )
+    expect(screen.getByText("Weekly limit")).toBeInTheDocument()
+    expect(screen.getByLabelText("Will run out")).toBeInTheDocument()
+    expect(screen.getByText(/\d+% short/)).toBeInTheDocument()
+  })
 })

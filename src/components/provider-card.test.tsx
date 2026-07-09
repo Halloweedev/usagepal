@@ -60,6 +60,19 @@ describe("ProviderCard", () => {
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
+  it("does not add onboarding tip cards for stale provider errors", () => {
+    render(
+      <ProviderCard
+        name="Test"
+        displayMode="used"
+        error="Please sign in"
+        lines={[{ type: "text", label: "Session", value: "90%" }]}
+      />
+    )
+
+    expect(screen.queryByRole("note", { name: "Fix Provider Access" })).not.toBeInTheDocument()
+  })
+
   it("renders loading skeleton", () => {
     render(
       <ProviderCard
@@ -262,6 +275,38 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
+  it("does not add onboarding tip cards for reset times", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-02-02T00:00:00.000Z"))
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Session",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-02T01:00:00.000Z",
+          },
+          {
+            type: "progress",
+            label: "Weekly",
+            used: 20,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+          },
+        ]}
+      />
+    )
+
+    expect(screen.queryByRole("note", { name: "Reset Time Display" })).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
   it("does not render reset tooltip for invalid reset timestamps", () => {
     render(
       <ProviderCard
@@ -419,6 +464,49 @@ describe("ProviderCard", () => {
     fireEvent.click(resetButton)
     expect(onToggle).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
+  })
+
+  it("toggles usage display mode from the usage value when enabled", () => {
+    const onUsageToggle = vi.fn()
+    render(
+      <ProviderCard
+        name="Usage"
+        displayMode="left"
+        onUsageValueToggle={onUsageToggle}
+        lines={[
+          {
+            type: "progress",
+            label: "Session",
+            used: 40,
+            limit: 100,
+            format: { kind: "percent" },
+          },
+        ]}
+      />
+    )
+    const usageButton = screen.getByRole("button", { name: "60% left" })
+    fireEvent.click(usageButton)
+    expect(onUsageToggle).toHaveBeenCalledTimes(1)
+  })
+
+  it("renders the usage value as plain text without the usage toggle", () => {
+    render(
+      <ProviderCard
+        name="Usage"
+        displayMode="left"
+        lines={[
+          {
+            type: "progress",
+            label: "Session",
+            used: 40,
+            limit: 100,
+            format: { kind: "percent" },
+          },
+        ]}
+      />
+    )
+    expect(screen.queryByRole("button", { name: "60% left" })).not.toBeInTheDocument()
+    expect(screen.getByText("60% left")).toBeInTheDocument()
   })
 
   it("shows tomorrow context for absolute reset labels", () => {
