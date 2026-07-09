@@ -2747,9 +2747,9 @@ dependencies = [
 
 [[package]]
 name = "keylight"
-version = "0.3.0"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7d3c974cdca503d134592ade149a8c740fa1bfd5a083654eb3765e94f4e76d7"
+checksum = "ff3d1c2417628bd8d84b1fd7de7e5c35f4894949b68e28975fc52dacdbfe6fdc"
 dependencies = [
  "base64 0.22.1",
  "blake3",
@@ -2759,6 +2759,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 1.0.69",
  "ureq",
 ]
@@ -5519,9 +5520,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-keylight"
-version = "0.3.0"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f12449a8b8c8b5fe341bd1fe2ed5cef8406e79870be98c260e4c44d3fd1764f"
+checksum = "56caa237dea120845f7fbc4a85ca35d7f6946712b9793481acaea2a4ef5d41ef"
 dependencies = [
  "keylight",
  "serde",
@@ -6354,7 +6355,7 @@ dependencies = [
 
 [[package]]
 name = "usagepal"
-version = "0.7.31"
+version = "0.7.32"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",

@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.7.32
+
+Stable release introducing the guided onboarding experience, provider selection at setup, and the native notification permission flow.
+
+### New Features
+- Brand-new guided onboarding — a five-step setup window (Welcome, Tour, Alerts, Start at Login, Done) built around live miniatures of the real menu bar and provider card instead of static screenshots by @Halloweedev
+- Interactive tour step — learn UsagePal by doing: hover the reset time, flip it to the exact moment, hover the flame, peek at when rate-limit resets expire, and switch usage between left and used, with a pointing-hand spotlight guiding each gesture on a live card by @Halloweedev
+- Provider reveal with selection — the done step scans your Mac, reveals every detected provider as a tappable pill, and lets you include or exclude each one before finishing; your picks become the enabled provider set immediately by @Halloweedev
+- Alert picker with live banner preview — choose which pace milestones notify you while a macOS-style notification banner previews each selected alert by @Halloweedev
+- Native notification permission flow — UsagePal registers its notification identity at startup and asks for permission through the proper macOS prompt during onboarding by @Halloweedev
+
+### Improvements
+- The Start at Login step shows the same cycling menu-bar preview as the welcome screen — all five icon styles — and dims it when the toggle is off by @Halloweedev
+- The "Update available" button now shares the "Restart to update" design, so an available update is equally hard to miss when both stable and beta versions are offered by @Halloweedev
+- Reset Onboarding lives in Settings → Advanced, for re-running the setup any time by @Halloweedev
+- Key-managed providers that aren't set up yet appear in the onboarding reveal as "needs a key" pills, pointing at Settings → Plugins by @Halloweedev
+
+### Bug Fixes
+- Fixed Claude Code not being detected on setups that keep credentials in the macOS Keychain, by also recognizing ~/.claude.json by @Halloweedev
+- Fixed providers enabled during onboarding not appearing in the already-running panel until an app restart — the panel now reloads and probes them immediately by @Halloweedev
+- Fixed frontend errors never reaching the log file due to a missing log permission, which made setup-window issues invisible by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.31...v0.7.32](https://github.com/Halloweedev/usagepal/compare/v0.7.31...v0.7.32)
+
 ## v0.7.31
 
 Stable release consolidating the v0.7.31 beta line plus Cursor GPT-5.6 pricing.
