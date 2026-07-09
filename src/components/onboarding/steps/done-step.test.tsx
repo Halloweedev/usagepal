@@ -81,6 +81,7 @@ describe("DoneStep", () => {
         plugin("claude", "Claude", true),
         plugin("codex", "Codex", true),
         plugin("devin", "Devin", false),
+        plugin("mock", "Mock (Chaos)", true),
       ])
       render(
         <DoneStep
@@ -99,6 +100,8 @@ describe("DoneStep", () => {
       await waitFor(() => expect(screen.getByTestId("provider-chip-codex")).toBeInTheDocument())
       // Undetected, non key-managed providers never appear.
       expect(screen.queryByTestId("provider-chip-devin")).not.toBeInTheDocument()
+      // Neither does the dev-only chaos plugin, even though it reports detected.
+      expect(screen.queryByTestId("provider-chip-mock")).not.toBeInTheDocument()
       expect(state.invokeMock).toHaveBeenCalledWith("list_plugins")
 
       // Summary card arrives only after the reveal settles.

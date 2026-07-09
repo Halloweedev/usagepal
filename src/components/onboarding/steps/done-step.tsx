@@ -54,7 +54,9 @@ export function DoneStep({
         new Promise((resolve) => setTimeout(resolve, scanMinMs)),
       ])
       if (cancelled) return
-      const metas = Array.isArray(plugins) ? plugins : []
+      // The chaos-test plugin is dev-only (excluded from release bundles) but
+      // loads in dev builds; keep it out of the user-facing reveal.
+      const metas = (Array.isArray(plugins) ? plugins : []).filter((plugin) => plugin.id !== "mock")
       const detected = metas.filter((plugin) => plugin.detected)
       // Key-managed providers that were not detected are still worth surfacing:
       // they work as soon as the user adds their key in Settings → Plugins.
