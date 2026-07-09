@@ -267,12 +267,11 @@ describe("OnboardingApp", () => {
     )
     await userEvent.click(screen.getByRole("button", { name: "Continue" }))
 
-    await waitFor(() =>
-      expect(screen.getByText("2 alerts on")).toBeInTheDocument()
-    )
-    await waitFor(() =>
-      expect(screen.getByText("Starts when you sign in")).toBeInTheDocument()
-    )
+    // The done step runs its provider scan (~900ms) before the summary card shows.
+    await waitFor(() => expect(screen.getByText("2 alerts on")).toBeInTheDocument(), {
+      timeout: 3000,
+    })
+    expect(screen.getByText("Starts when you sign in")).toBeInTheDocument()
   })
 
   it("skips setup from the welcome step", async () => {

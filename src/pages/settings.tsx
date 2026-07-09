@@ -50,6 +50,7 @@ import {
 } from "@/lib/settings";
 import { getTimeFormatter } from "@/lib/reset-tooltip";
 import { getReferralUrl } from "@/lib/referral-links";
+import { hasManagedApiKey as pluginHasManagedApiKey } from "@/lib/plugin-types";
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
 import { cn } from "@/lib/utils";
 
@@ -304,7 +305,7 @@ function SortablePluginItem({
   };
 
   const referralUrl = getReferralUrl(plugin.id);
-  const hasManagedApiKey = plugin.id === "openrouter" || plugin.id === "cline-pass";
+  const hasManagedApiKey = pluginHasManagedApiKey(plugin.id);
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   // True when the dialog was opened by enabling the plugin, so cancelling can undo that enable.
   const [openedViaEnable, setOpenedViaEnable] = useState(false);
