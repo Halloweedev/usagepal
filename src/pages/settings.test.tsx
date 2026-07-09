@@ -63,10 +63,6 @@ vi.mock("@/lib/referral-links", () => ({
   getReferralUrl: getReferralUrlMock,
 }))
 
-vi.mock("@/components/notifications-section", () => ({
-  NotificationsSection: () => <section><h3>Notifications</h3></section>,
-}))
-
 import { SettingsPage } from "@/pages/settings"
 
 const defaultProps = {
@@ -363,6 +359,9 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("button", { name: "Copy Log Path" })).toHaveFocus()
 
     await user.tab()
+    expect(screen.getByRole("button", { name: "Reset Onboarding" })).toHaveFocus()
+
+    await user.tab()
     expect(screen.getByRole("checkbox", { name: "Start on login" })).toHaveFocus()
 
     await user.tab()
@@ -582,13 +581,12 @@ describe("SettingsPage", () => {
     expect(screen.queryByRole("note", { name: "Add And Reorder Providers" })).not.toBeInTheDocument()
   })
 
-  it("resets onboarding from the debug modal", async () => {
+  it("resets onboarding from the advanced modal", async () => {
     render(<SettingsPage {...defaultProps} />)
 
-    expect(screen.queryByRole("heading", { name: "QA" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Reset Onboarding" })).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole("button", { name: "Debug Error" }))
+    await openAdvanced()
     await userEvent.click(screen.getByRole("button", { name: "Reset Onboarding" }))
 
     expect(invokeMock).toHaveBeenCalledWith("reset_onboarding")
