@@ -10,16 +10,11 @@ const state = vi.hoisted(() => ({
   enableMock: vi.fn(),
   saveStartOnLoginMock: vi.fn(),
   savePaceNotificationSettingsMock: vi.fn(),
-  closeWindowMock: vi.fn(),
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: state.invokeMock,
   isTauri: state.isTauriMock,
-}))
-
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ close: state.closeWindowMock }),
 }))
 
 vi.mock("@tauri-apps/plugin-autostart", () => ({
@@ -102,8 +97,6 @@ describe("OnboardingApp", () => {
     state.saveStartOnLoginMock.mockResolvedValue(undefined)
     state.savePaceNotificationSettingsMock.mockReset()
     state.savePaceNotificationSettingsMock.mockResolvedValue(undefined)
-    state.closeWindowMock.mockReset()
-    state.closeWindowMock.mockResolvedValue(undefined)
   })
 
   it("walks value-first through all five steps", async () => {
@@ -140,23 +133,12 @@ describe("OnboardingApp", () => {
     expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument()
   })
 
-  it("closes the setup window from the header close button", async () => {
-    render(<OnboardingApp />)
-    await userEvent.click(screen.getByRole("button", { name: "Close setup" }))
-    expect(state.closeWindowMock).toHaveBeenCalled()
-  })
-
-  it("closes the setup window on Escape", async () => {
+  it("dismisses with Escape like skip: finishes and opens the app", async () => {
     render(<OnboardingApp />)
     await userEvent.keyboard("{Escape}")
-    expect(state.closeWindowMock).toHaveBeenCalled()
-  })
-
-  it("does not try to close the window outside Tauri", async () => {
-    state.isTauriMock.mockReturnValue(false)
-    render(<OnboardingApp />)
-    await userEvent.keyboard("{Escape}")
-    expect(state.closeWindowMock).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(state.invokeMock).toHaveBeenCalledWith("finish_onboarding", { openSettings: false })
+    )
   })
 
   it("saves the selected alerts when permission is granted", async () => {

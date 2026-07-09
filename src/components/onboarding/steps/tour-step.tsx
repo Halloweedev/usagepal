@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { Check, MousePointerClick } from "lucide-react"
+import { Check, MousePointerClick, Pointer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ProviderCard } from "@/components/provider-card"
 import { StepShell } from "@/components/onboarding/step-shell"
@@ -123,10 +123,10 @@ export function TourStep({ onContinue, armDelayMs = 600, hoverDwellMs = 400 }: T
         return
       }
       setSpot({
-        top: rect.top - rootRect.top - 4,
-        left: rect.left - rootRect.left - 6,
-        width: rect.width + 12,
-        height: rect.height + 8,
+        top: rect.top - rootRect.top,
+        left: rect.left - rootRect.left,
+        width: rect.width,
+        height: rect.height,
       })
     }
     update()
@@ -188,10 +188,15 @@ export function TourStep({ onContinue, armDelayMs = 600, hoverDwellMs = 400 }: T
             }}
           />
           {spot && (
-            <div
+            // A pointing hand just below the target, finger aimed at it,
+            // pulsing softly to invite the gesture.
+            <Pointer
               aria-hidden
-              className="pointer-events-none absolute rounded-lg ring-2 ring-primary/70 animate-pulse"
-              style={spot}
+              className="pointer-events-none absolute z-10 size-5 animate-pulse text-green-500 drop-shadow-sm"
+              style={{
+                top: spot.top + spot.height - 2,
+                left: spot.left + spot.width / 2 - 10,
+              }}
             />
           )}
         </div>

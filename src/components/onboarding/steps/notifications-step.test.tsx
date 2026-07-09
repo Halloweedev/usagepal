@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { NotificationsStep } from "@/components/onboarding/steps/notifications-step"
@@ -19,6 +19,26 @@ describe("NotificationsStep", () => {
     render(<NotificationsStep onEnable={() => {}} onSkip={() => {}} busy={false} />)
     await userEvent.click(screen.getByRole("checkbox", { name: /Almost Out/ }))
     expect(screen.getByTestId("notification-banner")).toHaveTextContent("Almost Out")
+  })
+
+  it("cycles the preview through all selected alerts", async () => {
+    render(
+      <NotificationsStep onEnable={() => {}} onSkip={() => {}} busy={false} previewCycleMs={40} />
+    )
+    // Defaults: Will Run Out + Session Reset selected, preview starts on Will Run Out.
+    expect(screen.getByTestId("notification-banner")).toHaveTextContent("Will Run Out")
+    await waitFor(() =>
+      expect(screen.getByTestId("notification-banner")).toHaveTextContent("Session Reset")
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId("notification-banner")).toHaveTextContent("Will Run Out")
+    )
+  })
+
+  it("moves the preview off an alert when it is unchecked", async () => {
+    render(<NotificationsStep onEnable={() => {}} onSkip={() => {}} busy={false} />)
+    await userEvent.click(screen.getByRole("checkbox", { name: /Will Run Out/ }))
+    expect(screen.getByTestId("notification-banner")).toHaveTextContent("Session Reset")
   })
 
   it("passes the actual selection to onEnable", async () => {

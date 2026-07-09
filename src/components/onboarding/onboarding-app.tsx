@@ -1,9 +1,8 @@
 // src/components/onboarding/onboarding-app.tsx
 import { useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
-import { getCurrentWindow } from "@tauri-apps/api/window"
 import { enable as enableAutostart } from "@tauri-apps/plugin-autostart"
-import { ChevronLeft, X } from "lucide-react"
+import { ChevronLeft } from "lucide-react"
 
 import { Logo } from "@/components/logo"
 import { Button } from "@/components/ui/button"
@@ -85,25 +84,20 @@ function OnboardingApp() {
 
   const showBack = step !== "welcome" && step !== "done" && busyAction === null
 
-  // The setup window is undecorated, so Escape and the ✕ button stand in for
-  // the macOS chrome. Closing without finishing reshows onboarding next launch.
-  function closeSetup() {
-    if (!isTauri()) return
-    getCurrentWindow()
-      .close()
-      .catch((error) => console.error("Failed to close setup window:", error))
-  }
-
+  // The setup window is undecorated; Escape dismisses like "Skip setup" —
+  // finish without extras and open the app.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeSetup()
+      if (event.key === "Escape") void finish(false)
     }
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden bg-card text-foreground">
+    // The window itself is transparent; this rounded container is its shape.
+    <main className="flex h-screen flex-col overflow-hidden rounded-xl border bg-card text-foreground">
       <section className="flex h-full min-h-0 flex-col">
         {/* data-tauri-drag-region makes the header the window's drag handle. */}
         <div data-tauri-drag-region className="flex shrink-0 items-center justify-between border-b px-6 py-4">
@@ -115,30 +109,19 @@ function OnboardingApp() {
             )}
             <div className="flex items-center gap-3 text-lg font-semibold">
               <Logo className="size-9 text-foreground" aria-hidden />
-              UsagePal setup
+              UsagePal
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="pointer-events-none flex w-28 gap-1.5" aria-label={`Step ${stepIndex(step) + 1} of ${steps.length}`}>
-              {steps.map((item) => (
-                <span
-                  key={item}
-                  className={cn(
-                    "h-1.5 flex-1 rounded-full bg-border transition-colors duration-500",
-                    stepIndex(item) <= stepIndex(step) && "bg-primary"
-                  )}
-                />
-              ))}
-            </div>
-            <button
-              type="button"
-              aria-label="Close setup"
-              onClick={closeSetup}
-              className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <X className="size-4" aria-hidden />
-              <kbd className="text-[10px] font-medium uppercase tracking-wide">esc</kbd>
-            </button>
+          <div className="pointer-events-none flex w-28 gap-1.5" aria-label={`Step ${stepIndex(step) + 1} of ${steps.length}`}>
+            {steps.map((item) => (
+              <span
+                key={item}
+                className={cn(
+                  "h-1.5 flex-1 rounded-full bg-border transition-colors duration-500",
+                  stepIndex(item) <= stepIndex(step) && "bg-primary"
+                )}
+              />
+            ))}
           </div>
         </div>
 

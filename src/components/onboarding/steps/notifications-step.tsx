@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { StepShell } from "@/components/onboarding/step-shell"
@@ -21,18 +21,45 @@ type NotificationsStepProps = {
   onEnable: (selection: PaceNotificationSettings) => void
   onSkip: () => void
   busy: boolean
+  /** How long each selected alert stays in the banner preview rotation. */
+  previewCycleMs?: number
 }
 
-export function NotificationsStep({ onEnable, onSkip, busy }: NotificationsStepProps) {
+export function NotificationsStep({
+  onEnable,
+  onSkip,
+  busy,
+  previewCycleMs = 2000,
+}: NotificationsStepProps) {
   const [selection, setSelection] = useState<PaceNotificationSettings>(
     ONBOARDING_PACE_NOTIFICATION_SETTINGS
   )
   const [preview, setPreview] = useState<PaceMilestone>("closeToRunningOut")
 
   const toggle = (key: PaceMilestone, checked: boolean) => {
-    setSelection((current) => ({ ...current, [key]: checked }))
-    if (checked) setPreview(key)
+    const next = { ...selection, [key]: checked }
+    setSelection(next)
+    if (checked) {
+      setPreview(key)
+    } else if (preview === key) {
+      const remaining = PACE_MILESTONES.filter((milestone) => next[milestone])
+      if (remaining.length > 0) setPreview(remaining[0])
+    }
   }
+
+  // With several alerts selected, rotate the banner through all of them so the
+  // user sees each one's copy. Toggling restarts the rotation from that alert.
+  useEffect(() => {
+    const enabled = PACE_MILESTONES.filter((key) => selection[key])
+    if (enabled.length < 2) return
+    const timer = window.setInterval(() => {
+      setPreview((current) => {
+        const index = enabled.indexOf(current)
+        return enabled[(index + 1) % enabled.length]
+      })
+    }, previewCycleMs)
+    return () => window.clearInterval(timer)
+  }, [selection, preview, previewCycleMs])
 
   const anySelected = PACE_MILESTONES.some((key) => selection[key])
 
