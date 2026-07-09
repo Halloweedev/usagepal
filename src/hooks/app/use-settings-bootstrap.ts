@@ -1,10 +1,6 @@
 import { useCallback, useEffect } from "react"
-import { invoke, isTauri } from "@tauri-apps/api/core"
-import {
-  disable as disableAutostart,
-  enable as enableAutostart,
-  isEnabled as isAutostartEnabled,
-} from "@tauri-apps/plugin-autostart"
+import { invoke } from "@tauri-apps/api/core"
+import { syncAutostart } from "@/lib/autostart"
 import type { PluginMeta } from "@/lib/plugin-types"
 import {
   arePluginSettingsEqual,
@@ -90,18 +86,7 @@ export function useSettingsBootstrap({
   setErrorForPlugins,
   startBatch,
 }: UseSettingsBootstrapArgs) {
-  const applyStartOnLogin = useCallback(async (value: boolean) => {
-    if (!isTauri()) return
-    const currentlyEnabled = await isAutostartEnabled()
-    if (currentlyEnabled === value) return
-
-    if (value) {
-      await enableAutostart()
-      return
-    }
-
-    await disableAutostart()
-  }, [])
+  const applyStartOnLogin = useCallback((value: boolean) => syncAutostart(value), [])
 
   useEffect(() => {
     let isMounted = true

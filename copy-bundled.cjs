@@ -2,7 +2,7 @@ const { cpSync, readdirSync, rmSync } = require("fs")
 const { join } = require("path")
 
 const root = __dirname
-const exclude = new Set(["mock"])
+const exclude = new Set(require("./src/lib/dev-only-plugins.json"))
 const srcDir = join(root, "plugins")
 const dstDir = join(root, "src-tauri", "resources", "bundled_plugins")
 
