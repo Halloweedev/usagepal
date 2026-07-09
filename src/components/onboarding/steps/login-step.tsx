@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { EyeOff } from "lucide-react"
-import { Logo } from "@/components/logo"
 import { Button } from "@/components/ui/button"
+import { MenubarPreviewRow } from "@/components/onboarding/menubar-preview"
 import { StepShell } from "@/components/onboarding/step-shell"
 import { cn } from "@/lib/utils"
 
@@ -29,23 +29,7 @@ export function LoginStep({ onContinue, busy, backButton }: LoginStepProps) {
       }
     >
       <div className="mx-auto w-full max-w-sm space-y-4">
-        <div
-          className={cn(
-            "flex items-center justify-end gap-3 rounded-lg border px-3 py-1.5 transition-colors",
-            enabled ? "bg-muted/60" : "bg-muted/20"
-          )}
-        >
-          <span
-            className={cn(
-              "flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium transition-all",
-              enabled ? "bg-background shadow-sm" : "opacity-30"
-            )}
-          >
-            <Logo className="size-3.5" aria-hidden />
-            68%
-          </span>
-          <span className="text-xs text-muted-foreground tabular-nums">Wed 9:41 AM</span>
-        </div>
+        <MenubarPreviewRow dimmed={!enabled} />
 
         <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
           <EyeOff className="size-4 shrink-0 text-primary" aria-hidden />

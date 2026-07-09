@@ -31,4 +31,12 @@ describe("LoginStep", () => {
     render(<LoginStep onContinue={() => {}} busy={true} />)
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled()
   })
+
+  it("shows the cycling menubar preview and dims it when the switch is off", async () => {
+    render(<LoginStep onContinue={() => {}} busy={false} />)
+    const preview = screen.getByTestId("menubar-preview")
+    expect(preview).toHaveAttribute("data-dimmed", "false")
+    await userEvent.click(screen.getByRole("switch", { name: /Start UsagePal at login/ }))
+    expect(preview).toHaveAttribute("data-dimmed", "true")
+  })
 })
