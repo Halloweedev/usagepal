@@ -8,6 +8,7 @@ import {
   DEFAULT_MENUBAR_METRIC,
   DEFAULT_MULTI_TRAY_DISPLAY_MODE,
   DEFAULT_MULTI_TRAY_PROVIDER_COUNT,
+  DEFAULT_ONBOARDING_COMPLETED,
   DEFAULT_PACE_NOTIFICATION_SETTINGS,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
@@ -25,6 +26,7 @@ import {
   loadMenubarMetric,
   loadMultiTrayDisplayMode,
   loadMultiTrayProviderCount,
+  loadOnboardingCompleted,
   loadPaceNotificationSettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
@@ -32,10 +34,13 @@ import {
   loadStartOnLogin,
   loadTimeFormatMode,
   cycleMultiTrayProviderCount,
+  mergeProviderSelection,
   migrateLegacyTraySettings,
   migrateWindsurfToDevin,
+  ONBOARDING_PACE_NOTIFICATION_SETTINGS,
   loadThemeMode,
   normalizePluginSettings,
+  resetOnboardingCompleted,
   saveAutoUpdateInterval,
   saveBetaUpdatesEnabled,
   saveDisplayMode,
@@ -44,6 +49,7 @@ import {
   saveMenubarMetric,
   saveMultiTrayDisplayMode,
   saveMultiTrayProviderCount,
+  saveOnboardingCompleted,
   savePaceNotificationSettings,
   savePluginSettings,
   saveResetTimerDisplayMode,
@@ -544,6 +550,48 @@ describe("settings", () => {
     await expect(loadStartOnLogin()).resolves.toBe(DEFAULT_START_ON_LOGIN)
   })
 
+  it("loads onboarding as incomplete when missing", async () => {
+    await expect(loadOnboardingCompleted()).resolves.toBe(DEFAULT_ONBOARDING_COMPLETED)
+  })
+
+  it("loads stored onboarding completion", async () => {
+    storeState.set("onboardingCompleted", true)
+    await expect(loadOnboardingCompleted()).resolves.toBe(true)
+  })
+
+  it("falls back to incomplete for invalid onboarding completion", async () => {
+    storeState.set("onboardingCompleted", "yes")
+    await expect(loadOnboardingCompleted()).resolves.toBe(false)
+  })
+
+  it("saves onboarding completion with a timestamp", async () => {
+    await saveOnboardingCompleted(true)
+
+    await expect(loadOnboardingCompleted()).resolves.toBe(true)
+    expect(typeof storeState.get("onboardingCompletedAt")).toBe("number")
+    expect(storeSaveMock).toHaveBeenCalled()
+  })
+
+  it("resets onboarding completion for QA", async () => {
+    storeState.set("onboardingCompleted", true)
+    storeState.set("onboardingCompletedAt", 1_783_419_024_000)
+
+    await resetOnboardingCompleted()
+
+    await expect(loadOnboardingCompleted()).resolves.toBe(false)
+    expect(storeDeleteMock).toHaveBeenCalledWith("onboardingCompleted")
+    expect(storeDeleteMock).toHaveBeenCalledWith("onboardingCompletedAt")
+  })
+
+  it("defines the low-noise onboarding pace alert preset", () => {
+    expect(ONBOARDING_PACE_NOTIFICATION_SETTINGS).toEqual({
+      underTenPercent: false,
+      healthyToClose: false,
+      closeToRunningOut: true,
+      sessionReset: true,
+    })
+  })
+
   it("loads default share settings when missing", async () => {
     await expect(loadShareSettings()).resolves.toEqual(DEFAULT_SHARE_SETTINGS)
   })
@@ -605,5 +653,27 @@ describe("settings", () => {
     await saveShareSettings(settings)
 
     await expect(loadShareSettings()).resolves.toEqual(settings)
+  })
+})
+
+describe("mergeProviderSelection", () => {
+  it("adds dropped ids to disabled and removes kept ids", () => {
+    const result = mergeProviderSelection(
+      { order: ["claude", "codex"], disabled: ["claude", "grok"] },
+      ["claude"],
+      ["codex"]
+    )
+    expect(result.order).toEqual(["claude", "codex"])
+    expect(result.disabled).toEqual(["grok", "codex"])
+  })
+
+  it("dedupes ids already disabled", () => {
+    const result = mergeProviderSelection({ order: [], disabled: ["codex"] }, [], ["codex", "codex"])
+    expect(result.disabled).toEqual(["codex"])
+  })
+
+  it("leaves settings unchanged for empty keep and drop", () => {
+    const settings = { order: ["claude"], disabled: ["grok"] }
+    expect(mergeProviderSelection(settings, [], [])).toEqual(settings)
   })
 })

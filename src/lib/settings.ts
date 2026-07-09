@@ -46,6 +46,15 @@ export const DEFAULT_PACE_NOTIFICATION_SETTINGS: PaceNotificationSettings = {
   sessionReset: false,
 };
 
+export const DEFAULT_ONBOARDING_COMPLETED = false;
+
+export const ONBOARDING_PACE_NOTIFICATION_SETTINGS: PaceNotificationSettings = {
+  underTenPercent: false,
+  healthyToClose: false,
+  closeToRunningOut: true,
+  sessionReset: true,
+};
+
 export type SharePreset = "summary" | "detailed" | "models";
 
 export type ShareTheme = "dark" | "light";
@@ -100,6 +109,8 @@ const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
+const ONBOARDING_COMPLETED_KEY = "onboardingCompleted";
+const ONBOARDING_COMPLETED_AT_KEY = "onboardingCompletedAt";
 const PACE_NOTIFICATIONS_KEY = "paceNotifications";
 const SHARE_SETTINGS_KEY = "shareSettings";
 
@@ -190,6 +201,19 @@ export async function loadPluginSettings(): Promise<PluginSettings> {
 export async function savePluginSettings(settings: PluginSettings): Promise<void> {
   await store.set(PLUGIN_SETTINGS_KEY, settings);
   await store.save();
+}
+
+/** Apply an onboarding provider selection: `keep` ids leave the disabled list,
+ * `drop` ids join it. Pure — callers persist via savePluginSettings. */
+export function mergeProviderSelection(
+  settings: PluginSettings,
+  keep: string[],
+  drop: string[]
+): PluginSettings {
+  const disabled = new Set(settings.disabled);
+  for (const id of keep) disabled.delete(id);
+  for (const id of drop) disabled.add(id);
+  return { ...settings, disabled: [...disabled] };
 }
 
 // TODO(remove after 2026-09-01): One-time Windsurf -> Devin settings migration.
@@ -598,5 +622,23 @@ export async function loadStartOnLogin(): Promise<boolean> {
 
 export async function saveStartOnLogin(value: boolean): Promise<void> {
   await store.set(START_ON_LOGIN_KEY, value);
+  await store.save();
+}
+
+export async function loadOnboardingCompleted(): Promise<boolean> {
+  const stored = await store.get<unknown>(ONBOARDING_COMPLETED_KEY);
+  if (typeof stored === "boolean") return stored;
+  return DEFAULT_ONBOARDING_COMPLETED;
+}
+
+export async function saveOnboardingCompleted(value: boolean): Promise<void> {
+  await store.set(ONBOARDING_COMPLETED_KEY, value);
+  await store.set(ONBOARDING_COMPLETED_AT_KEY, value ? Date.now() : null);
+  await store.save();
+}
+
+export async function resetOnboardingCompleted(): Promise<void> {
+  await deleteStoreKey(ONBOARDING_COMPLETED_KEY);
+  await deleteStoreKey(ONBOARDING_COMPLETED_AT_KEY);
   await store.save();
 }
