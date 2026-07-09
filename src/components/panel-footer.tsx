@@ -58,7 +58,7 @@ function VersionDisplay({
       return (
         <div className="relative">
           <Button
-            variant="outline"
+            variant="destructive"
             size="xs"
             className="update-border-beam"
             onClick={() => setShowChoices((current) => !current)}
@@ -147,6 +147,7 @@ export function PanelFooter({
     enabled: Boolean(autoUpdateNextAt),
     resetKey: autoUpdateNextAt,
   });
+  const canRefreshManually = autoUpdateNextAt !== null && onRefreshAll !== undefined;
 
   useEffect(() => {
     if (autoUpdateNextAt === null) {
@@ -184,12 +185,12 @@ export function PanelFooter({
           onUpdateChoice={onUpdateChoice}
           onVersionClick={onShowAbout}
         />
-        {autoUpdateNextAt !== null && onRefreshAll ? (
+        {canRefreshManually ? (
           <button
             type="button"
             onClick={(event) => {
               event.currentTarget.blur()
-              onRefreshAll()
+              onRefreshAll?.()
             }}
             className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors cursor-pointer"
             title="Refresh now"
