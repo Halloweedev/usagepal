@@ -22,6 +22,7 @@
     "clipboard-manager:allow-write-image",
     "core:menu:default",
     "keylight:default",
-    "notification:default"
+    "notification:default",
+    "log:default"
   ]
 }

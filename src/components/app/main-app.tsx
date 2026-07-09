@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app/app-shell"
 import { useAppPluginViews } from "@/hooks/app/use-app-plugin-views"
 import { useProbe } from "@/hooks/app/use-probe"
 import { usePaceNotifications } from "@/hooks/app/use-pace-notifications"
+import { usePluginSettingsRefresh } from "@/hooks/app/use-plugin-settings-refresh"
 import { useSettingsBootstrap } from "@/hooks/app/use-settings-bootstrap"
 import { useSettingsDisplayActions } from "@/hooks/app/use-settings-display-actions"
 import { useSettingsPluginActions } from "@/hooks/app/use-settings-plugin-actions"
@@ -138,6 +139,8 @@ export function MainApp() {
       scheduleTrayIconUpdate("probe", TRAY_PROBE_DEBOUNCE_MS)
     }
   }, [scheduleTrayIconUpdate])
+
+  usePluginSettingsRefresh(setPluginSettings)
 
   const { applyStartOnLogin } = useSettingsBootstrap({
     setPluginSettings,

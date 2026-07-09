@@ -1,4 +1,4 @@
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 pub const SETTINGS_STORE: &str = "settings.json";
@@ -10,12 +10,11 @@ pub fn onboarding_completed_from_value(value: Option<&serde_json::Value>) -> boo
 }
 
 pub fn is_onboarding_completed(app_handle: &tauri::AppHandle) -> bool {
-    app_handle
+    let value = app_handle
         .store(SETTINGS_STORE)
         .ok()
-        .and_then(|store| store.get(ONBOARDING_COMPLETED_KEY))
-        .as_ref()
-        .is_some_and(|value| onboarding_completed_from_value(Some(value)))
+        .and_then(|store| store.get(ONBOARDING_COMPLETED_KEY));
+    onboarding_completed_from_value(value.as_ref())
 }
 
 pub fn show_setup_window_if_needed(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
@@ -68,6 +67,12 @@ fn save_onboarding_completion(app_handle: &tauri::AppHandle) -> Result<(), Strin
 #[specta::specta]
 pub fn finish_onboarding(app_handle: tauri::AppHandle, open_settings: bool) -> Result<(), String> {
     save_onboarding_completion(&app_handle)?;
+
+    // The onboarding window saved the provider selection just before this
+    // call; tell the running panel to reload plugin settings from the store.
+    if let Err(error) = app_handle.emit("plugins:changed", ()) {
+        log::error!("failed to emit plugins:changed: {error}");
+    }
 
     if let Some(window) = app_handle.get_webview_window("setup") {
         window
