@@ -8,6 +8,7 @@
   "brandColor": "#DE7356",
   "detect": [
     { "file": "~/.claude/.credentials.json" },
+    { "file": "~/.claude.json" },
     { "env": "CLAUDE_CONFIG_DIR" },
     { "env": "CLAUDE_CODE_OAUTH_TOKEN" }
   ],
