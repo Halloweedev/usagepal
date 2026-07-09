@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.33
+
+### New Features
+- Cursor plugin now prices Grok 4.5 and its Fast variant, so Cursor spend stays accurate on the newest Grok models by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.32...v0.7.33](https://github.com/Halloweedev/usagepal/compare/v0.7.32...v0.7.33)
+
 ## v0.7.32
 
 Stable release introducing the guided onboarding experience, provider selection at setup, and the native notification permission flow.
