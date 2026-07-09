@@ -1,6 +1,5 @@
 // src/components/onboarding/onboarding-app.test.tsx
 import { render, screen, waitFor } from "@testing-library/react"
-import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -8,8 +7,12 @@ const state = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   isTauriMock: vi.fn(() => true),
   enableMock: vi.fn(),
+  disableMock: vi.fn(),
+  isAutostartEnabledMock: vi.fn(),
   saveStartOnLoginMock: vi.fn(),
   savePaceNotificationSettingsMock: vi.fn(),
+  loadPluginSettingsMock: vi.fn(),
+  savePluginSettingsMock: vi.fn(),
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -19,28 +22,15 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("@tauri-apps/plugin-autostart", () => ({
   enable: state.enableMock,
+  disable: state.disableMock,
+  isEnabled: state.isAutostartEnabledMock,
 }))
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: vi.fn(() => Promise.resolve()),
 }))
 
-vi.mock("@/components/ui/tooltip", () => ({
-  Tooltip: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  TooltipTrigger: ({
-    children,
-    render: renderProp,
-    ...props
-  }: {
-    children?: ReactNode
-    render?: ((props: Record<string, unknown>) => ReactNode) | ReactNode
-  }) => {
-    if (typeof renderProp === "function") return renderProp({ ...props, children })
-    if (renderProp) return renderProp
-    return <div {...props}>{children}</div>
-  },
-  TooltipContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}))
+vi.mock("@/components/ui/tooltip", () => import("@/test/tooltip-mock"))
 
 vi.mock("@/lib/settings", async () => {
   const actual = await vi.importActual<typeof import("@/lib/settings")>("@/lib/settings")
@@ -48,6 +38,8 @@ vi.mock("@/lib/settings", async () => {
     ...actual,
     saveStartOnLogin: state.saveStartOnLoginMock,
     savePaceNotificationSettings: state.savePaceNotificationSettingsMock,
+    loadPluginSettings: state.loadPluginSettingsMock,
+    savePluginSettings: state.savePluginSettingsMock,
   }
 })
 
@@ -93,10 +85,40 @@ describe("OnboardingApp", () => {
     state.isTauriMock.mockReturnValue(true)
     state.enableMock.mockReset()
     state.enableMock.mockResolvedValue(undefined)
+    state.disableMock.mockReset()
+    state.disableMock.mockResolvedValue(undefined)
+    state.isAutostartEnabledMock.mockReset()
+    state.isAutostartEnabledMock.mockResolvedValue(false)
     state.saveStartOnLoginMock.mockReset()
     state.saveStartOnLoginMock.mockResolvedValue(undefined)
     state.savePaceNotificationSettingsMock.mockReset()
     state.savePaceNotificationSettingsMock.mockResolvedValue(undefined)
+    state.loadPluginSettingsMock.mockReset()
+    state.loadPluginSettingsMock.mockResolvedValue({ order: [], disabled: [] })
+    state.savePluginSettingsMock.mockReset()
+    state.savePluginSettingsMock.mockResolvedValue(undefined)
+  })
+
+  it("disables deselected providers when finishing", async () => {
+    state.invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_plugins")
+        return Promise.resolve([
+          { id: "claude", name: "Claude", iconUrl: "", detected: true },
+          { id: "codex", name: "Codex", iconUrl: "", detected: true },
+        ])
+      return Promise.resolve(null)
+    })
+    render(<OnboardingApp />)
+    await goToDone()
+    await waitFor(() => expect(screen.getByTestId("provider-chip-codex")).toBeInTheDocument(), {
+      timeout: 3000,
+    })
+    await userEvent.click(screen.getByTestId("provider-chip-codex"))
+    await userEvent.click(screen.getByRole("button", { name: "Open UsagePal" }))
+    await waitFor(() =>
+      expect(state.savePluginSettingsMock).toHaveBeenCalledWith({ order: [], disabled: ["codex"] })
+    )
+    expect(state.invokeMock).toHaveBeenCalledWith("finish_onboarding", { openSettings: false })
   })
 
   it("walks value-first through all five steps", async () => {

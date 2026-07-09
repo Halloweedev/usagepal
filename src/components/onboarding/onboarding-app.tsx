@@ -1,15 +1,19 @@
 // src/components/onboarding/onboarding-app.tsx
 import { useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
-import { enable as enableAutostart } from "@tauri-apps/plugin-autostart"
 import { ChevronLeft } from "lucide-react"
+
+import { syncAutostart } from "@/lib/autostart"
 
 import { Logo } from "@/components/logo"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { PACE_MILESTONES } from "@/lib/pace-notifications"
 import {
+  loadPluginSettings,
+  mergeProviderSelection,
   savePaceNotificationSettings,
+  savePluginSettings,
   saveStartOnLogin,
   type PaceNotificationSettings,
 } from "@/lib/settings"
@@ -17,7 +21,7 @@ import { WelcomeStep } from "@/components/onboarding/steps/welcome-step"
 import { TourStep } from "@/components/onboarding/steps/tour-step"
 import { NotificationsStep } from "@/components/onboarding/steps/notifications-step"
 import { LoginStep } from "@/components/onboarding/steps/login-step"
-import { DoneStep } from "@/components/onboarding/steps/done-step"
+import { DoneStep, type ProviderSelection } from "@/components/onboarding/steps/done-step"
 
 const steps = ["welcome", "tour", "notifications", "login", "done"] as const
 type Step = (typeof steps)[number]
@@ -61,7 +65,7 @@ function OnboardingApp() {
     setBusyAction("login")
     try {
       await saveStartOnLogin(value)
-      if (value && isTauri()) await enableAutostart()
+      await syncAutostart(value)
       setStartOnLogin(value)
     } catch (error) {
       console.error("Failed to apply start at login:", error)
@@ -71,8 +75,17 @@ function OnboardingApp() {
     }
   }
 
-  async function finish(openSettings: boolean) {
+  async function finish(openSettings: boolean, selection?: ProviderSelection) {
     setBusyAction(openSettings ? "settings" : "finish")
+    // A failed selection save logs and never blocks finishing, same as autostart.
+    if (selection && (selection.keep.length > 0 || selection.drop.length > 0)) {
+      try {
+        const current = await loadPluginSettings()
+        await savePluginSettings(mergeProviderSelection(current, selection.keep, selection.drop))
+      } catch (error) {
+        console.error("Failed to save provider selection:", error)
+      }
+    }
     try {
       if (isTauri()) await invoke("finish_onboarding", { openSettings })
     } catch (error) {
@@ -157,7 +170,7 @@ function OnboardingApp() {
                 alertsEnabled={alertsEnabled}
                 startOnLogin={startOnLogin}
                 onFinish={finish}
-                busyAction={busyAction === "settings" || busyAction === "finish" ? busyAction : null}
+                busy={busyAction !== null}
               />
             )}
           </div>
