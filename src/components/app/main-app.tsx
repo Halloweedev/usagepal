@@ -140,7 +140,14 @@ export function MainApp() {
     }
   }, [scheduleTrayIconUpdate])
 
-  usePluginSettingsRefresh(setPluginSettings)
+  usePluginSettingsRefresh({
+    pluginSettings,
+    setPluginSettings,
+    setLoadingForPlugins,
+    setErrorForPlugins,
+    startBatch,
+    scheduleTrayIconUpdate,
+  })
 
   const { applyStartOnLogin } = useSettingsBootstrap({
     setPluginSettings,
