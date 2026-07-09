@@ -4,18 +4,20 @@
 - `src/` — React UI for overview, provider detail, settings, dialogs, and tray-facing state.
 - `src-tauri/` — Rust host for windowing, tray, plugin execution, local API, and config.
 - `plugins/` — Provider probes and tests bundled into the desktop app at build time.
-- `docs/` — User and maintainer docs for app behavior, proxying, local API, plugins, and providers.
+- `docs/` — User and maintainer docs for getting started, notifications, proxying, local API, plugins, and providers.
 ## API Surfaces
 - Local HTTP API — documented in `docs/local-http-api.md`, implemented under `src-tauri/src/local_http_api/`.
 - Plugin host API — Rust bridge in `src-tauri/src/plugin_engine/host_api.rs`, schema docs in `docs/plugins/`.
-- Tauri commands/events — app shell, settings, pace notifications, provider key dialogs, beta updater, log-level, copy-log, and quit actions flow through `src-tauri/src/lib.rs` plus frontend hooks.
+- Tauri commands/events — app shell, onboarding, notification registration, settings, pace notifications, provider key dialogs, beta updater, log-level, copy-log, and quit actions flow through `src-tauri/src/lib.rs` plus frontend hooks.
 - `src/bindings.ts` plus `src/lib/plugin-types.ts` — generated tauri-specta IPC types feed frontend state while manual `invoke()`/`listen()` calls stay in place.
 ## Modules / Components
 - `src/App.tsx` — top-level app orchestration for plugin data, settings bootstrap, probing, and tray updates.
+- `src/components/onboarding/` — first-run setup flow with onboarding-only product education.
 - `src/pages/overview.tsx` — primary provider overview screen with no retirement banner in this fork.
 - `src/pages/settings.tsx` plus `src/components/settings-app-menu.tsx` — app preferences, Debug modal beta opt-in, collapsible plugin toggles, shortcuts, and bottom App Menu actions.
 - `src/components/` — reusable dialogs, provider API key modals, cards, nav, footer, skeletons, and UI primitives.
-- `src/lib/settings.ts` — persisted frontend settings and migration helpers.
+- `src/lib/settings.ts` — persisted frontend settings, onboarding completion, notification presets, and migration helpers.
+- `src-tauri/src/onboarding.rs` plus `src-tauri/src/notifications.rs` — setup window lifecycle, onboarding completion commands, notification registration, and permission request commands.
 - `src-tauri/src/plugin_engine/` — manifest loading, runtime sandboxing, and host capabilities for plugins.
 ## Infrastructure / Cross-Cutting
 - `src-tauri/tauri.conf.json` — app metadata, updater endpoint/public key, app-only Tauri bundle target, and embedded resources.
@@ -45,8 +47,8 @@
 - Tray/menu-bar behavior — `src/lib/tray-tooltip.ts`, `src/hooks/app/use-tray-icon.ts`, `src-tauri/src/tray.rs`.
 - Settings bootstrap/tests — `src/hooks/app/use-settings-bootstrap.ts`, `src/lib/settings.ts`, `src/App.test.tsx`.
 ## Update Log (Last 5)
+- 2026-07-08 — Removed post-onboarding contextual tip cards and moved education into setup.
+- 2026-07-08 — Added getting-started docs and first-run notification setup guidance.
+- 2026-07-08 — Added native onboarding setup-window commands and reusable notification registration module.
+- 2026-07-08 — Added frontend onboarding completion persistence and bulk notification store action.
 - 2026-07-07 — Added UsagePal-managed ClinePass API key dialog and Rust key commands.
-- 2026-07-07 — Wired frontend plugin/update/key types to generated tauri-specta bindings.
-- 2026-07-06 — Made the Settings plugin list collapsible and reset closed on view changes.
-- 2026-07-06 — Routed pace notifications through a native command with bundled macOS app icon resource.
-- 2026-07-05 — Added stable/beta update choice UI and moved beta opt-in into Debug.

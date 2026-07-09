@@ -1,8 +1,5 @@
 import { useEffect, useRef } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
-import {
-  isPermissionGranted,
-} from "@tauri-apps/plugin-notification"
 import type { PluginState } from "@/hooks/app/types"
 import {
   anyEnabled,
@@ -61,14 +58,7 @@ export function usePaceNotifications(pluginStates: Record<string, PluginState>) 
 
     let cancelled = false
     void (async () => {
-      let granted = false
-      try {
-        granted = await isPermissionGranted()
-      } catch (error) {
-        console.error("Failed to read notification permission:", error)
-      }
-      // Not granted: leave the fired milestones unmarked so they re-fire once permission is on.
-      if (!granted || cancelled) return
+      if (cancelled) return
 
       for (const item of fired) {
         const meta = MILESTONE_META[item.milestone]

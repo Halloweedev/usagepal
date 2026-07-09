@@ -122,6 +122,19 @@ pub fn toggle_panel(app_handle: &AppHandle) {
     }
 }
 
+pub fn show_panel_from_tray(app_handle: &AppHandle, view: &str) {
+    let Some(panel) = get_or_init_panel!(app_handle) else {
+        return;
+    };
+
+    panel.show_and_make_key();
+    position_panel_from_tray(app_handle);
+
+    if let Err(error) = app_handle.emit("tray:navigate", view) {
+        log::error!("failed to emit tray:navigate {view}: {error}");
+    }
+}
+
 pub fn toggle_panel_at_tray_rect(
     app_handle: &AppHandle,
     icon_position: Position,

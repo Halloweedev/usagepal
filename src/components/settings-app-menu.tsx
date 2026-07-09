@@ -101,6 +101,19 @@ function DebugDialog({
           })}
         </div>
         <div className="mt-3 rounded-md border border-border/60 bg-background px-3 py-2 text-left">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mb-3 w-full"
+            onClick={() => {
+              invoke("reset_onboarding").catch((error) => {
+                console.error("Failed to reset onboarding:", error);
+              });
+            }}
+          >
+            Reset Onboarding
+          </Button>
           <label className="flex items-center gap-2 text-sm select-none text-foreground">
             <Checkbox
               key={`beta-updates-${betaUpdatesEnabled}`}

@@ -64,6 +64,22 @@ describe("PanelFooter", () => {
     expect(onRefreshAll).toHaveBeenCalledTimes(1)
   })
 
+  it("does not add onboarding tip cards inside the footer", () => {
+    const futureTime = Date.now() + 5 * 60 * 1000
+    render(
+      <PanelFooter
+        version="0.0.0"
+        autoUpdateNextAt={futureTime}
+        updateStatus={idle}
+        onUpdateInstall={noop}
+        onRefreshAll={noop}
+        {...footerProps}
+      />
+    )
+
+    expect(screen.queryByRole("note", { name: "Refresh Anytime" })).not.toBeInTheDocument()
+  })
+
   it("automatically refreshes once when the countdown becomes overdue", () => {
     vi.useFakeTimers()
     vi.setSystemTime(10_000)

@@ -37,7 +37,11 @@ export const commands = {
 	 *  `x-apple.systempreferences:` scheme, so shell out to `open`, which does.
 	 */
 	openNotificationSettings: () => typedError<null, string>(__TAURI_INVOKE("open_notification_settings")),
+	registerNotifications: () => typedError<null, string>(__TAURI_INVOKE("register_notifications")),
+	requestNotificationPermission: () => typedError<string, string>(__TAURI_INVOKE("request_notification_permission")),
 	sendPaceNotification: (title: string, body: string) => typedError<null, string>(__TAURI_INVOKE("send_pace_notification", { title, body })),
+	finishOnboarding: (openSettings: boolean) => typedError<null, string>(__TAURI_INVOKE("finish_onboarding", { openSettings })),
+	resetOnboarding: () => typedError<null, string>(__TAURI_INVOKE("reset_onboarding")),
 	checkBetaUpdate: () => typedError<{
 	version: string,
 } | null, string>(__TAURI_INVOKE("check_beta_update")),

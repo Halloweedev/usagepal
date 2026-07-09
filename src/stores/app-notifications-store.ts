@@ -11,6 +11,8 @@ type AppNotificationsStore = {
   hydrated: boolean
   /** Load persisted toggles once on startup. Safe to call repeatedly. */
   hydrate: () => Promise<void>
+  /** Replace all milestone toggles and persist them. */
+  setSettings: (settings: PaceNotificationSettings) => void
   /** Flip one milestone toggle and persist it. */
   setToggle: (key: keyof PaceNotificationSettings, value: boolean) => void
   resetState: () => void
@@ -32,6 +34,13 @@ export const useAppNotificationsStore = create<AppNotificationsStore>((set, get)
       console.error("Failed to load pace notification settings:", error)
       set({ hydrated: true })
     }
+  },
+  setSettings: (settings) => {
+    const next = { ...settings }
+    set({ settings: next })
+    void savePaceNotificationSettings(next).catch((error) => {
+      console.error("Failed to save pace notification settings:", error)
+    })
   },
   setToggle: (key, value) => {
     const next = { ...get().settings, [key]: value }

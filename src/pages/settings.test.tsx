@@ -63,6 +63,10 @@ vi.mock("@/lib/referral-links", () => ({
   getReferralUrl: getReferralUrlMock,
 }))
 
+vi.mock("@/components/notifications-section", () => ({
+  NotificationsSection: () => <section><h3>Notifications</h3></section>,
+}))
+
 import { SettingsPage } from "@/pages/settings"
 
 const defaultProps = {
@@ -511,6 +515,25 @@ describe("SettingsPage", () => {
     render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("Menubar Icon")).toBeInTheDocument()
     expect(screen.getByText("What shows in the menu bar")).toBeInTheDocument()
+  })
+
+  it("does not add onboarding tip cards inside settings", () => {
+    render(<SettingsPage {...defaultProps} />)
+
+    expect(screen.queryByRole("note", { name: "Customize The Menu Bar" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("note", { name: "Add And Reorder Providers" })).not.toBeInTheDocument()
+  })
+
+  it("resets onboarding from the debug modal", async () => {
+    render(<SettingsPage {...defaultProps} />)
+
+    expect(screen.queryByRole("heading", { name: "QA" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Reset Onboarding" })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: "Debug Error" }))
+    await userEvent.click(screen.getByRole("button", { name: "Reset Onboarding" }))
+
+    expect(invokeMock).toHaveBeenCalledWith("reset_onboarding")
   })
 
   it("renders three style buttons on the first menubar icon row", () => {

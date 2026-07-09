@@ -3,6 +3,8 @@ mod clinepass_key;
 mod config;
 mod local_http_api;
 mod log_path;
+mod notifications;
+mod onboarding;
 mod openrouter_key;
 mod panel;
 mod keylight;
@@ -629,12 +631,8 @@ fn send_pace_notification_impl(
         .to_str()
         .ok_or_else(|| "Notification icon path is not valid UTF-8".to_string())?;
 
-    match mac_notification_sys::set_application(&app_handle.config().identifier) {
-        Ok(())
-        | Err(mac_notification_sys::error::Error::Application(
-            mac_notification_sys::error::ApplicationError::AlreadySet(_),
-        )) => {}
-        Err(error) => log::warn!("Failed to set notification application identity: {error}"),
+    if let Err(error) = notifications::register_application(app_handle) {
+        log::warn!("Failed to set notification application identity: {error}");
     }
 
     mac_notification_sys::Notification::new()
@@ -813,7 +811,11 @@ pub fn run() {
             get_next_update_at,
             update_global_shortcut,
             open_notification_settings,
+            notifications::register_notifications,
+            notifications::request_notification_permission,
             send_pace_notification,
+            onboarding::finish_onboarding,
+            onboarding::reset_onboarding,
             beta_updater::check_beta_update,
             beta_updater::download_beta_update,
             beta_updater::install_beta_update,
@@ -938,6 +940,12 @@ pub fn run() {
 
             tray::create(app.handle())?;
 
+            if let Err(error) = notifications::register_application(app.handle()) {
+                log::warn!("Failed to set notification application identity: {error}");
+            }
+
+            onboarding::show_setup_window_if_needed(app.handle())?;
+
             // Register global shortcut from stored settings
             #[cfg(desktop)]
             {
@@ -1002,7 +1010,11 @@ fn export_bindings() {
             get_next_update_at,
             update_global_shortcut,
             open_notification_settings,
+            notifications::register_notifications,
+            notifications::request_notification_permission,
             send_pace_notification,
+            onboarding::finish_onboarding,
+            onboarding::reset_onboarding,
             beta_updater::check_beta_update,
             beta_updater::download_beta_update,
             beta_updater::install_beta_update,

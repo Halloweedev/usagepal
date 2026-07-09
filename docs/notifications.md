@@ -1,10 +1,11 @@
 # Pace Alerts
 
 UsagePal can send a macOS notification when one of your usage limits is on pace to run out. Alerts
-are **off by default** — turn on the ones you want in **Settings → Notifications**. The first time you
-enable a trigger, macOS asks for notification permission.
+are set up during first-run onboarding and can be changed later in **Settings → Notifications**.
+UsagePal registers with macOS notifications at startup so it appears in **System Settings →
+Notifications** before the first alert needs to fire.
 
-## The triggers
+## The Triggers
 
 | Trigger | Fires when |
 |---|---|
@@ -15,7 +16,7 @@ enable a trigger, macOS asks for notification permission.
 
 Each trigger is independent — enable any combination. Turning all triggers off silences alerts entirely.
 
-## How it behaves
+## How It Behaves
 
 - **Once per window.** Each trigger fires at most once per metric per reset window, so a limit sitting
   at a high level doesn't re-alert on every refresh. When the window resets, the triggers re-arm.
@@ -38,5 +39,8 @@ Evaluation runs on each scheduled refresh, so alerts fire even while the panel i
 
 - Alerts are best-effort: if macOS notification permission is denied, nothing is delivered until you
   grant it in **System Settings → Notifications → UsagePal**.
+- If you skipped notification setup during onboarding, open **Settings → Notifications** in UsagePal
+  and enable the alerts you want. If macOS still blocks delivery, use **Open Settings** to allow
+  UsagePal in **System Settings → Notifications**.
 - Trigger choices persist across restarts. The per-metric "already alerted this window" memory is
   in-memory and resets when the app restarts (which is why the first post-launch reading only baselines).
