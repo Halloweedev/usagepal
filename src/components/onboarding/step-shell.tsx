@@ -11,7 +11,9 @@ type StepShellProps = {
  * scrollable body, bottom action row. Sections stagger in via animation delays. */
 export function StepShell({ title, description, children, actions }: StepShellProps) {
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
+    // One centered column, same width as the step visuals (max-w-sm), so
+    // titles, text, and actions align with the miniatures' edges.
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-sm flex-col">
       <div className="shrink-0 space-y-1.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
         {description && <p className="text-sm leading-6 text-muted-foreground">{description}</p>}

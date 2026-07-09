@@ -35,8 +35,8 @@ pub fn show_setup_window_if_needed(app_handle: &tauri::AppHandle) -> tauri::Resu
         tauri::WebviewUrl::App("index.html#/setup".into()),
     )
     .title("UsagePal Setup")
-    .inner_size(640.0, 620.0)
-    .min_inner_size(640.0, 620.0)
+    .inner_size(560.0, 620.0)
+    .min_inner_size(560.0, 620.0)
     .resizable(false)
     // Chromeless: the web header carries the drag region; Escape dismisses.
     // Transparent so the CSS rounded corners are the real window shape.

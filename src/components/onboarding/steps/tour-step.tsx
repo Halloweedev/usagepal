@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { Check, MousePointerClick, Pointer } from "lucide-react"
+import { Check, MousePointerClick } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ProviderCard } from "@/components/provider-card"
 import { StepShell } from "@/components/onboarding/step-shell"
@@ -189,9 +189,8 @@ export function TourStep({ onContinue, armDelayMs = 600, hoverDwellMs = 400 }: T
           {spot && (
             // A pointing hand just below the target, finger aimed at it,
             // pulsing softly to invite the gesture.
-            <Pointer
-              aria-hidden
-              className="pointer-events-none absolute z-10 size-5 animate-pulse fill-white text-green-500 drop-shadow-sm"
+            <HandPointing
+              className="pointer-events-none absolute z-10 size-5 animate-pulse text-green-500 drop-shadow-sm"
               style={{
                 top: spot.top + spot.height - 2,
                 left: spot.left + spot.width / 2 - 10,
@@ -201,6 +200,23 @@ export function TourStep({ onContinue, armDelayMs = 600, hoverDwellMs = 400 }: T
         </div>
       </div>
     </StepShell>
+  )
+}
+
+/** Filled pointing-hand glyph (Phosphor hand-pointing), used as the tour's
+ * gesture indicator. Inherits its color from `currentColor`. */
+function HandPointing({ className, style }: { className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg
+      aria-hidden
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 256 256"
+      fill="currentColor"
+      className={className}
+      style={style}
+    >
+      <path d="M224,104v50.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,80.6,215.4C58.79,192.33,34.15,136,34.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,96,151.74V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V104a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V88a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25v-7.28c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,224,104Z" />
+    </svg>
   )
 }
 

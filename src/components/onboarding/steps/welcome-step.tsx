@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react"
-import { Sparkles, SquareTerminal } from "lucide-react"
-import { Logo } from "@/components/logo"
+import claudeIconUrl from "../../../../plugins/claude/icon.svg"
+import codexIconUrl from "../../../../plugins/codex/icon.svg"
+import cursorIconUrl from "../../../../plugins/cursor/icon.svg"
 import { Button } from "@/components/ui/button"
 import { ProviderCard } from "@/components/provider-card"
+import { ProviderIconMask } from "@/components/provider-icon-mask"
 import { StepShell } from "@/components/onboarding/step-shell"
 import { makeMockClaudeLines } from "@/components/onboarding/mock-data"
 
@@ -14,12 +16,17 @@ const LINE_REVEAL_INTERVAL_MS = 350
 const MENUBAR_VARIANTS = ["percent", "donut", "bars", "multi-percent", "multi-bars"] as const
 type MenubarVariant = (typeof MENUBAR_VARIANTS)[number]
 
-const MENUBAR_VARIANT_LABELS: Record<MenubarVariant, string> = {
-  percent: "One provider · percent",
-  donut: "One provider · donut",
-  bars: "One provider · bars",
-  "multi-percent": "Several providers · percent",
-  "multi-bars": "Several providers · bars",
+/** Real provider icons, rendered as monochrome masks like the actual tray. */
+function ProviderGlyph({ iconUrl, pluginId }: { iconUrl: string; pluginId: string }) {
+  return (
+    <ProviderIconMask
+      iconUrl={iconUrl}
+      pluginId={pluginId}
+      sizePx={14}
+      className="bg-foreground"
+      fallbackClassName="text-foreground"
+    />
+  )
 }
 
 type WelcomeStepProps = {
@@ -67,22 +74,17 @@ export function WelcomeStep({ onContinue, onSkip, skipBusy, menubarCycleMs = 180
       }
     >
       <div className="mx-auto w-full max-w-sm space-y-3">
-        <div>
-          <div className="flex items-center justify-end gap-3 rounded-lg border bg-muted/60 px-3 py-1.5">
-            <span
-              data-testid="menubar-preview"
-              data-variant={variant}
-              className="flex h-5 items-center rounded-md bg-background px-2 shadow-sm"
-            >
-              <span key={variant} className="flex items-center gap-1.5 text-xs font-medium animate-in fade-in duration-300">
-                <MenubarIconPreview variant={variant} />
-              </span>
+        <div className="flex items-center justify-end gap-3 rounded-lg border bg-muted/60 px-3 py-1.5">
+          <span
+            data-testid="menubar-preview"
+            data-variant={variant}
+            className="flex h-5 items-center rounded-md bg-background px-2 shadow-sm"
+          >
+            <span key={variant} className="flex items-center gap-1.5 text-xs font-medium animate-in fade-in duration-300">
+              <MenubarIconPreview variant={variant} />
             </span>
-            <span className="text-xs text-muted-foreground tabular-nums">Wed 9:41 AM</span>
-          </div>
-          <p key={variant} className="mt-1.5 text-center text-[11px] text-muted-foreground animate-in fade-in duration-300">
-            {MENUBAR_VARIANT_LABELS[variant]} — pick your style in Settings
-          </p>
+          </span>
+          <span className="text-xs text-muted-foreground tabular-nums">Wed 9:41 AM</span>
         </div>
         <div className="rounded-2xl border bg-card px-4 py-1 shadow-md">
           <ProviderCard
@@ -101,47 +103,50 @@ export function WelcomeStep({ onContinue, onSkip, skipBusy, menubarCycleMs = 180
 }
 
 function MenubarIconPreview({ variant }: { variant: MenubarVariant }) {
+  const claude = <ProviderGlyph iconUrl={claudeIconUrl} pluginId="claude" />
+  const codex = <ProviderGlyph iconUrl={codexIconUrl} pluginId="codex" />
+  const cursor = <ProviderGlyph iconUrl={cursorIconUrl} pluginId="cursor" />
   switch (variant) {
     case "percent":
       return (
         <>
-          <Logo className="size-3.5" aria-hidden />
+          {claude}
           68%
         </>
       )
     case "donut":
       return (
         <>
-          <Logo className="size-3.5" aria-hidden />
+          {claude}
           <MiniDonut fraction={0.68} />
         </>
       )
     case "bars":
       return (
         <>
-          <Logo className="size-3.5" aria-hidden />
+          {claude}
           <MiniBars session={0.68} weekly={0.39} />
         </>
       )
     case "multi-percent":
       return (
         <>
-          <Logo className="size-3.5" aria-hidden />
+          {claude}
           68%
-          <Sparkles className="size-3.5" aria-hidden />
+          {codex}
           42%
-          <SquareTerminal className="size-3.5" aria-hidden />
+          {cursor}
           91%
         </>
       )
     case "multi-bars":
       return (
         <>
-          <Logo className="size-3.5" aria-hidden />
+          {claude}
           <MiniBars session={0.68} weekly={0.39} />
-          <Sparkles className="size-3.5" aria-hidden />
+          {codex}
           <MiniBars session={0.42} weekly={0.8} />
-          <SquareTerminal className="size-3.5" aria-hidden />
+          {cursor}
           <MiniBars session={0.91} weekly={0.55} />
         </>
       )

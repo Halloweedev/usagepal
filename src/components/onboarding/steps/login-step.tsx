@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { EyeOff, Zap } from "lucide-react"
+import { EyeOff } from "lucide-react"
 import { Logo } from "@/components/logo"
 import { Button } from "@/components/ui/button"
 import { StepShell } from "@/components/onboarding/step-shell"
@@ -42,15 +42,9 @@ export function LoginStep({ onContinue, busy }: LoginStepProps) {
           <span className="text-xs text-muted-foreground tabular-nums">Wed 9:41 AM</span>
         </div>
 
-        <div className="space-y-2 text-sm text-muted-foreground">
-          <div className="flex items-center gap-2.5">
-            <Zap className="size-4 shrink-0 text-primary" aria-hidden />
-            <span>Your usage is in the menu bar the moment you sign in.</span>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <EyeOff className="size-4 shrink-0 text-primary" aria-hidden />
-            <span>Starts hidden — no window, no Dock icon.</span>
-          </div>
+        <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+          <EyeOff className="size-4 shrink-0 text-primary" aria-hidden />
+          <span>Starts hidden — no window, no Dock icon.</span>
         </div>
 
         <div className="rounded-2xl border bg-card p-2 shadow-sm">
