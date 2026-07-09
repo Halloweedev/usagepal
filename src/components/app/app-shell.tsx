@@ -56,6 +56,7 @@ export function AppShell({
 
   const {
     containerRef,
+    scrollContainerRef,
     maxPanelHeightPx,
   } = usePanel({
     activeView,
@@ -90,7 +91,7 @@ export function AppShell({
             onReorder={onNavReorder}
           />
           <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
-            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none">
+            <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto scrollbar-none">
               <AppContent
                 {...appContentProps}
                 displayPlugins={displayPlugins}

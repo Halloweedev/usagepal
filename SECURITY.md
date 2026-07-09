@@ -6,7 +6,7 @@ If you find a security vulnerability in UsagePal, please report it responsibly. 
 
 ### Preferred: GitHub Security Advisories
 
-1. Go to the [Security Advisories page](https://github.com/robinebers/openusage/security/advisories/new)
+1. Go to the [Security Advisories page](https://github.com/halloweedev/usagepal/security/advisories/new)
 2. Click "Report a vulnerability"
 3. Fill in the details
 
@@ -14,7 +14,7 @@ This keeps the report private until a fix is released.
 
 ### Alternative: Email
 
-Send details to [rob@robinebers.com](mailto:rob@robinebers.com) with the subject line "UsagePal Security Report".
+Send details to [dmzxnico@pm.me](mailto:dmzxnico@pm.me) with the subject line "UsagePal Security Report".
 
 ## What to Include
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.7.31
+
+Stable release consolidating the v0.7.31 beta line plus Cursor GPT-5.6 pricing.
+
+### New Features
+- Cursor plugin now prices the GPT-5.6 tiers (Sol, Terra, Luna), including their cache-write and cache-read billing, so Cursor spend stays accurate on the newest models by @Halloweedev
+
+### Improvements
+- Regrouped and decluttered the Settings page — Advanced tucked into its own modal alongside Debug and Notifications, and the Display/System/Extensions group labels dropped for a cleaner layout by @Halloweedev
+- Show Plugins is now a borderless toggle and Metric has its own proper heading, for clearer visual hierarchy in Settings by @Halloweedev
+
+### Bug Fixes
+- Fixed the Advanced and Debug buttons losing their border after opening or closing their modal, caused by a WebKit repaint issue tied to programmatically refocusing the trigger button by @Halloweedev
+- Fixed Settings modals (Advanced, Debug, Notifications) covering the whole app window with a hard-edged overlay instead of staying within the app's rounded shape by @Halloweedev
+- Fixed the Settings/Home scroll position carrying over between views instead of resetting to the top by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.30...v0.7.31](https://github.com/Halloweedev/usagepal/compare/v0.7.30...v0.7.31)
+
 ## v0.7.30
 
 Stable release consolidating the v0.7.30 beta line (beta.1 → beta.3) plus automatic Share panel persistence.

@@ -10,6 +10,12 @@
 
 See your usage at a glance from your menu bar. No digging through dashboards.
 
+<div align="center">
+  <img src="assets/homepage.png" alt="UsagePal home page showing Claude and Codex usage in dark and light mode" width="900" />
+  <br />
+  <img src="assets/share.png" alt="UsagePal share card for Claude usage in dark and light mode" width="900" />
+</div>
+
 ## Download
 
 [**Download the latest release**](https://github.com/Halloweedev/usagepal/releases/latest) (macOS, Apple Silicon & Intel)

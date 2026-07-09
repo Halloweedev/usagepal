@@ -1825,6 +1825,21 @@ describe("cursor pricing", () => {
     })
   })
 
+  it("resolves the GPT-5.6 tiers to their rates", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.resolveModelRates("gpt-5.6-sol")).toEqual({
+      input: 5.0, cache_write: 6.25, cache_read: 0.5, output: 30.0, apply_max_mode_uplift: true,
+    })
+    expect(plugin.__test.resolveModelRates("gpt-5.6-terra")).toEqual({
+      input: 2.5, cache_write: 3.125, cache_read: 0.25, output: 15.0, apply_max_mode_uplift: true,
+    })
+    expect(plugin.__test.resolveModelRates("gpt-5.6-luna")).toEqual({
+      input: 1.0, cache_write: 1.25, cache_read: 0.1, output: 6.0, apply_max_mode_uplift: true,
+    })
+    // A tiered slug must not fall through to the generic gpt-5 rule.
+    expect(plugin.__test.resolveModelRates("gpt-5.6-sol-thinking").output).toBe(30.0)
+  })
+
   it("returns null for an unknown slug", async () => {
     const plugin = await loadPlugin()
     expect(plugin.__test.resolveModelRates("totally-unknown-model")).toBeNull()
