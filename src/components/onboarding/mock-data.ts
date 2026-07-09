@@ -56,10 +56,11 @@ export function makeMockCodexLines(now: number = Date.now()): MetricLine[] {
       periodDurationMs: 7 * DAY_MS,
       color: null,
     },
+    // Mirrors the real Codex view's "Rate Limit Resets" line.
     {
       type: "text",
-      label: "Credits",
-      value: "$38.20 left",
+      label: "Rate Limit Resets",
+      value: "1 available",
       color: null,
       subtitle: null,
       resetExpiry: [new Date(now + 30 * DAY_MS).toISOString()],

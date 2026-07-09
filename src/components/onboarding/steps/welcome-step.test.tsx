@@ -52,4 +52,17 @@ describe("WelcomeStep", () => {
     expect(screen.getByRole("button", { name: "Skip setup" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled()
   })
+
+  it("cycles the menu-bar preview through all icon styles", async () => {
+    render(
+      <WelcomeStep onContinue={() => {}} onSkip={() => {}} skipBusy={false} menubarCycleMs={40} />
+    )
+    const preview = screen.getByTestId("menubar-preview")
+    expect(preview).toHaveAttribute("data-variant", "percent")
+    for (const variant of ["donut", "bars", "multi-percent", "multi-bars"]) {
+      await waitFor(() => expect(preview).toHaveAttribute("data-variant", variant))
+    }
+    // The rotation wraps back around to the first style.
+    await waitFor(() => expect(preview).toHaveAttribute("data-variant", "percent"))
+  })
 })

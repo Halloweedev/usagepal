@@ -59,8 +59,8 @@ describe("onboarding mock data", () => {
     )
     expect(screen.getByText("5h limit")).toBeInTheDocument()
     expect(screen.getByText("62% left")).toBeInTheDocument()
-    expect(screen.getByText("Credits")).toBeInTheDocument()
-    expect(screen.getByText("$38.20 left")).toBeInTheDocument()
+    expect(screen.getByText("Rate Limit Resets")).toBeInTheDocument()
+    expect(screen.getByText("1 available")).toBeInTheDocument()
   })
 
   it("puts the Codex weekly line over pace so the flame and deficit show", () => {

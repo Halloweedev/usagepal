@@ -137,7 +137,6 @@ export function TourStep({ onContinue, armDelayMs = 600, hoverDwellMs = 400 }: T
   return (
     <StepShell
       title="Try it for yourself"
-      description="This is a live provider view with sample data — everything on it works. Follow the highlight."
       actions={
         <>
           <Button size="lg" onClick={onContinue} disabled={!allDone}>
@@ -192,7 +191,7 @@ export function TourStep({ onContinue, armDelayMs = 600, hoverDwellMs = 400 }: T
             // pulsing softly to invite the gesture.
             <Pointer
               aria-hidden
-              className="pointer-events-none absolute z-10 size-5 animate-pulse text-green-500 drop-shadow-sm"
+              className="pointer-events-none absolute z-10 size-5 animate-pulse fill-white text-green-500 drop-shadow-sm"
               style={{
                 top: spot.top + spot.height - 2,
                 left: spot.left + spot.width / 2 - 10,
