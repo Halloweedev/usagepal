@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
-import { BellOff, BellRing, CircleCheck, KeyRound, LoaderCircle, Power } from "lucide-react"
+import { BellOff, BellRing, Check, CircleCheck, KeyRound, LoaderCircle, Power } from "lucide-react"
 import type { PluginMeta } from "@/bindings"
 import { Button } from "@/components/ui/button"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
 import { StepShell } from "@/components/onboarding/step-shell"
-import { hasManagedApiKey } from "@/lib/plugin-types"
+import { hasManagedApiKey, isDevOnlyPlugin } from "@/lib/plugin-types"
 import { cn } from "@/lib/utils"
 
 type ProviderChip = {
@@ -16,11 +16,15 @@ type ProviderChip = {
   needsKey: boolean
 }
 
+/** The done step's provider pick: `keep` stays enabled, `drop` gets disabled. */
+export type ProviderSelection = { keep: string[]; drop: string[] }
+
 type DoneStepProps = {
   alertsEnabled: number
   startOnLogin: boolean
-  onFinish: (openSettings: boolean) => void
-  busyAction: "settings" | "finish" | null
+  onFinish: (openSettings: boolean, selection: ProviderSelection) => void
+  /** True while either finish action is in flight; disables both buttons. */
+  busy: boolean
   /** Minimum time the "looking for providers" loader stays visible. */
   scanMinMs?: number
   /** Delay between each provider chip's reveal. */
@@ -31,13 +35,15 @@ export function DoneStep({
   alertsEnabled,
   startOnLogin,
   onFinish,
-  busyAction,
+  busy,
   scanMinMs = 900,
   revealStepMs = 300,
 }: DoneStepProps) {
   // null = still scanning; then chips reveal one by one until settled.
   const [chips, setChips] = useState<ProviderChip[] | null>(null)
   const [revealed, setRevealed] = useState(0)
+  // Detected chips start selected; needs-key chips start deselected.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!isTauri()) {
@@ -54,26 +60,21 @@ export function DoneStep({
         new Promise((resolve) => setTimeout(resolve, scanMinMs)),
       ])
       if (cancelled) return
-      // The chaos-test plugin is dev-only (excluded from release bundles) but
-      // loads in dev builds; keep it out of the user-facing reveal.
-      const metas = (Array.isArray(plugins) ? plugins : []).filter((plugin) => plugin.id !== "mock")
+      const toChip = (plugin: PluginMeta, needsKey: boolean): ProviderChip => ({
+        id: plugin.id,
+        name: plugin.name,
+        iconUrl: plugin.iconUrl,
+        needsKey,
+      })
+      const metas = (Array.isArray(plugins) ? plugins : []).filter((plugin) => !isDevOnlyPlugin(plugin.id))
       const detected = metas.filter((plugin) => plugin.detected)
       // Key-managed providers that were not detected are still worth surfacing:
       // they work as soon as the user adds their key in Settings → Plugins.
       const keyManaged = metas.filter((plugin) => !plugin.detected && hasManagedApiKey(plugin.id))
+      setSelected(new Set(detected.map((plugin) => plugin.id)))
       setChips([
-        ...detected.map((plugin) => ({
-          id: plugin.id,
-          name: plugin.name,
-          iconUrl: plugin.iconUrl,
-          needsKey: false,
-        })),
-        ...keyManaged.map((plugin) => ({
-          id: plugin.id,
-          name: plugin.name,
-          iconUrl: plugin.iconUrl,
-          needsKey: true,
-        })),
+        ...detected.map((plugin) => toChip(plugin, false)),
+        ...keyManaged.map((plugin) => toChip(plugin, true)),
       ])
     }
     void scan()
@@ -90,6 +91,22 @@ export function DoneStep({
 
   const settled = chips !== null && revealed >= chips.length
 
+  const toggleChip = (id: string) =>
+    setSelected((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const handleFinish = (openSettings: boolean) => {
+    const all = chips ?? []
+    onFinish(openSettings, {
+      keep: all.filter((chip) => selected.has(chip.id)).map((chip) => chip.id),
+      drop: all.filter((chip) => !selected.has(chip.id)).map((chip) => chip.id),
+    })
+  }
+
   const alertsText =
     alertsEnabled > 0 ? `${alertsEnabled} alert${alertsEnabled === 1 ? "" : "s"} on` : "Alerts off"
   const loginText = startOnLogin ? "Starts when you sign in" : "Starts only when you open it"
@@ -99,12 +116,12 @@ export function DoneStep({
       title="You're all set"
       description="UsagePal now lives in your menu bar, keeping your usage one glance away."
       actions={
-        <Button size="lg" onClick={() => onFinish(false)} disabled={busyAction !== null}>
+        <Button size="lg" onClick={() => handleFinish(false)} disabled={busy}>
           Open UsagePal
         </Button>
       }
       secondaryAction={
-        <Button size="lg" variant="ghost" onClick={() => onFinish(true)} disabled={busyAction !== null}>
+        <Button size="lg" variant="ghost" onClick={() => handleFinish(true)} disabled={busy}>
           Open Settings
         </Button>
       }
@@ -126,28 +143,39 @@ export function DoneStep({
             <p className="text-center text-xs font-medium text-muted-foreground">
               Detected on this Mac
             </p>
+            <p className="text-center text-[10px] text-muted-foreground">
+              Tap a provider to include or exclude it
+            </p>
             <div className="flex flex-wrap items-center justify-center gap-1.5">
-              {chips.slice(0, revealed).map((chip) => (
-                <span
-                  key={chip.id}
-                  data-testid={`provider-chip-${chip.id}`}
-                  title={chip.needsKey ? "Add its key in Settings → Plugins" : undefined}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs font-medium animate-in zoom-in-75 fade-in duration-300",
-                    chip.needsKey && "text-muted-foreground opacity-70"
-                  )}
-                >
-                  <ProviderIconMask
-                    iconUrl={chip.iconUrl}
-                    pluginId={chip.id}
-                    sizePx={12}
-                    className={chip.needsKey ? "bg-muted-foreground" : "bg-foreground"}
-                    fallbackClassName="text-foreground"
-                  />
-                  {chip.name}
-                  {chip.needsKey && <KeyRound className="size-3" aria-hidden />}
-                </span>
-              ))}
+              {chips.slice(0, revealed).map((chip) => {
+                const isSelected = selected.has(chip.id)
+                return (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    data-testid={`provider-chip-${chip.id}`}
+                    aria-pressed={isSelected}
+                    onClick={() => toggleChip(chip.id)}
+                    title={chip.needsKey ? "Add its key in Settings → Plugins" : undefined}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs font-medium animate-in zoom-in-75 fade-in duration-300 transition-opacity",
+                      chip.needsKey && "text-muted-foreground",
+                      isSelected ? "border-primary/50" : "opacity-40"
+                    )}
+                  >
+                    <ProviderIconMask
+                      iconUrl={chip.iconUrl}
+                      pluginId={chip.id}
+                      sizePx={12}
+                      className={chip.needsKey ? "bg-muted-foreground" : "bg-foreground"}
+                      fallbackClassName="text-foreground"
+                    />
+                    {chip.name}
+                    {chip.needsKey && <KeyRound className="size-3" aria-hidden />}
+                    {isSelected && <Check className="size-3 text-primary" aria-hidden />}
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}

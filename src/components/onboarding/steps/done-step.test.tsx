@@ -32,41 +32,34 @@ describe("DoneStep", () => {
   })
 
   it("summarizes what was configured", () => {
-    render(<DoneStep alertsEnabled={2} startOnLogin={true} onFinish={() => {}} busyAction={null} />)
+    render(<DoneStep alertsEnabled={2} startOnLogin={true} onFinish={() => {}} busy={false} />)
     expect(screen.getByRole("heading", { name: "You're all set" })).toBeInTheDocument()
     expect(screen.getByText("2 alerts on")).toBeInTheDocument()
     expect(screen.getByText("Starts when you sign in")).toBeInTheDocument()
   })
 
   it("summarizes a skipped setup", () => {
-    render(<DoneStep alertsEnabled={0} startOnLogin={false} onFinish={() => {}} busyAction={null} />)
+    render(<DoneStep alertsEnabled={0} startOnLogin={false} onFinish={() => {}} busy={false} />)
     expect(screen.getByText("Alerts off")).toBeInTheDocument()
     expect(screen.getByText("Starts only when you open it")).toBeInTheDocument()
   })
 
   it("uses singular for one alert", () => {
-    render(<DoneStep alertsEnabled={1} startOnLogin={false} onFinish={() => {}} busyAction={null} />)
+    render(<DoneStep alertsEnabled={1} startOnLogin={false} onFinish={() => {}} busy={false} />)
     expect(screen.getByText("1 alert on")).toBeInTheDocument()
   })
 
   it("finishes into the app or settings", async () => {
     const onFinish = vi.fn()
-    render(<DoneStep alertsEnabled={0} startOnLogin={false} onFinish={onFinish} busyAction={null} />)
+    render(<DoneStep alertsEnabled={0} startOnLogin={false} onFinish={onFinish} busy={false} />)
     await userEvent.click(screen.getByRole("button", { name: "Open UsagePal" }))
-    expect(onFinish).toHaveBeenCalledWith(false)
+    expect(onFinish).toHaveBeenCalledWith(false, { keep: [], drop: [] })
     await userEvent.click(screen.getByRole("button", { name: "Open Settings" }))
-    expect(onFinish).toHaveBeenCalledWith(true)
+    expect(onFinish).toHaveBeenCalledWith(true, { keep: [], drop: [] })
   })
 
-  it("disables buttons while finishing", () => {
-    const { rerender } = render(
-      <DoneStep alertsEnabled={0} startOnLogin={false} onFinish={() => {}} busyAction="finish" />
-    )
-    expect(screen.getByRole("button", { name: "Open UsagePal" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "Open Settings" })).toBeDisabled()
-    rerender(
-      <DoneStep alertsEnabled={0} startOnLogin={false} onFinish={() => {}} busyAction="settings" />
-    )
+  it("disables both buttons while finishing", () => {
+    render(<DoneStep alertsEnabled={0} startOnLogin={false} onFinish={() => {}} busy={true} />)
     expect(screen.getByRole("button", { name: "Open UsagePal" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Open Settings" })).toBeDisabled()
   })
@@ -88,7 +81,7 @@ describe("DoneStep", () => {
           alertsEnabled={0}
           startOnLogin={false}
           onFinish={() => {}}
-          busyAction={null}
+          busy={false}
           scanMinMs={10}
           revealStepMs={5}
         />
@@ -119,7 +112,7 @@ describe("DoneStep", () => {
           alertsEnabled={0}
           startOnLogin={false}
           onFinish={() => {}}
-          busyAction={null}
+          busy={false}
           scanMinMs={10}
           revealStepMs={5}
         />
@@ -137,6 +130,51 @@ describe("DoneStep", () => {
       )
     })
 
+    it("selects detected chips and deselects needs-key chips by default", async () => {
+      state.invokeMock.mockResolvedValue([
+        plugin("claude", "Claude", true),
+        plugin("openrouter", "OpenRouter", false),
+      ])
+      render(
+        <DoneStep
+          alertsEnabled={0}
+          startOnLogin={false}
+          onFinish={() => {}}
+          busy={false}
+          scanMinMs={10}
+          revealStepMs={5}
+        />
+      )
+      await waitFor(() =>
+        expect(screen.getByTestId("provider-chip-openrouter")).toBeInTheDocument()
+      )
+      expect(screen.getByTestId("provider-chip-claude")).toHaveAttribute("aria-pressed", "true")
+      expect(screen.getByTestId("provider-chip-openrouter")).toHaveAttribute("aria-pressed", "false")
+    })
+
+    it("reports the selection split on finish", async () => {
+      const onFinish = vi.fn()
+      state.invokeMock.mockResolvedValue([
+        plugin("claude", "Claude", true),
+        plugin("codex", "Codex", true),
+      ])
+      render(
+        <DoneStep
+          alertsEnabled={0}
+          startOnLogin={false}
+          onFinish={onFinish}
+          busy={false}
+          scanMinMs={10}
+          revealStepMs={5}
+        />
+      )
+      await waitFor(() => expect(screen.getByTestId("provider-chip-codex")).toBeInTheDocument())
+      await userEvent.click(screen.getByTestId("provider-chip-codex"))
+      expect(screen.getByTestId("provider-chip-codex")).toHaveAttribute("aria-pressed", "false")
+      await userEvent.click(screen.getByRole("button", { name: "Open UsagePal" }))
+      expect(onFinish).toHaveBeenCalledWith(false, { keep: ["claude"], drop: ["codex"] })
+    })
+
     it("shows a hint when nothing is detected", async () => {
       state.invokeMock.mockResolvedValue([plugin("devin", "Devin", false)])
       render(
@@ -144,7 +182,7 @@ describe("DoneStep", () => {
           alertsEnabled={0}
           startOnLogin={false}
           onFinish={() => {}}
-          busyAction={null}
+          busy={false}
           scanMinMs={10}
           revealStepMs={5}
         />
