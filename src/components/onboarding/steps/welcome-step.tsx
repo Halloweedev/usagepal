@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
-import claudeIconUrl from "../../../../plugins/claude/icon.svg"
-import codexIconUrl from "../../../../plugins/codex/icon.svg"
-import cursorIconUrl from "../../../../plugins/cursor/icon.svg"
+import claudeIconRaw from "../../../../plugins/claude/icon.svg?raw"
+import codexIconRaw from "../../../../plugins/codex/icon.svg?raw"
+import cursorIconRaw from "../../../../plugins/cursor/icon.svg?raw"
 import { Button } from "@/components/ui/button"
 import { ProviderCard } from "@/components/provider-card"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
@@ -15,6 +15,13 @@ const LINE_REVEAL_INTERVAL_MS = 350
  * row in its percent and bars variants. */
 const MENUBAR_VARIANTS = ["percent", "donut", "bars", "multi-percent", "multi-bars"] as const
 type MenubarVariant = (typeof MENUBAR_VARIANTS)[number]
+
+/** Inlined as data URLs so the mask images load in the setup webview the same
+ * way the app's own icon_data_url does. */
+const toSvgDataUrl = (raw: string) => `data:image/svg+xml;utf8,${encodeURIComponent(raw)}`
+const claudeIconUrl = toSvgDataUrl(claudeIconRaw)
+const codexIconUrl = toSvgDataUrl(codexIconRaw)
+const cursorIconUrl = toSvgDataUrl(cursorIconRaw)
 
 /** Real provider icons, rendered as monochrome masks like the actual tray. */
 function ProviderGlyph({ iconUrl, pluginId }: { iconUrl: string; pluginId: string }) {
@@ -63,14 +70,14 @@ export function WelcomeStep({ onContinue, onSkip, skipBusy, menubarCycleMs = 180
       title="Welcome to UsagePal"
       description="UsagePal lives in your menu bar and keeps your AI usage one glance away. Here's what it looks like."
       actions={
-        <>
-          <Button size="lg" onClick={onContinue} disabled={skipBusy}>
-            Continue
-          </Button>
-          <Button size="lg" variant="ghost" onClick={onSkip} disabled={skipBusy}>
-            Skip setup
-          </Button>
-        </>
+        <Button size="lg" onClick={onContinue} disabled={skipBusy}>
+          Continue
+        </Button>
+      }
+      secondaryAction={
+        <Button size="lg" variant="ghost" onClick={onSkip} disabled={skipBusy}>
+          Skip setup
+        </Button>
       }
     >
       <div className="mx-auto w-full max-w-sm space-y-3">

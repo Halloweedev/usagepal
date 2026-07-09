@@ -7,17 +7,19 @@ describe("DoneStep", () => {
   it("summarizes what was configured", () => {
     render(<DoneStep alertsEnabled={2} startOnLogin={true} onFinish={() => {}} busyAction={null} />)
     expect(screen.getByRole("heading", { name: "You're all set" })).toBeInTheDocument()
-    expect(screen.getByText("2 alerts on · starts at login")).toBeInTheDocument()
+    expect(screen.getByText("2 alerts on")).toBeInTheDocument()
+    expect(screen.getByText("Starts when you sign in")).toBeInTheDocument()
   })
 
   it("summarizes a skipped setup", () => {
     render(<DoneStep alertsEnabled={0} startOnLogin={false} onFinish={() => {}} busyAction={null} />)
-    expect(screen.getByText("Alerts off · manual start")).toBeInTheDocument()
+    expect(screen.getByText("Alerts off")).toBeInTheDocument()
+    expect(screen.getByText("Starts only when you open it")).toBeInTheDocument()
   })
 
   it("uses singular for one alert", () => {
     render(<DoneStep alertsEnabled={1} startOnLogin={false} onFinish={() => {}} busyAction={null} />)
-    expect(screen.getByText("1 alert on · manual start")).toBeInTheDocument()
+    expect(screen.getByText("1 alert on")).toBeInTheDocument()
   })
 
   it("finishes into the app or settings", async () => {

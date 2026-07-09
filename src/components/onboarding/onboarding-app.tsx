@@ -82,7 +82,14 @@ function OnboardingApp() {
     }
   }
 
-  const showBack = step !== "welcome" && step !== "done" && busyAction === null
+  // Footer Back button, rendered by the steps left of their primary action.
+  const backButton =
+    step !== "welcome" && step !== "done" && busyAction === null ? (
+      <Button size="lg" variant="outline" onClick={back}>
+        <ChevronLeft className="size-4" aria-hidden />
+        Back
+      </Button>
+    ) : undefined
 
   // The setup window is undecorated; Escape dismisses like "Skip setup" —
   // finish without extras and open the app.
@@ -101,16 +108,9 @@ function OnboardingApp() {
       <section className="flex h-full min-h-0 flex-col">
         {/* data-tauri-drag-region makes the header the window's drag handle. */}
         <div data-tauri-drag-region className="flex shrink-0 items-center justify-between border-b px-6 py-4">
-          <div className="pointer-events-none flex items-center gap-2">
-            {showBack && (
-              <Button variant="ghost" size="icon-xs" aria-label="Back" onClick={back} className="pointer-events-auto">
-                <ChevronLeft className="size-4" />
-              </Button>
-            )}
-            <div className="flex items-center gap-3 text-lg font-semibold">
-              <Logo className="size-9 text-foreground" aria-hidden />
-              UsagePal
-            </div>
+          <div className="pointer-events-none flex items-center gap-3 text-lg font-semibold">
+            <Logo className="size-9 text-foreground" aria-hidden />
+            UsagePal
           </div>
           <div className="pointer-events-none flex w-28 gap-1.5" aria-label={`Step ${stepIndex(step) + 1} of ${steps.length}`}>
             {steps.map((item) => (
@@ -136,16 +136,21 @@ function OnboardingApp() {
             {step === "welcome" && (
               <WelcomeStep onContinue={next} onSkip={() => finish(false)} skipBusy={busyAction === "finish"} />
             )}
-            {step === "tour" && <TourStep onContinue={next} />}
+            {step === "tour" && <TourStep onContinue={next} backButton={backButton} />}
             {step === "notifications" && (
               <NotificationsStep
                 onEnable={enableNotifications}
                 onSkip={next}
                 busy={busyAction === "notifications"}
+                backButton={backButton}
               />
             )}
             {step === "login" && (
-              <LoginStep onContinue={applyStartOnLogin} busy={busyAction === "login"} />
+              <LoginStep
+                onContinue={applyStartOnLogin}
+                busy={busyAction === "login"}
+                backButton={backButton}
+              />
             )}
             {step === "done" && (
               <DoneStep

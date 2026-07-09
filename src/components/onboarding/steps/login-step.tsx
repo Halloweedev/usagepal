@@ -8,9 +8,11 @@ import { cn } from "@/lib/utils"
 type LoginStepProps = {
   onContinue: (startOnLogin: boolean) => void
   busy: boolean
+  /** Orchestrator-provided Back button, rendered left of Continue. */
+  backButton?: React.ReactNode
 }
 
-export function LoginStep({ onContinue, busy }: LoginStepProps) {
+export function LoginStep({ onContinue, busy, backButton }: LoginStepProps) {
   const [enabled, setEnabled] = useState(true)
 
   return (
@@ -18,9 +20,12 @@ export function LoginStep({ onContinue, busy }: LoginStepProps) {
       title="Start when you sign in"
       description="Launch UsagePal quietly with macOS so your menu-bar usage is ready before you need it."
       actions={
-        <Button size="lg" onClick={() => onContinue(enabled)} disabled={busy}>
-          Continue
-        </Button>
+        <>
+          {backButton}
+          <Button size="lg" onClick={() => onContinue(enabled)} disabled={busy}>
+            Continue
+          </Button>
+        </>
       }
     >
       <div className="mx-auto w-full max-w-sm space-y-4">

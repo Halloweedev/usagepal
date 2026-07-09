@@ -22,13 +22,15 @@ const TASK_LABELS: Record<TourTaskId, string> = {
 
 type TourStepProps = {
   onContinue: () => void
+  /** Orchestrator-provided Back button, rendered left of Continue. */
+  backButton?: React.ReactNode
   /** Pointer detection stays disarmed this long after mount so the step
    * transition can't complete a task with a resting cursor. */
   armDelayMs?: number
   hoverDwellMs?: number
 }
 
-export function TourStep({ onContinue, armDelayMs = 600, hoverDwellMs = 400 }: TourStepProps) {
+export function TourStep({ onContinue, backButton, armDelayMs = 600, hoverDwellMs = 400 }: TourStepProps) {
   const [lines] = useState(() => makeMockCodexLines())
   const [done, setDone] = useState<Record<TourTaskId, boolean>>({
     "hover-reset": false,
@@ -139,15 +141,18 @@ export function TourStep({ onContinue, armDelayMs = 600, hoverDwellMs = 400 }: T
       title="Try it for yourself"
       actions={
         <>
+          {backButton}
           <Button size="lg" onClick={onContinue} disabled={!allDone}>
             Continue
           </Button>
-          {!allDone && (
-            <Button size="lg" variant="ghost" onClick={onContinue}>
-              Skip tour
-            </Button>
-          )}
         </>
+      }
+      secondaryAction={
+        !allDone && (
+          <Button size="lg" variant="ghost" onClick={onContinue}>
+            Skip tour
+          </Button>
+        )
       }
     >
       <div className="space-y-4">

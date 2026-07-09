@@ -268,7 +268,10 @@ describe("OnboardingApp", () => {
     await userEvent.click(screen.getByRole("button", { name: "Continue" }))
 
     await waitFor(() =>
-      expect(screen.getByText("2 alerts on · starts at login")).toBeInTheDocument()
+      expect(screen.getByText("2 alerts on")).toBeInTheDocument()
+    )
+    await waitFor(() =>
+      expect(screen.getByText("Starts when you sign in")).toBeInTheDocument()
     )
   })
 

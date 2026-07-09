@@ -21,6 +21,8 @@ type NotificationsStepProps = {
   onEnable: (selection: PaceNotificationSettings) => void
   onSkip: () => void
   busy: boolean
+  /** Orchestrator-provided Back button, rendered left of the primary action. */
+  backButton?: React.ReactNode
   /** How long each selected alert stays in the banner preview rotation. */
   previewCycleMs?: number
 }
@@ -29,6 +31,7 @@ export function NotificationsStep({
   onEnable,
   onSkip,
   busy,
+  backButton,
   previewCycleMs = 2000,
 }: NotificationsStepProps) {
   const [selection, setSelection] = useState<PaceNotificationSettings>(
@@ -69,13 +72,16 @@ export function NotificationsStep({
       description="UsagePal can nudge you before a limit runs out. Everything is checked locally on your Mac — nothing is sent anywhere."
       actions={
         <>
+          {backButton}
           <Button size="lg" onClick={() => onEnable(selection)} disabled={busy || !anySelected}>
             Enable notifications
           </Button>
-          <Button size="lg" variant="ghost" onClick={onSkip} disabled={busy}>
-            Not now
-          </Button>
         </>
+      }
+      secondaryAction={
+        <Button size="lg" variant="ghost" onClick={onSkip} disabled={busy}>
+          Not now
+        </Button>
       }
     >
       <div className="space-y-5">
