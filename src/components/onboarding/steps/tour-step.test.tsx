@@ -1,5 +1,4 @@
 import { render, screen, waitFor } from "@testing-library/react"
-import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -7,22 +6,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: vi.fn(() => Promise.resolve()),
 }))
 
-vi.mock("@/components/ui/tooltip", () => ({
-  Tooltip: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  TooltipTrigger: ({
-    children,
-    render: renderProp,
-    ...props
-  }: {
-    children?: ReactNode
-    render?: ((props: Record<string, unknown>) => ReactNode) | ReactNode
-  }) => {
-    if (typeof renderProp === "function") return renderProp({ ...props, children })
-    if (renderProp) return renderProp
-    return <div {...props}>{children}</div>
-  },
-  TooltipContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}))
+vi.mock("@/components/ui/tooltip", () => import("@/test/tooltip-mock"))
 
 import { TourStep } from "@/components/onboarding/steps/tour-step"
 
@@ -30,6 +14,7 @@ const TASK_IDS = [
   "tour-task-hover-reset",
   "tour-task-click-reset",
   "tour-task-hover-flame",
+  "tour-task-hover-expiry",
   "tour-task-flip-usage",
 ] as const
 
@@ -46,6 +31,10 @@ function usageToggle() {
   return screen.getByTestId("tour-card").querySelector("[data-usage-toggle]") as HTMLElement
 }
 
+function expiryValue() {
+  return screen.getByTestId("tour-card").querySelector("[data-reset-expiry]") as HTMLElement
+}
+
 async function completeAllTasks() {
   await userEvent.hover(resetButton())
   await waitFor(() =>
@@ -56,11 +45,15 @@ async function completeAllTasks() {
   await waitFor(() =>
     expect(screen.getByTestId("tour-task-hover-flame")).toHaveAttribute("data-done", "true")
   )
+  await userEvent.hover(expiryValue())
+  await waitFor(() =>
+    expect(screen.getByTestId("tour-task-hover-expiry")).toHaveAttribute("data-done", "true")
+  )
   await userEvent.click(usageToggle())
 }
 
 describe("TourStep", () => {
-  it("starts with Continue disabled and all four tasks pending", () => {
+  it("starts with Continue disabled and all five tasks pending", () => {
     renderArmed()
     expect(screen.getByRole("heading", { name: "Try it for yourself" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled()
@@ -111,6 +104,14 @@ describe("TourStep", () => {
     )
   })
 
+  it("completes the expiry hover task through the resets count", async () => {
+    renderArmed()
+    await userEvent.hover(expiryValue())
+    await waitFor(() =>
+      expect(screen.getByTestId("tour-task-hover-expiry")).toHaveAttribute("data-done", "true")
+    )
+  })
+
   it("flips left to used through the usage value and updates the card", async () => {
     renderArmed()
     expect(screen.getByText("62% left")).toBeInTheDocument()
@@ -120,7 +121,7 @@ describe("TourStep", () => {
     expect(screen.getByText("38%")).toBeInTheDocument()
   })
 
-  it("enables Continue only after all four tasks are done", async () => {
+  it("enables Continue only after all five tasks are done", async () => {
     const onContinue = vi.fn()
     renderArmed(onContinue)
     await completeAllTasks()

@@ -72,12 +72,13 @@ function PaceIndicator({
       <TooltipTrigger
         render={(props) =>
           isBehind ? (
-            <span {...props} className="inline-flex items-center" aria-label={ariaLabel}>
+            <span {...props} data-pace-status={status} className="inline-flex items-center" aria-label={ariaLabel}>
               <Flame className="h-3.5 w-3.5 text-red-500" />
             </span>
           ) : (
             <span
               {...props}
+              data-pace-status={status}
               className={`inline-block w-2 h-2 rounded-full ${PACE_DOT_CLASS[status]}`}
               aria-label={ariaLabel}
             />
@@ -492,6 +493,7 @@ function MetricLineRenderer({
                 render={(props) => (
                   <span
                     {...props}
+                    data-reset-expiry
                     className="text-xs text-muted-foreground truncate flex-shrink-0 max-w-[45%] text-right cursor-default"
                     style={line.color ? { color: line.color } : undefined}
                   >
@@ -683,6 +685,7 @@ function MetricLineRenderer({
                       <button
                         {...props}
                         type="button"
+                        data-reset-toggle
                         onClick={onResetTimerDisplayModeToggle}
                         className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors"
                       >
@@ -700,6 +703,7 @@ function MetricLineRenderer({
             ) : resetLabel && onResetTimerDisplayModeToggle ? (
               <button
                 type="button"
+                data-reset-toggle
                 onClick={onResetTimerDisplayModeToggle}
                 className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors"
               >

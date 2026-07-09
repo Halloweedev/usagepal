@@ -7,18 +7,26 @@ import { makeMockCodexLines } from "@/components/onboarding/mock-data"
 import { cn } from "@/lib/utils"
 import type { DisplayMode, ResetTimerDisplayMode } from "@/lib/settings"
 
-/** The four guided gestures, in the order the spotlight walks through them.
+/** The five guided gestures, in the order the spotlight walks through them.
  * Completion is accepted in any order; the spotlight always points at the
  * first task still pending. */
-const TOUR_TASKS = ["hover-reset", "click-reset", "hover-flame", "flip-usage"] as const
+const TOUR_TASKS = ["hover-reset", "click-reset", "hover-flame", "hover-expiry", "flip-usage"] as const
 type TourTaskId = (typeof TOUR_TASKS)[number]
 
 const TASK_LABELS: Record<TourTaskId, string> = {
   "hover-reset": "Hover the reset time to peek at the exact moment",
   "click-reset": "Click the reset time to flip countdown and exact time",
   "hover-flame": "Hover the flame to see why this limit runs hot",
+  "hover-expiry": "Hover the resets count to see when they expire",
   "flip-usage": "Click a usage value to switch between left and used",
 }
+
+/** Stable hooks ProviderCard exposes for its interactive elements — the single
+ * source for both hover detection and spotlight positioning. */
+const RESET_TOGGLE_SELECTOR = "[data-reset-toggle]"
+const FLAME_SELECTOR = '[data-pace-status="behind"]'
+const RESET_EXPIRY_SELECTOR = "[data-reset-expiry]"
+const USAGE_TOGGLE_SELECTOR = "[data-usage-toggle]"
 
 type TourStepProps = {
   onContinue: () => void
@@ -36,6 +44,7 @@ export function TourStep({ onContinue, backButton, armDelayMs = 600, hoverDwellM
     "hover-reset": false,
     "click-reset": false,
     "hover-flame": false,
+    "hover-expiry": false,
     "flip-usage": false,
   })
   const [resetMode, setResetMode] = useState<ResetTimerDisplayMode>("relative")
@@ -68,10 +77,9 @@ export function TourStep({ onContinue, backButton, armDelayMs = 600, hoverDwellM
   // The reset button and flame live inside ProviderCard, so hover tasks are
   // detected by delegation on the card wrapper rather than direct handlers.
   const hoverTargetFor = (element: Element): TourTaskId | null => {
-    const button = element.closest("button")
-    if (button && /^Resets/.test(button.textContent ?? "")) return "hover-reset"
-    const flame = element.closest('span[aria-label="Will run out"]')
-    if (flame) return "hover-flame"
+    if (element.closest(RESET_TOGGLE_SELECTOR)) return "hover-reset"
+    if (element.closest(FLAME_SELECTOR)) return "hover-flame"
+    if (element.closest(RESET_EXPIRY_SELECTOR)) return "hover-expiry"
     return null
   }
 
@@ -106,14 +114,14 @@ export function TourStep({ onContinue, backButton, armDelayMs = 600, hoverDwellM
     const findTarget = (): Element | null => {
       switch (activeTask) {
         case "hover-reset":
-        case "click-reset": {
-          const buttons = Array.from(root.querySelectorAll("button"))
-          return buttons.find((button) => /^Resets/.test(button.textContent ?? "")) ?? null
-        }
+        case "click-reset":
+          return root.querySelector(RESET_TOGGLE_SELECTOR)
         case "hover-flame":
-          return root.querySelector('span[aria-label="Will run out"]')
+          return root.querySelector(FLAME_SELECTOR)
+        case "hover-expiry":
+          return root.querySelector(RESET_EXPIRY_SELECTOR)
         case "flip-usage":
-          return root.querySelector("[data-usage-toggle]")
+          return root.querySelector(USAGE_TOGGLE_SELECTOR)
       }
     }
     const update = () => {
