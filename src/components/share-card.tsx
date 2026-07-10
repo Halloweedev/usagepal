@@ -3,7 +3,7 @@ import type { MetricLine } from "@/lib/plugin-types"
 import type { ModelBreakdownParsed, ModelDisplayOptions } from "@/lib/model-breakdown-format"
 import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
-import { Logo } from "@/components/logo"
+import { ShareWatermark } from "@/components/share-watermark"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
 
 type ProgressMetricLine = Extract<MetricLine, { type: "progress" }> & { used: number; limit: number }
@@ -304,15 +304,7 @@ export function ShareCard({
         </div>
       )}
       </div>
-      {showWatermark && (
-        <div
-          data-testid="share-card-watermark"
-          className={cn("flex items-center justify-center gap-1.5 pb-1 pt-2.5 text-xs", styles.subtext)}
-        >
-          <Logo aria-hidden="true" className="size-3.5 shrink-0" />
-          Shared via UsagePal
-        </div>
-      )}
+      {showWatermark && <ShareWatermark subtextClassName={styles.subtext} />}
     </div>
   )
 }

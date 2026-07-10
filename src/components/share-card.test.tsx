@@ -58,7 +58,7 @@ describe("ShareCard", () => {
     rerender(
       <ShareCard providerName="Claude" providerIconUrl="/claude.svg" lines={[]} theme="dark" showWatermark={true} />
     )
-    expect(screen.getByTestId("share-card-watermark")).toHaveTextContent("Shared via UsagePal")
+    expect(screen.getByTestId("share-card-watermark")).toHaveTextContent("Track your AI usage with UsagePal")
   })
 
   it("applies literal theme colors independent of the app's dark mode class", () => {
@@ -194,7 +194,7 @@ describe("ShareCard", () => {
     expect(surface).not.toContainElement(watermark)
     expect(surface.compareDocumentPosition(watermark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(watermark.querySelector("svg[aria-hidden='true']")).toBeTruthy()
-    expect(watermark).toHaveTextContent("Shared via UsagePal")
+    expect(watermark).toHaveTextContent("Track your AI usage with UsagePal")
   })
 
   it("keeps model lines grouped after other lines regardless of input order", () => {
