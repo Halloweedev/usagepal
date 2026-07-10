@@ -16,7 +16,7 @@
 
 ### GET /backend-api/wham/usage
 
-Returns rate limit windows, optional credits, and available on-demand rate limit resets.
+Returns rate limit windows and optional credits.
 
 #### Headers
 
@@ -55,7 +55,7 @@ Returns rate limit windows, optional credits, and available on-demand rate limit
     "unlimited": false,
     "balance": 820.6969075                 // remaining credits
   },
-  "rate_limit_reset_credits": {            // on-demand resets (optional)
+  "rate_limit_reset_credits": {            // on-demand resets count only (optional)
     "available_count": 1
   }
 }
@@ -67,10 +67,35 @@ UsagePal floors the remaining credit balance to a whole number and displays its 
 equivalent at `$0.04` per credit. For example, `820.6969075` renders as
 `$32.80 · 820 credits`. The credit balance is unbounded; the API does not provide a maximum.
 
-When available, UsagePal displays the on-demand reset count as the first detail text metric,
-for example `1 available`. Banked reset credits expire after 30 days from the date they are
-granted. UsagePal tracks grants locally in `{pluginDataDir}/grants.json` to compute the next
-expiry time, which appears on hover as a tooltip (e.g. `"Expires in 25d 3h"`).
+### GET /backend-api/wham/rate-limit-reset-credits
+
+Returns banked on-demand rate limit resets, including each credit's expiry time.
+
+#### Headers
+
+Same as `/wham/usage`.
+
+#### Response
+
+```jsonc
+{
+  "available_count": 1,
+  "credits": [
+    {
+      "id": "RateLimitResetCredit_…",
+      "reset_type": "codex_rate_limits",
+      "status": "available",               // or "redeemed"
+      "granted_at": "2026-06-17T00:38:38Z",
+      "expires_at": "2026-07-17T00:38:38Z"
+    }
+  ]
+}
+```
+
+UsagePal displays the available reset count as the first detail text metric, for example
+`1 available`. Expiry times come from each available credit's `expires_at` field and appear
+on hover as a tooltip (e.g. `"Expires in 25d 3h"`). If this endpoint fails, UsagePal falls
+back to the count from `/wham/usage` without an expiry time.
 
 ## Authentication
 
