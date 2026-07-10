@@ -59,6 +59,8 @@ export type SharePreset = "summary" | "detailed" | "models";
 
 export type ShareTheme = "dark" | "light";
 
+export type ShareGraphStyle = "bar" | "donut";
+
 export type ShareModelDisplay = {
   showPercent: boolean;
   showToday: boolean;
@@ -76,6 +78,10 @@ export type ShareSettings = {
   showWatermark: boolean;
   showPlan: boolean;
   modelDisplay: ShareModelDisplay;
+  /** Options for the cross-provider "Models used today" graph (Share "All" tab). */
+  graphStyle: ShareGraphStyle;
+  graphShowModelPrices: boolean;
+  graphShowProviderPrices: boolean;
 };
 
 export const DEFAULT_SHARE_SETTINGS: ShareSettings = {
@@ -91,6 +97,9 @@ export const DEFAULT_SHARE_SETTINGS: ShareSettings = {
     showSevenDay: true,
     showThirtyDay: true,
   },
+  graphStyle: "bar",
+  graphShowModelPrices: false,
+  graphShowProviderPrices: false,
 };
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -497,8 +506,9 @@ export async function savePaceNotificationSettings(
 
 const SHARE_PRESETS: SharePreset[] = ["summary", "detailed", "models"];
 const SHARE_THEMES: ShareTheme[] = ["dark", "light"];
+const SHARE_GRAPH_STYLES: ShareGraphStyle[] = ["bar", "donut"];
 
-function normalizeShareSettings(value: unknown): ShareSettings {
+export function normalizeShareSettings(value: unknown): ShareSettings {
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
   const selectedId = typeof record.selectedId === "string" ? record.selectedId : DEFAULT_SHARE_SETTINGS.selectedId;
@@ -518,7 +528,7 @@ function normalizeShareSettings(value: unknown): ShareSettings {
     ? (record.theme as ShareTheme)
     : DEFAULT_SHARE_SETTINGS.theme;
 
-  const readBool = (key: "showWatermark" | "showPlan") =>
+  const readBool = (key: "showWatermark" | "showPlan" | "graphShowModelPrices" | "graphShowProviderPrices") =>
     typeof record[key] === "boolean" ? (record[key] as boolean) : DEFAULT_SHARE_SETTINGS[key];
 
   const md = record.modelDisplay && typeof record.modelDisplay === "object"
@@ -540,6 +550,11 @@ function normalizeShareSettings(value: unknown): ShareSettings {
       showSevenDay: readMd("showSevenDay"),
       showThirtyDay: readMd("showThirtyDay"),
     },
+    graphStyle: SHARE_GRAPH_STYLES.includes(record.graphStyle as ShareGraphStyle)
+      ? (record.graphStyle as ShareGraphStyle)
+      : DEFAULT_SHARE_SETTINGS.graphStyle,
+    graphShowModelPrices: readBool("graphShowModelPrices"),
+    graphShowProviderPrices: readBool("graphShowProviderPrices"),
   };
 }
 

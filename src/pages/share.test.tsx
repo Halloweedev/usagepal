@@ -346,6 +346,9 @@ describe("SharePage", () => {
         showWatermark: false,
         showPlan: false,
         modelDisplay: { showPercent: true, showToday: true, showSevenDay: true, showThirtyDay: true },
+        graphStyle: "bar",
+        graphShowModelPrices: false,
+        graphShowProviderPrices: false,
       },
     })
 

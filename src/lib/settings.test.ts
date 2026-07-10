@@ -613,6 +613,9 @@ describe("settings", () => {
       theme: "light",
       showWatermark: true, // invalid -> default
       showPlan: true, // missing -> default
+      graphStyle: "bar", // missing -> default
+      graphShowModelPrices: false, // missing -> default
+      graphShowProviderPrices: false, // missing -> default
       modelDisplay: {
         showPercent: false,
         showToday: true, // invalid -> default
@@ -630,6 +633,9 @@ describe("settings", () => {
       theme: "dark" as const,
       showWatermark: false,
       showPlan: false,
+      graphStyle: "bar" as const,
+      graphShowModelPrices: false,
+      graphShowProviderPrices: false,
       modelDisplay: { showPercent: true, showToday: false, showSevenDay: true, showThirtyDay: false },
     }
 
@@ -647,6 +653,9 @@ describe("settings", () => {
       theme: "dark" as const,
       showWatermark: false,
       showPlan: false,
+      graphStyle: "bar" as const,
+      graphShowModelPrices: false,
+      graphShowProviderPrices: false,
       modelDisplay: { showPercent: true, showToday: false, showSevenDay: true, showThirtyDay: false },
     }
 
