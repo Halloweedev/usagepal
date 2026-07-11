@@ -5,6 +5,10 @@ import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
 import { ShareWatermark } from "@/components/share-watermark"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
+import { THEME_STYLES } from "@/components/share-card-theme"
+import type { ShareCardTheme, ThemeStyle } from "@/components/share-card-theme"
+
+export type { ShareCardTheme }
 
 type ProgressMetricLine = Extract<MetricLine, { type: "progress" }> & { used: number; limit: number }
 type UsableBarChartPoint = Extract<MetricLine, { type: "barChart" }>["points"][number] & { value: number }
@@ -12,8 +16,6 @@ type UsableBarChartPoint = Extract<MetricLine, { type: "barChart" }>["points"][n
 function hasProgressValues(line: Extract<MetricLine, { type: "progress" }>): line is ProgressMetricLine {
   return line.used != null && line.limit != null
 }
-
-export type ShareCardTheme = "dark" | "light"
 
 export type ShareCardProps = {
   providerName: string
@@ -26,34 +28,6 @@ export type ShareCardProps = {
   showWatermark: boolean
   modelDisplay?: ModelDisplayOptions
   modelBreakdownLabels?: Set<string>
-}
-
-type ThemeStyle = {
-  frame: string
-  bg: string
-  text: string
-  subtext: string
-  track: string
-  border: string
-}
-
-const THEME_STYLES: Record<ShareCardTheme, ThemeStyle> = {
-  dark: {
-    frame: "bg-neutral-900",
-    bg: "bg-neutral-950",
-    text: "text-white",
-    subtext: "text-white/60",
-    track: "bg-white/10",
-    border: "border-white/10",
-  },
-  light: {
-    frame: "bg-neutral-100",
-    bg: "bg-white",
-    text: "text-neutral-900",
-    subtext: "text-neutral-500",
-    track: "bg-black/10",
-    border: "border-black/10",
-  },
 }
 
 function progressValueLabel(line: ProgressMetricLine, percent: number): string {
