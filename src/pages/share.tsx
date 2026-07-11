@@ -4,10 +4,13 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ShareCard, type ShareCardTheme } from "@/components/share-card"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
+import { Logo } from "@/components/logo"
+import { ModelsGraphCard, type GraphStyle } from "@/components/models-graph-card"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import { buildShareableLines, type ShareableLine, type ShareLineScope } from "@/lib/share-lines"
 import { copyCardImage } from "@/lib/share-image"
 import type { ModelDisplayOptions } from "@/lib/model-breakdown-format"
+import { ALL_SHARE_TAB_ID, buildTodayModelUsage } from "@/lib/today-models"
 import { useAppShareStore } from "@/stores/app-share-store"
 import { cn } from "@/lib/utils"
 
@@ -63,6 +66,9 @@ export function SharePage({ plugins }: SharePageProps) {
   const [showPlan, setShowPlan] = useState(shareSnapshot.showPlan)
   const [customizeOpen, setCustomizeOpen] = useState(false)
   const [modelDisplay, setModelDisplay] = useState<ModelDisplayOptions>(shareSnapshot.modelDisplay)
+  const [graphStyle, setGraphStyle] = useState<GraphStyle>(shareSnapshot.graphStyle)
+  const [graphShowModelPrices, setGraphShowModelPrices] = useState(shareSnapshot.graphShowModelPrices)
+  const [graphShowProviderPrices, setGraphShowProviderPrices] = useState(shareSnapshot.graphShowProviderPrices)
   const [copyState, setCopyState] = useState<CopyState>("idle")
   const [copyError, setCopyError] = useState<string | null>(null)
   const [cardHeightPx, setCardHeightPx] = useState<number | null>(null)
@@ -72,6 +78,7 @@ export function SharePage({ plugins }: SharePageProps) {
   const seededForRef = useRef<string | null>(shareSnapshot.selectedId)
 
   useEffect(() => {
+    if (selectedId === ALL_SHARE_TAB_ID) return
     if (selectedId && plugins.some((plugin) => plugin.meta.id === selectedId)) return
     setSelectedId(plugins[0]?.meta.id ?? null)
   }, [plugins, selectedId])
@@ -79,6 +86,13 @@ export function SharePage({ plugins }: SharePageProps) {
   const selected = useMemo(
     () => plugins.find((plugin) => plugin.meta.id === selectedId) ?? null,
     [plugins, selectedId]
+  )
+
+  const isAllTab = selectedId === ALL_SHARE_TAB_ID
+  const todayUsage = useMemo(() => buildTodayModelUsage(plugins), [plugins])
+  const dateLabel = useMemo(
+    () => new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    []
   )
 
   const shareableLines = useMemo(() => {
@@ -98,6 +112,11 @@ export function SharePage({ plugins }: SharePageProps) {
   useEffect(() => {
     if (seededForRef.current === selectedId) return
     seededForRef.current = selectedId
+    if (selectedId === ALL_SHARE_TAB_ID) {
+      setCopyState("idle")
+      setCopyError(null)
+      return
+    }
     const activePreset = preset ?? "summary"
     setPreset(activePreset)
     setCheckedLabels(presetLabels(shareableLines, activePreset))
@@ -119,8 +138,23 @@ export function SharePage({ plugins }: SharePageProps) {
       showWatermark,
       showPlan,
       modelDisplay,
+      graphStyle,
+      graphShowModelPrices,
+      graphShowProviderPrices,
     })
-  }, [patchShare, selectedId, preset, checkedLabels, theme, showWatermark, showPlan, modelDisplay])
+  }, [
+    patchShare,
+    selectedId,
+    preset,
+    checkedLabels,
+    theme,
+    showWatermark,
+    showPlan,
+    modelDisplay,
+    graphStyle,
+    graphShowModelPrices,
+    graphShowProviderPrices,
+  ])
 
   const checkedLines = useMemo(
     () => shareableLines.filter((entry) => checkedLabels.has(entry.line.label)).map((entry) => entry.line),
@@ -152,7 +186,7 @@ export function SharePage({ plugins }: SharePageProps) {
     observer.observe(card)
     observer.observe(preview)
     return () => observer.disconnect()
-  }, [selected])
+  }, [selected, isAllTab])
 
   const previewScale = previewWidthPx ? Math.min(1, previewWidthPx / CARD_WIDTH_PX) : FALLBACK_PREVIEW_SCALE
 
@@ -194,44 +228,203 @@ export function SharePage({ plugins }: SharePageProps) {
 
   const copying = copyState === "copying"
 
+  const copySection = (
+    <section className="space-y-1.5">
+      <Button
+        onClick={handleCopy}
+        disabled={copying || (!isAllTab && checkedLines.length === 0)}
+        className="w-full font-semibold"
+      >
+        {copying ? "Copying..." : "Copy Image"}
+      </Button>
+      {/* Fixed-height status line so success/error doesn't shift the layout. */}
+      <p
+        aria-live="polite"
+        className={cn(
+          "min-h-5 text-center text-sm",
+          copyState === "error" ? "text-destructive" : "text-muted-foreground"
+        )}
+      >
+        {copyState === "success" ? "Copied to clipboard." : copyState === "error" ? copyError : ""}
+      </p>
+    </section>
+  )
+
   return (
     <div className="py-3 space-y-4" data-testid="share-page">
       <section>
         <h3 className="text-lg font-semibold mb-0">Share Usage</h3>
         <p className="text-sm text-muted-foreground mb-2">Brag about your usage</p>
-        {plugins.length > 1 && (
-          <div className="bg-muted/50 rounded-lg p-1">
-            <div className="flex gap-1" role="radiogroup" aria-label="Provider">
-              {plugins.map((plugin) => {
-                const isActive = plugin.meta.id === selectedId
-                return (
-                  <Button
-                    key={plugin.meta.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={isActive}
-                    aria-label={plugin.meta.name}
-                    variant={isActive ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1"
-                    disabled={copying}
-                    onClick={() => setSelectedId(plugin.meta.id)}
-                  >
-                    <ProviderIconMask
-                      iconUrl={plugin.meta.iconUrl}
-                      pluginId={plugin.meta.id}
-                      sizePx={16}
-                      className="bg-current"
-                    />
-                  </Button>
-                )
-              })}
-            </div>
+        <div className="bg-muted/50 rounded-lg p-1">
+          <div className="flex gap-1" role="radiogroup" aria-label="Provider">
+            <Button
+              type="button"
+              role="radio"
+              aria-checked={isAllTab}
+              aria-label="All providers"
+              variant={isAllTab ? "default" : "outline"}
+              size="sm"
+              className="flex-1"
+              disabled={copying}
+              onClick={() => setSelectedId(ALL_SHARE_TAB_ID)}
+            >
+              <Logo aria-hidden="true" className="size-4" />
+            </Button>
+            {plugins.map((plugin) => {
+              const isActive = plugin.meta.id === selectedId
+              return (
+                <Button
+                  key={plugin.meta.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  aria-label={plugin.meta.name}
+                  variant={isActive ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  disabled={copying}
+                  onClick={() => setSelectedId(plugin.meta.id)}
+                >
+                  <ProviderIconMask
+                    iconUrl={plugin.meta.iconUrl}
+                    pluginId={plugin.meta.id}
+                    sizePx={16}
+                    className="bg-current"
+                  />
+                </Button>
+              )
+            })}
           </div>
-        )}
+        </div>
       </section>
 
-      {!selected?.data ? (
+      {isAllTab ? (
+        todayUsage.totalCost <= 0 ? (
+          <p className="text-sm text-muted-foreground">No model usage recorded today.</p>
+        ) : (
+          <>
+            <section ref={previewRef} data-testid="share-page-preview">
+              <div
+                className="mx-auto overflow-hidden rounded-xl"
+                style={{
+                  width: CARD_WIDTH_PX * previewScale,
+                  height: cardHeightPx !== null ? cardHeightPx * previewScale : undefined,
+                }}
+              >
+                <div className="origin-top-left" style={{ transform: `scale(${previewScale})` }}>
+                  <div ref={cardRef} className="w-fit">
+                    <ModelsGraphCard
+                      usage={todayUsage}
+                      graphStyle={graphStyle}
+                      theme={theme}
+                      showModelPrices={graphShowModelPrices}
+                      showProviderPrices={graphShowProviderPrices}
+                      showWatermark={showWatermark}
+                      dateLabel={dateLabel}
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="space-y-2">
+              <div className="bg-muted/50 rounded-lg p-1">
+                <div className="flex gap-1" role="radiogroup" aria-label="Graph Style">
+                  {(["bar", "donut"] as const).map((value) => {
+                    const isActive = graphStyle === value
+                    return (
+                      <Button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={isActive}
+                        variant={isActive ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1"
+                        disabled={copying}
+                        onClick={() => setGraphStyle(value)}
+                      >
+                        {value === "bar" ? "Bar" : "Donut"}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-1">
+                <div className="flex gap-1" role="radiogroup" aria-label="Card Theme">
+                  {(["dark", "light"] as const).map((value) => {
+                    const isActive = theme === value
+                    return (
+                      <Button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={isActive}
+                        variant={isActive ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1"
+                        disabled={copying}
+                        onClick={() => setTheme(value)}
+                      >
+                        {value === "dark" ? "Dark" : "Light"}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-expanded={customizeOpen}
+                className="w-full justify-start gap-1 px-1 text-muted-foreground hover:text-foreground"
+                onClick={() => setCustomizeOpen((open) => !open)}
+              >
+                <ChevronRight className={cn("size-4 transition-transform", customizeOpen && "rotate-90")} />
+                Customize
+              </Button>
+              {customizeOpen && (
+                <div className="mt-2 space-y-3" data-testid="share-graph-customize">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                    <label className="flex items-center gap-1.5 text-xs">
+                      <Checkbox
+                        aria-label="Price per model"
+                        checked={graphShowModelPrices}
+                        onCheckedChange={(checked) => setGraphShowModelPrices(checked === true)}
+                        disabled={copying}
+                      />
+                      Price per model
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs">
+                      <Checkbox
+                        aria-label="Price per provider"
+                        checked={graphShowProviderPrices}
+                        onCheckedChange={(checked) => setGraphShowProviderPrices(checked === true)}
+                        disabled={copying}
+                      />
+                      Price per provider
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs">
+                      <Checkbox
+                        aria-label="Watermark"
+                        checked={showWatermark}
+                        onCheckedChange={(checked) => setShowWatermark(checked === true)}
+                        disabled={copying}
+                      />
+                      Watermark
+                    </label>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {copySection}
+          </>
+        )
+      ) : !selected?.data ? (
         <p className="text-sm text-muted-foreground">No data yet for this provider.</p>
       ) : (
         <>
@@ -408,25 +601,7 @@ export function SharePage({ plugins }: SharePageProps) {
             )}
           </section>
 
-          <section className="space-y-1.5">
-            <Button
-              onClick={handleCopy}
-              disabled={copying || checkedLines.length === 0}
-              className="w-full font-semibold"
-            >
-              {copying ? "Copying..." : "Copy Image"}
-            </Button>
-            {/* Fixed-height status line so success/error doesn't shift the layout. */}
-            <p
-              aria-live="polite"
-              className={cn(
-                "min-h-5 text-center text-sm",
-                copyState === "error" ? "text-destructive" : "text-muted-foreground"
-              )}
-            >
-              {copyState === "success" ? "Copied to clipboard." : copyState === "error" ? copyError : ""}
-            </p>
-          </section>
+          {copySection}
         </>
       )}
     </div>

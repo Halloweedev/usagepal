@@ -2,8 +2,9 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { shareCardMock, copyCardImageMock } = vi.hoisted(() => ({
+const { shareCardMock, graphCardMock, copyCardImageMock } = vi.hoisted(() => ({
   shareCardMock: vi.fn(),
+  graphCardMock: vi.fn(),
   copyCardImageMock: vi.fn(),
 }))
 
@@ -11,6 +12,13 @@ vi.mock("@/components/share-card", () => ({
   ShareCard: (props: unknown) => {
     shareCardMock(props)
     return <div data-testid="share-card-mock" />
+  },
+}))
+
+vi.mock("@/components/models-graph-card", () => ({
+  ModelsGraphCard: (props: unknown) => {
+    graphCardMock(props)
+    return <div data-testid="models-graph-card-mock" />
   },
 }))
 
@@ -44,7 +52,7 @@ function makePlugin(overrides: Partial<DisplayPluginState> = {}): DisplayPluginS
         { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
         { type: "progress", label: "Sonnet", used: 10, limit: 100, format: { kind: "percent" } },
         { type: "barChart", label: "Usage Trend", points: [{ label: "7/1", value: 5 }] },
-        { type: "text", label: "claude-sonnet-5", value: "62%" },
+        { type: "text", label: "claude-sonnet-5", value: "62% · Today $12.40" },
       ],
     },
     loading: false,
@@ -62,6 +70,7 @@ function lastCardProps<T>(): T {
 describe("SharePage", () => {
   beforeEach(() => {
     shareCardMock.mockReset()
+    graphCardMock.mockReset()
     copyCardImageMock.mockReset()
     useAppShareStore.getState().resetState()
   })
@@ -129,22 +138,14 @@ describe("SharePage", () => {
     expect(lines.map((line) => line.label)).toEqual(["Weekly", "Daily"])
   })
 
-  it("renders providers as an icon radiogroup only when there are several", () => {
-    const { rerender } = render(<SharePage plugins={[makePlugin()]} />)
-    expect(screen.queryByRole("radiogroup", { name: "Provider" })).not.toBeInTheDocument()
+  it("always renders the provider radiogroup with the All tab first", () => {
+    render(<SharePage plugins={[makePlugin()]} />)
 
-    rerender(
-      <SharePage
-        plugins={[
-          makePlugin(),
-          makePlugin({
-            meta: { ...makePlugin().meta, id: "codex", name: "Codex" },
-          }),
-        ]}
-      />
-    )
-    expect(screen.getByRole("radiogroup", { name: "Provider" })).toBeInTheDocument()
-    expect(screen.getByRole("radio", { name: "Codex" })).toBeInTheDocument()
+    const group = screen.getByRole("radiogroup", { name: "Provider" })
+    expect(group).toBeInTheDocument()
+    const radios = screen.getAllByRole("radio")
+    expect(radios[0]).toHaveAccessibleName("All providers")
+    expect(screen.getByRole("radio", { name: "Claude" })).toBeInTheDocument()
   })
 
   it("switches the card theme via the Dark/Light radiogroup", async () => {
@@ -388,5 +389,95 @@ describe("SharePage", () => {
     await user.click(screen.getByRole("radio", { name: "Detailed" }))
 
     expect(useAppShareStore.getState().settings.preset).toBe("detailed")
+  })
+
+  it("renders the graph card with aggregated usage on the All tab", async () => {
+    const user = userEvent.setup()
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    await user.click(screen.getByRole("radio", { name: "All providers" }))
+
+    expect(screen.getByTestId("models-graph-card-mock")).toBeInTheDocument()
+    const props = graphCardMock.mock.calls.at(-1)?.[0] as {
+      usage: { totalCost: number; models: { name: string }[] }
+      graphStyle: string
+    }
+    expect(props.usage.totalCost).toBeCloseTo(12.4)
+    expect(props.usage.models[0].name).toBe("claude-sonnet-5")
+    expect(props.graphStyle).toBe("bar")
+  })
+
+  it("switches graph style via the Bar/Donut radiogroup and persists it", async () => {
+    const user = userEvent.setup()
+    useAppShareStore.setState({ hydrated: true })
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    await user.click(screen.getByRole("radio", { name: "All providers" }))
+    await user.click(screen.getByRole("radio", { name: "Donut" }))
+
+    expect((graphCardMock.mock.calls.at(-1)?.[0] as { graphStyle: string }).graphStyle).toBe("donut")
+    expect(useAppShareStore.getState().settings.graphStyle).toBe("donut")
+  })
+
+  it("exposes price toggles in Customize on the All tab", async () => {
+    const user = userEvent.setup()
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    await user.click(screen.getByRole("radio", { name: "All providers" }))
+    await user.click(screen.getByRole("button", { name: "Customize" }))
+
+    await user.click(screen.getByRole("checkbox", { name: "Price per model" }))
+    await user.click(screen.getByRole("checkbox", { name: "Price per provider" }))
+
+    const props = graphCardMock.mock.calls.at(-1)?.[0] as {
+      showModelPrices: boolean
+      showProviderPrices: boolean
+    }
+    expect(props.showModelPrices).toBe(true)
+    expect(props.showProviderPrices).toBe(true)
+  })
+
+  it("shows the empty state on the All tab when no model was used today", async () => {
+    const user = userEvent.setup()
+    const noToday = makePlugin({
+      data: {
+        providerId: "claude",
+        displayName: "Claude",
+        iconUrl: "/claude.svg",
+        lines: [
+          { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
+          { type: "text", label: "claude-sonnet-5", value: "62%" },
+        ],
+      },
+    })
+    render(<SharePage plugins={[noToday]} />)
+
+    await user.click(screen.getByRole("radio", { name: "All providers" }))
+
+    expect(screen.getByText("No model usage recorded today.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Copy Image" })).not.toBeInTheDocument()
+  })
+
+  it("copies the graph card image from the All tab", async () => {
+    const user = userEvent.setup()
+    copyCardImageMock.mockResolvedValue(undefined)
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    await user.click(screen.getByRole("radio", { name: "All providers" }))
+    await user.click(screen.getByRole("button", { name: "Copy Image" }))
+
+    expect(copyCardImageMock).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText("Copied to clipboard.")).toBeInTheDocument()
+  })
+
+  it("restores a persisted All-tab selection on mount", () => {
+    useAppShareStore.setState({
+      hydrated: true,
+      settings: { ...useAppShareStore.getState().settings, selectedId: "all", graphStyle: "donut" },
+    })
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    expect(screen.getByTestId("models-graph-card-mock")).toBeInTheDocument()
+    expect((graphCardMock.mock.calls.at(-1)?.[0] as { graphStyle: string }).graphStyle).toBe("donut")
   })
 })
