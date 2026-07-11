@@ -5,6 +5,7 @@ import { deriveModelColors, OTHERS_COLORS } from "@/lib/graph-colors"
 import { THEME_STYLES, type ShareCardTheme } from "@/components/share-card-theme"
 import { ShareWatermark } from "@/components/share-watermark"
 import { cn } from "@/lib/utils"
+import { donutSegments } from "@/lib/donut-math"
 
 export type GraphStyle = "bar" | "donut"
 
@@ -80,13 +81,10 @@ function DonutChart({
   colors: Map<TodayModelEntry, string>
   totalLabel: string
 }) {
-  let cursor = 0
-  const segments = models.map((model) => {
-    const start = cursor
-    const length = model.share * 100
-    cursor += length
-    return { model, start, length }
-  })
+  const segments = donutSegments(
+    models.map((model) => model.share),
+    DONUT_GAP
+  )
   return (
     <svg
       data-testid="models-graph-donut"
@@ -95,8 +93,8 @@ function DonutChart({
       viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}
       className="shrink-0"
     >
-      {segments.map(({ model, start, length }) => {
-        const visible = Math.max(length - DONUT_GAP, 0.2)
+      {segments.map(({ start, visible }, index) => {
+        const model = models[index]
         return (
           <circle
             key={modelKey(model)}
