@@ -39,12 +39,19 @@
     if (!text || typeof text !== "string") return null
 
     var result = {
+      remainingPct: null,
       remaining: null,
       total: null,
       hourlyRate: 0,
       bonusPct: null,
       bonusDays: null,
       credits: null,
+    }
+
+    var percentMatch = text.match(/Amp Free: ([0-9]+(?:\.[0-9]+)?)% remaining today/)
+    if (percentMatch) {
+      var remainingPct = Number(percentMatch[1])
+      if (Number.isFinite(remainingPct)) result.remainingPct = remainingPct
     }
 
     var balanceMatch = text.match(/\$([0-9][0-9,]*(?:\.[0-9]+)?)\/\$([0-9][0-9,]*(?:\.[0-9]+)?) remaining/)
@@ -79,7 +86,7 @@
       if (Number.isFinite(credits)) result.credits = credits
     }
 
-    if (result.total === null && result.credits === null) return null
+    if (result.remainingPct === null && result.total === null && result.credits === null) return null
 
     return result
   }
@@ -122,17 +129,25 @@
     var balance = parseBalanceText(json.result.displayText)
     if (!balance) {
       if (/Amp Free/.test(json.result.displayText)) {
-        ctx.host.log.error("failed to parse display text: " + json.result.displayText)
+        ctx.host.log.error("failed to parse Amp Free display text")
         throw "Could not parse usage data."
       }
-      ctx.host.log.warn("no balance data found, assuming credits-only: " + json.result.displayText)
-      balance = { remaining: null, total: null, hourlyRate: 0, bonusPct: null, bonusDays: null, credits: 0 }
+      ctx.host.log.warn("no balance data found, assuming credits-only")
+      balance = { remainingPct: null, remaining: null, total: null, hourlyRate: 0, bonusPct: null, bonusDays: null, credits: 0 }
     }
 
     var lines = []
     var plan = "Free"
 
-    if (balance.total !== null) {
+    if (balance.remainingPct !== null) {
+      lines.push(ctx.line.progress({
+        label: "Free",
+        used: Math.min(100, Math.max(0, 100 - balance.remainingPct)),
+        limit: 100,
+        format: { kind: "percent" },
+        periodDurationMs: 24 * 3600 * 1000,
+      }))
+    } else if (balance.total !== null) {
       var used = Math.max(0, balance.total - balance.remaining)
       var total = balance.total
 
@@ -159,9 +174,10 @@
       }
     }
 
-    if (balance.credits !== null && balance.total === null) plan = "Credits"
+    var hasFreeTier = balance.remainingPct !== null || balance.total !== null
+    if (balance.credits !== null && !hasFreeTier) plan = "Credits"
 
-    if (balance.credits !== null && (balance.credits > 0 || balance.total === null)) {
+    if (balance.credits !== null && (balance.credits > 0 || !hasFreeTier)) {
       lines.push(ctx.line.text({
         label: "Credits",
         value: "$" + balance.credits.toFixed(2),

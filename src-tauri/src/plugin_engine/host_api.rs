@@ -106,6 +106,7 @@ const SENSITIVE_JSON_KEYS: &[&str] = &[
     "account_display_name",
     "accountDisplayName",
     "displayName",
+    "displayText",
     "payment_id",
     "paymentId",
     "subscription_id",
@@ -3871,6 +3872,18 @@ mod tests {
             "plan displayName should also be redacted, got: {}",
             redacted
         );
+    }
+
+    #[test]
+    fn redact_body_redacts_display_text() {
+        let body = r#"{"ok":true,"result":{"displayText":"Signed in as person@example.com (nickname)\nAmp Free: 48% remaining today"}}"#;
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("person@example.com") && !redacted.contains("nickname"),
+            "displayText should be redacted, got: {}",
+            redacted
+        );
+        assert!(redacted.contains("\"displayText\": \"Sign...oday\""));
     }
 
     #[test]
