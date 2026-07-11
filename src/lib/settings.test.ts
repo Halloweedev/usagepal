@@ -9,6 +9,7 @@ import {
   DEFAULT_MULTI_TRAY_DISPLAY_MODE,
   DEFAULT_MULTI_TRAY_PROVIDER_COUNT,
   DEFAULT_ONBOARDING_COMPLETED,
+  DEFAULT_OVERVIEW_GRAPH_STYLE,
   DEFAULT_PACE_NOTIFICATION_SETTINGS,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
@@ -27,6 +28,7 @@ import {
   loadMultiTrayDisplayMode,
   loadMultiTrayProviderCount,
   loadOnboardingCompleted,
+  loadOverviewGraphStyle,
   loadPaceNotificationSettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
@@ -50,6 +52,7 @@ import {
   saveMultiTrayDisplayMode,
   saveMultiTrayProviderCount,
   saveOnboardingCompleted,
+  saveOverviewGraphStyle,
   savePaceNotificationSettings,
   savePluginSettings,
   saveResetTimerDisplayMode,
@@ -438,6 +441,25 @@ describe("settings", () => {
     storeState.set("menubarMetric", "invalid")
     await expect(loadMenubarMetric()).resolves.toBe(DEFAULT_MENUBAR_METRIC)
   })
+
+  it("loads default overview graph style when missing", async () => {
+    await expect(loadOverviewGraphStyle()).resolves.toBe(DEFAULT_OVERVIEW_GRAPH_STYLE);
+  });
+
+  it("loads stored overview graph style", async () => {
+    storeState.set("overviewGraphStyle", "detailed");
+    await expect(loadOverviewGraphStyle()).resolves.toBe("detailed");
+  });
+
+  it("saves overview graph style", async () => {
+    await saveOverviewGraphStyle("detailed");
+    await expect(loadOverviewGraphStyle()).resolves.toBe("detailed");
+  });
+
+  it("falls back to default for invalid overview graph style", async () => {
+    storeState.set("overviewGraphStyle", "donut");
+    await expect(loadOverviewGraphStyle()).resolves.toBe(DEFAULT_OVERVIEW_GRAPH_STYLE);
+  });
 
   it("loads default pace notification settings when missing", async () => {
     await expect(loadPaceNotificationSettings()).resolves.toEqual(DEFAULT_PACE_NOTIFICATION_SETTINGS)

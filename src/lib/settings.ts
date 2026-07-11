@@ -61,6 +61,10 @@ export type ShareTheme = "dark" | "light";
 
 export type ShareGraphStyle = "bar" | "donut";
 
+/** Overview "Models today" strip presentation. Independent of the Share
+ * panel's graphStyle by design. */
+export type OverviewGraphStyle = "compact" | "detailed";
+
 export type ShareModelDisplay = {
   showPercent: boolean;
   showToday: boolean;
@@ -122,6 +126,7 @@ const ONBOARDING_COMPLETED_KEY = "onboardingCompleted";
 const ONBOARDING_COMPLETED_AT_KEY = "onboardingCompletedAt";
 const PACE_NOTIFICATIONS_KEY = "paceNotifications";
 const SHARE_SETTINGS_KEY = "shareSettings";
+const OVERVIEW_GRAPH_STYLE_KEY = "overviewGraphStyle";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_BETA_UPDATES_ENABLED = false;
@@ -135,6 +140,7 @@ export const DEFAULT_MULTI_TRAY_DISPLAY_MODE: MultiTrayDisplayMode = "percent";
 export const DEFAULT_MENUBAR_METRIC: MenubarMetric = "default";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
+export const DEFAULT_OVERVIEW_GRAPH_STYLE: OverviewGraphStyle = "compact";
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -507,6 +513,7 @@ export async function savePaceNotificationSettings(
 const SHARE_PRESETS: SharePreset[] = ["summary", "detailed", "models"];
 const SHARE_THEMES: ShareTheme[] = ["dark", "light"];
 const SHARE_GRAPH_STYLES: ShareGraphStyle[] = ["bar", "donut"];
+const OVERVIEW_GRAPH_STYLES: OverviewGraphStyle[] = ["compact", "detailed"];
 
 export function normalizeShareSettings(value: unknown): ShareSettings {
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -565,6 +572,24 @@ export async function loadShareSettings(): Promise<ShareSettings> {
 
 export async function saveShareSettings(settings: ShareSettings): Promise<void> {
   await store.set(SHARE_SETTINGS_KEY, settings);
+  await store.save();
+}
+
+function isOverviewGraphStyle(value: unknown): value is OverviewGraphStyle {
+  return (
+    typeof value === "string" &&
+    OVERVIEW_GRAPH_STYLES.includes(value as OverviewGraphStyle)
+  );
+}
+
+export async function loadOverviewGraphStyle(): Promise<OverviewGraphStyle> {
+  const stored = await store.get<unknown>(OVERVIEW_GRAPH_STYLE_KEY);
+  if (isOverviewGraphStyle(stored)) return stored;
+  return DEFAULT_OVERVIEW_GRAPH_STYLE;
+}
+
+export async function saveOverviewGraphStyle(style: OverviewGraphStyle): Promise<void> {
+  await store.set(OVERVIEW_GRAPH_STYLE_KEY, style);
   await store.save();
 }
 
