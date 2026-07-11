@@ -22,7 +22,13 @@ export type TodayModelEntry = {
 export type TodayProviderEntry = {
   id: string
   name: string
+  brandColor: string | null
   todayCost: number
+  /** Fraction of totalCost, 0..1. */
+  share: number
+  /** This provider's entries from the ranked model list, cost-desc.
+   * The synthetic Others bucket belongs to no provider. */
+  models: TodayModelEntry[]
 }
 
 export type TodayModelUsage = {
@@ -76,7 +82,15 @@ export function buildTodayModelUsage(plugins: TodayModelsSource[]): TodayModelUs
       })
       providerTotal += cost
     }
-    if (providerTotal > 0) providers.push({ id: plugin.meta.id, name: plugin.meta.name, todayCost: providerTotal })
+    if (providerTotal > 0)
+      providers.push({
+        id: plugin.meta.id,
+        name: plugin.meta.name,
+        brandColor: plugin.meta.brandColor,
+        todayCost: providerTotal,
+        share: 0,
+        models: [],
+      })
   }
 
   models.sort((a, b) => b.todayCost - a.todayCost || a.name.localeCompare(b.name))
@@ -100,6 +114,10 @@ export function buildTodayModelUsage(plugins: TodayModelsSource[]): TodayModelUs
   const totalCost = ranked.reduce((sum, model) => sum + model.todayCost, 0)
   if (totalCost <= 0) return { models: [], providers: [], totalCost: 0 }
   for (const model of ranked) model.share = model.todayCost / totalCost
+  for (const provider of providers) {
+    provider.share = provider.todayCost / totalCost
+    provider.models = ranked.filter((model) => model.providerId === provider.id)
+  }
   return { models: ranked, providers, totalCost }
 }
 

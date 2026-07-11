@@ -119,3 +119,54 @@ describe("formatting", () => {
     expect(formatSharePercent(0)).toBe("0%")
   })
 })
+
+describe("provider view", () => {
+  const claude: TodayModelsSource = {
+    meta: { id: "claude", name: "Claude", brandColor: "#DE7356", lines: [] },
+    data: {
+      lines: [
+        { type: "text", label: "Opus 4.8", value: "62% · Today $12.40", color: null, subtitle: null, resetExpiry: null },
+        { type: "text", label: "Sonnet 5", value: "30% · Today $4.10", color: null, subtitle: null, resetExpiry: null },
+      ],
+    },
+  }
+  const codex: TodayModelsSource = {
+    meta: { id: "codex", name: "Codex", brandColor: "#74AA9C", lines: [] },
+    data: {
+      lines: [
+        { type: "text", label: "GPT-5.4", value: "16% · Today $3.20", color: null, subtitle: null, resetExpiry: null },
+      ],
+    },
+  }
+
+  it("carries brandColor, share and the ranked model list per provider", () => {
+    const usage = buildTodayModelUsage([claude, codex])
+
+    expect(usage.providers.map((p) => p.id)).toEqual(["claude", "codex"])
+    expect(usage.providers[0].brandColor).toBe("#DE7356")
+    expect(usage.providers[0].share).toBeCloseTo(16.5 / 19.7)
+    expect(usage.providers[0].models.map((m) => m.name)).toEqual(["Opus 4.8", "Sonnet 5"])
+    expect(usage.providers[1].models.map((m) => m.name)).toEqual(["GPT-5.4"])
+  })
+
+  it("keeps the Others bucket out of every provider's model list", () => {
+    const many: TodayModelsSource = {
+      meta: { id: "claude", name: "Claude", brandColor: "#DE7356", lines: [] },
+      data: {
+        lines: Array.from({ length: 10 }, (_, i) => ({
+          type: "text" as const,
+          label: `Model ${i}`,
+          value: `5% · Today $${(10 - i).toFixed(2)}`,
+          color: null,
+          subtitle: null,
+          resetExpiry: null,
+        })),
+      },
+    }
+    const usage = buildTodayModelUsage([many])
+
+    expect(usage.models.at(-1)?.isOthers).toBe(true)
+    expect(usage.providers[0].models.some((m) => m.isOthers)).toBe(false)
+    expect(usage.providers[0].models).toHaveLength(8)
+  })
+})
