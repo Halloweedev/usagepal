@@ -1,60 +1,144 @@
-import { useMemo } from "react"
-import { Share2 } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { ChartNoAxesGantt, ChartPie } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { assignModelColors } from "@/components/models-graph-card"
 import { useDarkMode } from "@/hooks/use-dark-mode"
+import { donutSegments } from "@/lib/donut-math"
+import { deriveModelColors } from "@/lib/graph-colors"
 import {
-  ALL_SHARE_TAB_ID,
+  loadOverviewGraphStyle,
+  saveOverviewGraphStyle,
+  type OverviewGraphStyle,
+} from "@/lib/settings"
+import {
   buildTodayModelUsage,
   formatShareCost,
   formatSharePercent,
-  type TodayModelEntry,
   type TodayModelsSource,
+  type TodayProviderEntry,
 } from "@/lib/today-models"
-import { useAppShareStore } from "@/stores/app-share-store"
-import { useAppUiStore } from "@/stores/app-ui-store"
 
-const LEGEND_COUNT = 3
+const DONUT_SIZE = 96
+const DONUT_CENTER = DONUT_SIZE / 2
+const DONUT_GAP = 0.8
 
-function ModelTooltip({ model }: { model: TodayModelEntry }) {
+function ProviderTooltip({ provider }: { provider: TodayProviderEntry }) {
   return (
-    <div className="flex min-w-32 flex-col gap-0.5 text-xs">
-      <span className="font-semibold">{model.name}</span>
-      {!model.isOthers && (
-        <span className="flex justify-between gap-4 text-muted-foreground">
-          <span>Provider</span>
-          <span className="text-foreground">{model.providerName}</span>
+    <div className="flex min-w-40 flex-col gap-1 text-xs">
+      <span className="flex justify-between gap-4 font-semibold">
+        <span>{provider.name}</span>
+        <span className="tabular-nums">{formatShareCost(provider.todayCost)}</span>
+      </span>
+      <div className="border-t" />
+      {provider.models.map((model) => (
+        <span key={model.name} className="flex justify-between gap-4 text-muted-foreground">
+          <span className="truncate">{model.name}</span>
+          <span className="shrink-0 tabular-nums">
+            {formatSharePercent(model.todayCost / provider.todayCost)}{" "}
+            <span className="text-foreground">{formatShareCost(model.todayCost)}</span>
+          </span>
         </span>
-      )}
-      <span className="flex justify-between gap-4 text-muted-foreground">
-        <span>Share today</span>
-        <span className="text-foreground tabular-nums">{formatSharePercent(model.share)}</span>
-      </span>
-      <span className="flex justify-between gap-4 text-muted-foreground">
-        <span>Price</span>
-        <span className="text-foreground tabular-nums">{formatShareCost(model.todayCost)}</span>
-      </span>
+      ))}
     </div>
   )
 }
 
-/** Compact "Models today" strip for the Overview page: minimal at rest (bar +
- * top-3 legend, no prices), details one hover away. Hidden entirely when no
- * model usage was recorded today. */
+function StripDonut({
+  providers,
+  colors,
+  totalLabel,
+}: {
+  providers: TodayProviderEntry[]
+  colors: Map<string, string>
+  totalLabel: string
+}) {
+  const segments = donutSegments(
+    providers.map((provider) => provider.share),
+    DONUT_GAP
+  )
+  return (
+    <svg
+      data-testid="strip-donut"
+      width={DONUT_SIZE}
+      height={DONUT_SIZE}
+      viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}
+      className="shrink-0"
+    >
+      {segments.map(({ start, visible }, index) => {
+        const provider = providers[index]
+        return (
+          <Tooltip key={provider.id}>
+            <TooltipTrigger
+              render={
+                <circle
+                  data-testid="strip-donut-segment"
+                  cx={DONUT_CENTER}
+                  cy={DONUT_CENTER}
+                  r={33}
+                  fill="none"
+                  strokeWidth={20}
+                  pathLength={100}
+                  stroke={colors.get(provider.id)}
+                  strokeDasharray={`${visible} ${100 - visible}`}
+                  strokeDashoffset={-(start + DONUT_GAP / 2)}
+                  // Start segments at 12 o'clock instead of SVG's 3 o'clock default.
+                  transform={`rotate(-90 ${DONUT_CENTER} ${DONUT_CENTER})`}
+                />
+              }
+            />
+            <TooltipContent side="top">
+              <ProviderTooltip provider={provider} />
+            </TooltipContent>
+          </Tooltip>
+        )
+      })}
+      <text
+        x={DONUT_CENTER}
+        y={DONUT_CENTER + 5}
+        textAnchor="middle"
+        fill="currentColor"
+        fontSize={14}
+        fontWeight={600}
+      >
+        {totalLabel}
+      </text>
+    </svg>
+  )
+}
+
+/** Compact "Models today" strip for the Overview page, grouped by provider:
+ * bar or donut (user choice, persisted), per-model detail one hover away.
+ * Hidden entirely when no model usage was recorded today. */
 export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) {
   const isDark = useDarkMode()
   const usage = useMemo(() => buildTodayModelUsage(plugins), [plugins])
   const theme = isDark ? ("dark" as const) : ("light" as const)
-  const colors = useMemo(() => assignModelColors(usage.models, theme), [usage, theme])
+  const [style, setStyle] = useState<OverviewGraphStyle>("compact")
+
+  useEffect(() => {
+    let active = true
+    void loadOverviewGraphStyle().then((stored) => {
+      if (active) setStyle(stored)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const colors = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const provider of usage.providers) {
+      map.set(provider.id, deriveModelColors(provider.brandColor, 1, theme)[0])
+    }
+    return map
+  }, [usage, theme])
 
   if (usage.totalCost <= 0) return null
 
-  const openShare = () => {
-    useAppShareStore.getState().patch({ selectedId: ALL_SHARE_TAB_ID })
-    useAppUiStore.getState().setActiveView("share")
+  const toggleStyle = () => {
+    const next: OverviewGraphStyle = style === "compact" ? "detailed" : "compact"
+    setStyle(next)
+    void saveOverviewGraphStyle(next)
   }
-
-  const modelKey = (model: TodayModelEntry) => `${model.providerId}-${model.name}`
 
   return (
     <div data-testid="models-today-strip" className="mb-3 rounded-xl border p-3">
@@ -62,51 +146,82 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
         <span className="text-sm font-semibold">Models today</span>
         <button
           type="button"
-          aria-label="Share models graph"
-          onClick={openShare}
+          aria-label={style === "compact" ? "Show detailed view" : "Show compact view"}
+          onClick={toggleStyle}
           className="text-muted-foreground transition-colors hover:text-foreground"
         >
-          <Share2 className="size-3.5" />
+          {style === "compact" ? <ChartPie className="size-3.5" /> : <ChartNoAxesGantt className="size-3.5" />}
         </button>
       </div>
-      <div className="flex h-2 gap-[2px] overflow-hidden rounded-full">
-        {usage.models.map((model) => (
-          <Tooltip key={modelKey(model)}>
-            <TooltipTrigger
-              render={
-                <div
-                  data-testid="strip-segment"
-                  className="h-full transition-[filter] hover:brightness-125 first:rounded-l-full last:rounded-r-full"
-                  style={{ width: `${model.share * 100}%`, backgroundColor: colors.get(model) }}
+      {style === "compact" ? (
+        <>
+          <div data-testid="strip-bar" className="flex h-2 gap-[2px] overflow-hidden rounded-full">
+            {usage.providers.map((provider) => (
+              <Tooltip key={provider.id}>
+                <TooltipTrigger
+                  render={
+                    <div
+                      data-testid="strip-segment"
+                      className="h-full transition-[filter] hover:brightness-125 first:rounded-l-full last:rounded-r-full"
+                      style={{ width: `${provider.share * 100}%`, backgroundColor: colors.get(provider.id) }}
+                    />
+                  }
                 />
-              }
-            />
-            <TooltipContent side="top">
-              <ModelTooltip model={model} />
-            </TooltipContent>
-          </Tooltip>
-        ))}
-      </div>
-      <div className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1">
-        {usage.models.slice(0, LEGEND_COUNT).map((model) => (
-          <Tooltip key={modelKey(model)}>
-            <TooltipTrigger
-              render={
-                <span
-                  data-testid="strip-legend-chip"
-                  className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
-                >
-                  <span className="size-[7px] rounded-[2px]" style={{ backgroundColor: colors.get(model) }} />
-                  {model.name} {formatSharePercent(model.share)}
-                </span>
-              }
-            />
-            <TooltipContent side="top">
-              <ModelTooltip model={model} />
-            </TooltipContent>
-          </Tooltip>
-        ))}
-      </div>
+                <TooltipContent side="top">
+                  <ProviderTooltip provider={provider} />
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+          <div className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1">
+            {usage.providers.map((provider) => (
+              <Tooltip key={provider.id}>
+                <TooltipTrigger
+                  render={
+                    <span
+                      data-testid="strip-legend-chip"
+                      className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+                    >
+                      <span className="size-[7px] rounded-[2px]" style={{ backgroundColor: colors.get(provider.id) }} />
+                      {provider.name} {formatSharePercent(provider.share)}
+                    </span>
+                  }
+                />
+                <TooltipContent side="top">
+                  <ProviderTooltip provider={provider} />
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="flex items-center gap-4">
+          <StripDonut providers={usage.providers} colors={colors} totalLabel={formatShareCost(usage.totalCost)} />
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            {usage.providers.map((provider) => (
+              <Tooltip key={provider.id}>
+                <TooltipTrigger
+                  render={
+                    <div data-testid="strip-provider-row" className="flex items-center justify-between gap-3 text-xs">
+                      <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                        <span
+                          className="size-[7px] shrink-0 rounded-[2px]"
+                          style={{ backgroundColor: colors.get(provider.id) }}
+                        />
+                        <span className="truncate">{provider.name}</span>
+                      </span>
+                      <span className="tabular-nums">{formatShareCost(provider.todayCost)}</span>
+                    </div>
+                  }
+                />
+                <TooltipContent side="top">
+                  <ProviderTooltip provider={provider} />
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
