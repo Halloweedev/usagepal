@@ -1,3 +1,4 @@
+import { ModelsTodayStrip } from "@/components/models-today-strip"
 import { ProviderCard } from "@/components/provider-card"
 import type { PluginDisplayState } from "@/lib/plugin-types"
 import type { DisplayMode, ResetTimerDisplayMode, TimeFormatMode } from "@/lib/settings"
@@ -26,26 +27,29 @@ export function OverviewPage({
           No providers enabled
         </div>
       ) : (
-        plugins.map((plugin, index) => (
-          <ProviderCard
-            key={plugin.meta.id}
-            name={plugin.meta.name}
-            plan={plugin.data?.plan ?? undefined}
-            showSeparator={index < plugins.length - 1}
-            loading={plugin.loading}
-            error={plugin.error}
-            lines={plugin.data?.lines ?? []}
-            skeletonLines={plugin.meta.lines}
-            lastManualRefreshAt={plugin.lastManualRefreshAt}
-            lastUpdatedAt={plugin.lastUpdatedAt}
-            onRetry={onRetryPlugin ? () => onRetryPlugin(plugin.meta.id) : undefined}
-            scopeFilter="overview"
-            displayMode={displayMode}
-            resetTimerDisplayMode={resetTimerDisplayMode}
-            timeFormatMode={timeFormatMode}
-            onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
-          />
-        ))
+        <>
+          <ModelsTodayStrip plugins={plugins} />
+          {plugins.map((plugin, index) => (
+            <ProviderCard
+              key={plugin.meta.id}
+              name={plugin.meta.name}
+              plan={plugin.data?.plan ?? undefined}
+              showSeparator={index < plugins.length - 1}
+              loading={plugin.loading}
+              error={plugin.error}
+              lines={plugin.data?.lines ?? []}
+              skeletonLines={plugin.meta.lines}
+              lastManualRefreshAt={plugin.lastManualRefreshAt}
+              lastUpdatedAt={plugin.lastUpdatedAt}
+              onRetry={onRetryPlugin ? () => onRetryPlugin(plugin.meta.id) : undefined}
+              scopeFilter="overview"
+              displayMode={displayMode}
+              resetTimerDisplayMode={resetTimerDisplayMode}
+              timeFormatMode={timeFormatMode}
+              onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+            />
+          ))}
+        </>
       )}
     </div>
   )
