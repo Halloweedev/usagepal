@@ -5,7 +5,7 @@ import { deriveModelColors, OTHERS_COLORS } from "@/lib/graph-colors"
 import { THEME_STYLES, type ShareCardTheme } from "@/components/share-card-theme"
 import { ShareWatermark } from "@/components/share-watermark"
 import { cn } from "@/lib/utils"
-import { donutSegments } from "@/lib/donut-math"
+import { donutSegments, roundCapDash, roundCapPad } from "@/lib/donut-math"
 
 export type GraphStyle = "bar" | "donut"
 
@@ -71,6 +71,9 @@ const DONUT_SIZE = 132
 const DONUT_CENTER = DONUT_SIZE / 2
 // Segment gap in pathLength units (of 100), rendered by shortening each dash.
 const DONUT_GAP = 0.8
+const DONUT_RADIUS = 45
+const DONUT_STROKE = 26
+const DONUT_CAP_PAD = roundCapPad(DONUT_RADIUS, DONUT_STROKE)
 
 function DonutChart({
   models,
@@ -93,20 +96,22 @@ function DonutChart({
       viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}
       className="shrink-0"
     >
-      {segments.map(({ start, visible }, index) => {
+      {segments.map((segment, index) => {
         const model = models[index]
+        const { dash, offset } = roundCapDash(segment, DONUT_GAP, DONUT_CAP_PAD)
         return (
           <circle
             key={modelKey(model)}
             cx={DONUT_CENTER}
             cy={DONUT_CENTER}
-            r={45}
+            r={DONUT_RADIUS}
             fill="none"
-            strokeWidth={26}
+            strokeWidth={DONUT_STROKE}
+            strokeLinecap="round"
             pathLength={100}
             stroke={colors.get(model)}
-            strokeDasharray={`${visible} ${100 - visible}`}
-            strokeDashoffset={-(start + DONUT_GAP / 2)}
+            strokeDasharray={`${dash} ${100 - dash}`}
+            strokeDashoffset={offset}
             // Start segments at 12 o'clock instead of SVG's 3 o'clock default.
             transform={`rotate(-90 ${DONUT_CENTER} ${DONUT_CENTER})`}
           />

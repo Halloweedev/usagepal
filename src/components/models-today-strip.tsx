@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { ChartNoAxesGantt, ChartPie } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDarkMode } from "@/hooks/use-dark-mode"
-import { donutSegments } from "@/lib/donut-math"
+import { donutSegments, roundCapDash, roundCapPad } from "@/lib/donut-math"
 import { deriveModelColors } from "@/lib/graph-colors"
 import {
   loadOverviewGraphStyle,
@@ -20,6 +20,9 @@ import {
 const DONUT_SIZE = 96
 const DONUT_CENTER = DONUT_SIZE / 2
 const DONUT_GAP = 0.8
+const DONUT_RADIUS = 33
+const DONUT_STROKE = 20
+const DONUT_CAP_PAD = roundCapPad(DONUT_RADIUS, DONUT_STROKE)
 
 function ProviderTooltip({ provider }: { provider: TodayProviderEntry }) {
   return (
@@ -63,8 +66,9 @@ function StripDonut({
       viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}
       className="shrink-0"
     >
-      {segments.map(({ start, visible }, index) => {
+      {segments.map((segment, index) => {
         const provider = providers[index]
+        const { dash, offset } = roundCapDash(segment, DONUT_GAP, DONUT_CAP_PAD)
         return (
           <Tooltip key={provider.id}>
             <TooltipTrigger
@@ -73,13 +77,14 @@ function StripDonut({
                   data-testid="strip-donut-segment"
                   cx={DONUT_CENTER}
                   cy={DONUT_CENTER}
-                  r={33}
+                  r={DONUT_RADIUS}
                   fill="none"
-                  strokeWidth={20}
+                  strokeWidth={DONUT_STROKE}
+                  strokeLinecap="round"
                   pathLength={100}
                   stroke={colors.get(provider.id)}
-                  strokeDasharray={`${visible} ${100 - visible}`}
-                  strokeDashoffset={-(start + DONUT_GAP / 2)}
+                  strokeDasharray={`${dash} ${100 - dash}`}
+                  strokeDashoffset={offset}
                   // Start segments at 12 o'clock instead of SVG's 3 o'clock default.
                   transform={`rotate(-90 ${DONUT_CENTER} ${DONUT_CENTER})`}
                 />
