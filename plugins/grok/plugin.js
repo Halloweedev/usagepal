@@ -247,6 +247,52 @@
   }
 
   const LOG_RELATIVE = "/logs/unified.jsonl"
+  const OPENCODE_DB_PATH = "~/.local/share/opencode/opencode.db"
+
+  // OpenCode assistant rows with providerID = 'xai' (not 'opencode-go').
+  // OpenCode Go keeps its own filter; do not broaden that plugin to include xAI.
+  const OPENCODE_XAI_ASSISTANT_FILTER = `
+    json_valid(data)
+      AND json_extract(data, '$.providerID') = 'xai'
+      AND json_extract(data, '$.role') = 'assistant'
+  `
+
+  const OPENCODE_XAI_TOKEN_SUM = `
+    (
+      COALESCE(CAST(json_extract(data, '$.tokens.input') AS INTEGER), 0) +
+      COALESCE(CAST(json_extract(data, '$.tokens.output') AS INTEGER), 0) +
+      COALESCE(CAST(json_extract(data, '$.tokens.reasoning') AS INTEGER), 0) +
+      COALESCE(CAST(json_extract(data, '$.tokens.cacheRead') AS INTEGER), 0) +
+      COALESCE(CAST(json_extract(data, '$.tokens.cacheWrite') AS INTEGER), 0) +
+      COALESCE(CAST(json_extract(data, '$.tokens.cache_read') AS INTEGER), 0) +
+      COALESCE(CAST(json_extract(data, '$.tokens.cache_write') AS INTEGER), 0)
+    )
+  `
+
+  const OPENCODE_XAI_ROWS_SQL = `
+    SELECT
+      CAST(COALESCE(json_extract(data, '$.time.created'), time_created) AS INTEGER) AS createdMs,
+      CAST(json_extract(data, '$.cost') AS REAL) AS cost,
+      COALESCE(
+        json_extract(data, '$.modelID'),
+        json_extract(data, '$.model'),
+        json_extract(data, '$.modelName')
+      ) AS modelID,
+      COALESCE(CAST(json_extract(data, '$.tokens.input') AS INTEGER), 0) AS tokensInput,
+      COALESCE(CAST(json_extract(data, '$.tokens.output') AS INTEGER), 0) AS tokensOutput,
+      COALESCE(CAST(json_extract(data, '$.tokens.reasoning') AS INTEGER), 0) AS tokensReasoning,
+      COALESCE(CAST(json_extract(data, '$.tokens.cacheRead') AS INTEGER), 0) +
+        COALESCE(CAST(json_extract(data, '$.tokens.cache_read') AS INTEGER), 0) AS tokensCacheRead,
+      COALESCE(CAST(json_extract(data, '$.tokens.cacheWrite') AS INTEGER), 0) +
+        COALESCE(CAST(json_extract(data, '$.tokens.cache_write') AS INTEGER), 0) AS tokensCacheWrite,
+      ${OPENCODE_XAI_TOKEN_SUM} AS tokensTotal
+    FROM message
+    WHERE ${OPENCODE_XAI_ASSISTANT_FILTER}
+      AND (
+        json_type(data, '$.cost') IN ('integer', 'real')
+        OR ${OPENCODE_XAI_TOKEN_SUM} > 0
+      )
+  `
 
   const GROK_PRICING = {
     models: {
@@ -316,6 +362,98 @@
       (inputNoCache * rates.input + cacheRead * rates.cache_read + output * rates.output) /
       1e6
     )
+  }
+
+  function openCodeRowCostUsd(row, ctx) {
+    const stored = readNumber(row.cost)
+    if (stored !== null && stored > 0) return stored
+
+    const input = Math.max(0, readNumber(row.tokensInput) || 0)
+    const output = Math.max(0, readNumber(row.tokensOutput) || 0)
+    const reasoning = Math.max(0, readNumber(row.tokensReasoning) || 0)
+    const cacheRead = Math.max(0, readNumber(row.tokensCacheRead) || 0)
+    const tokensTotal = Math.max(0, readNumber(row.tokensTotal) || 0)
+    if (tokensTotal <= 0) return stored !== null && stored >= 0 ? stored : null
+
+    const modelID =
+      typeof row.modelID === "string" && row.modelID.trim() ? row.modelID.trim() : null
+    const estimated = estimatedCostDollars(
+      modelID,
+      Math.max(0, input - cacheRead),
+      cacheRead,
+      output + reasoning,
+    )
+    if (estimated === null) {
+      if (modelID) {
+        ctx.host.log.info("grok opencode xai pricing: unknown model " + modelID)
+      }
+      return stored !== null && stored >= 0 ? stored : 0
+    }
+    return estimated
+  }
+
+  function queryOpenCodeRows(ctx, sql) {
+    try {
+      const raw = ctx.host.sqlite.query(OPENCODE_DB_PATH, sql)
+      const rows = Array.isArray(raw) ? raw : ctx.util.tryParseJson(raw)
+      if (!Array.isArray(rows)) {
+        ctx.host.log.warn("grok opencode sqlite query returned non-array result")
+        return { ok: false, rows: [] }
+      }
+      return { ok: true, rows: rows }
+    } catch (e) {
+      ctx.host.log.warn("grok opencode sqlite query failed: " + String(e))
+      return { ok: false, rows: [] }
+    }
+  }
+
+  function loadOpenCodeXaiHistory(ctx) {
+    const result = queryOpenCodeRows(ctx, OPENCODE_XAI_ROWS_SQL)
+    if (!result.ok) return result
+
+    const rows = []
+    for (let i = 0; i < result.rows.length; i += 1) {
+      const row = result.rows[i]
+      if (!row || typeof row !== "object") continue
+      const createdMs = readNumber(row.createdMs)
+      if (createdMs === null || createdMs <= 0) continue
+      const cost = openCodeRowCostUsd(row, ctx)
+      if (cost === null || cost < 0) continue
+      const model =
+        typeof row.modelID === "string" && row.modelID.trim() ? row.modelID.trim() : null
+      if (!model) continue
+      const tokensRaw = readNumber(row.tokensTotal)
+      const tokens = tokensRaw !== null && tokensRaw > 0 ? Math.round(tokensRaw) : 0
+      if (cost <= 0 && tokens <= 0) continue
+      rows.push({ createdMs: createdMs, cost: cost, model: model, tokens: tokens })
+    }
+    return { ok: true, rows: rows }
+  }
+
+  /**
+   * Merge CLI log rows with OpenCode xAI rows without double-counting.
+   * Rule: if the Grok CLI log has any inference rows for a UTC day, prefer CLI
+   * for that entire day; otherwise use OpenCode xAI rows for that day.
+   * Sources are not summed on overlapping days (safer anti-double-count).
+   */
+  function mergeUsageRowsByDay(cliRows, openCodeRows) {
+    const cliDaySet = {}
+    const cli = Array.isArray(cliRows) ? cliRows : []
+    const openCode = Array.isArray(openCodeRows) ? openCodeRows : []
+
+    for (let i = 0; i < cli.length; i += 1) {
+      const key = dayKeyFromMs(cli[i].createdMs)
+      if (key) cliDaySet[key] = true
+    }
+
+    const merged = cli.slice()
+    for (let j = 0; j < openCode.length; j += 1) {
+      const row = openCode[j]
+      const key = dayKeyFromMs(row.createdMs)
+      if (key && cliDaySet[key]) continue
+      merged.push(row)
+    }
+    return merged
   }
 
   function modelIDFromEvent(msg, ctxObj) {
@@ -591,7 +729,7 @@
       ctx.line.barChart({
         label: "Usage Trend",
         points: points,
-        note: "Estimated from local logs at API rates.",
+        note: "Estimated from local CLI logs and OpenCode xAI history.",
         color: "#000000",
       }),
     )
@@ -655,10 +793,13 @@
 
   function appendSpendHistory(ctx, lines, nowMs) {
     const text = readLogText(ctx)
-    if (text === null) return
+    const cliRows = text !== null ? buildUsageRowsFromLog(ctx, text, nowMs - 31 * 24 * 60 * 60 * 1000) : []
 
-    const sinceMs = nowMs - 31 * 24 * 60 * 60 * 1000
-    const rows = buildUsageRowsFromLog(ctx, text, sinceMs)
+    const openCodeResult = loadOpenCodeXaiHistory(ctx)
+    const openCodeRows = openCodeResult.ok ? openCodeResult.rows : []
+
+    // Prefer CLI for UTC days that have CLI inference; otherwise OpenCode xAI.
+    const rows = mergeUsageRowsByDay(cliRows, openCodeRows)
     if (rows.length === 0) return
 
     const daily = aggregateDailyFromRows(rows, nowMs)
@@ -774,7 +915,12 @@
       aggregateModelUsageFromRows,
       appendSpendHistory,
       prettifyGrokModelName,
+      mergeUsageRowsByDay,
+      loadOpenCodeXaiHistory,
+      openCodeRowCostUsd,
       GROK_PRICING,
+      OPENCODE_DB_PATH,
+      OPENCODE_XAI_ROWS_SQL,
     },
   }
 })()

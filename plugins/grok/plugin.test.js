@@ -615,4 +615,202 @@ describe("grok spend aggregation", () => {
       vi.useRealTimers()
     }
   })
+
+  function setOpenCodeXaiQuery(ctx, rows) {
+    const list = Array.isArray(rows) ? rows : []
+    ctx.host.sqlite.query.mockImplementation((dbPath, sql) => {
+      expect(dbPath).toBe("~/.local/share/opencode/opencode.db")
+      expect(String(sql)).toContain("json_extract(data, '$.providerID') = 'xai'")
+      expect(String(sql)).not.toContain("opencode-go")
+      expect(String(sql)).toContain("json_extract(data, '$.role') = 'assistant'")
+      return JSON.stringify(list)
+    })
+  }
+
+  function openCodeXaiRow(overrides) {
+    return Object.assign(
+      {
+        createdMs: Date.parse("2026-07-01T03:00:00.000Z"),
+        cost: 0.5,
+        modelID: "grok-4.5",
+        tokensInput: 100_000,
+        tokensOutput: 10_000,
+        tokensReasoning: 0,
+        tokensCacheRead: 0,
+        tokensCacheWrite: 0,
+        tokensTotal: 110_000,
+      },
+      overrides || {},
+    )
+  }
+
+  it("OpenCode-only xAI history produces Today and model lines", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"))
+    try {
+      const ctx = makeCtx()
+      ctx.nowIso = "2026-07-01T12:00:00.000Z"
+      writeAuth(ctx, {
+        key: "test-token",
+        email: "user@example.com",
+        expires_at: "2026-08-01T00:00:00Z",
+      })
+      mockGrokApi(ctx)
+      setOpenCodeXaiQuery(ctx, [
+        openCodeXaiRow({
+          createdMs: Date.parse("2026-07-01T04:00:00.000Z"),
+          cost: 1.25,
+          modelID: "grok-4.5",
+          tokensTotal: 220_000,
+        }),
+        openCodeXaiRow({
+          createdMs: Date.parse("2026-06-30T04:00:00.000Z"),
+          cost: 0.75,
+          modelID: "grok-4.5",
+          tokensTotal: 80_000,
+        }),
+      ])
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const byLabel = Object.fromEntries(result.lines.map((l) => [l.label, l]))
+
+      expect(byLabel["Today"].value).toContain("220K")
+      expect(byLabel["Today"].value).toContain("$1.25")
+      expect(byLabel["Yesterday"].value).toContain("80K")
+      expect(byLabel["Last 30 Days"].value).toContain("300K")
+      expect(byLabel["Last 30 Days"].value).toContain("$2.00")
+      expect(byLabel["Grok 4.5"].value).toContain("100%")
+      expect(byLabel["Grok 4.5"].value).toContain("Today $1.25")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("CLI-only spend still works when OpenCode has no xAI rows", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"))
+    try {
+      const ctx = makeCtx()
+      ctx.nowIso = "2026-07-01T12:00:00.000Z"
+      writeAuth(ctx, {
+        key: "test-token",
+        email: "user@example.com",
+        expires_at: "2026-08-01T00:00:00Z",
+      })
+      mockGrokApi(ctx)
+      setOpenCodeXaiQuery(ctx, [])
+      ctx.host.fs.writeText(
+        LOG_PATH,
+        [
+          modelLine(1, "grok-4.5"),
+          inferenceLine("2026-07-01T01:00:00.000Z", 1, { prompt: 1_000_000, completion: 0 }),
+        ].join("\n"),
+      )
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const byLabel = Object.fromEntries(result.lines.map((l) => [l.label, l]))
+
+      expect(byLabel["Today"].value).toContain("1M")
+      expect(byLabel["Grok 4.5"].value).toContain("100%")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("merge prefers CLI for overlapping UTC days and does not double-count", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"))
+    try {
+      const plugin = await loadPlugin()
+      const cliRows = [
+        {
+          createdMs: Date.parse("2026-07-01T01:00:00.000Z"),
+          cost: 2.0,
+          model: "grok-4.5",
+          tokens: 1_000_000,
+        },
+        {
+          createdMs: Date.parse("2026-06-30T01:00:00.000Z"),
+          cost: 1.0,
+          model: "grok-4.5",
+          tokens: 500_000,
+        },
+      ]
+      const openCodeRows = [
+        {
+          createdMs: Date.parse("2026-07-01T05:00:00.000Z"),
+          cost: 99.0,
+          model: "grok-4.5",
+          tokens: 9_000_000,
+        },
+        {
+          createdMs: Date.parse("2026-06-29T05:00:00.000Z"),
+          cost: 0.5,
+          model: "grok-4.5",
+          tokens: 100_000,
+        },
+      ]
+
+      const merged = plugin.__test.mergeUsageRowsByDay(cliRows, openCodeRows)
+      expect(merged).toHaveLength(3)
+      expect(merged.some((r) => r.cost === 99.0)).toBe(false)
+      expect(merged.some((r) => r.tokens === 100_000)).toBe(true)
+
+      const daily = plugin.__test.aggregateDailyFromRows(merged, Date.now())
+      const byDate = Object.fromEntries(daily.map((d) => [d.date, d]))
+      expect(byDate["2026-07-01"].totalTokens).toBe(1_000_000)
+      expect(byDate["2026-07-01"].costUSD).toBe(2.0)
+      expect(byDate["2026-06-30"].totalTokens).toBe(500_000)
+      expect(byDate["2026-06-29"].totalTokens).toBe(100_000)
+
+      const ctx = makeCtx()
+      ctx.nowIso = "2026-07-01T12:00:00.000Z"
+      writeAuth(ctx, {
+        key: "test-token",
+        email: "user@example.com",
+        expires_at: "2026-08-01T00:00:00Z",
+      })
+      mockGrokApi(ctx)
+      setOpenCodeXaiQuery(ctx, [
+        openCodeXaiRow({
+          createdMs: Date.parse("2026-07-01T05:00:00.000Z"),
+          cost: 99.0,
+          modelID: "grok-4.5",
+          tokensTotal: 9_000_000,
+        }),
+        openCodeXaiRow({
+          createdMs: Date.parse("2026-06-29T05:00:00.000Z"),
+          cost: 0.5,
+          modelID: "grok-4.5",
+          tokensTotal: 100_000,
+        }),
+      ])
+      ctx.host.fs.writeText(
+        LOG_PATH,
+        [
+          modelLine(1, "grok-4.5"),
+          inferenceLine("2026-07-01T01:00:00.000Z", 1, { prompt: 1_000_000, completion: 0 }),
+          modelLine(2, "grok-4.5"),
+          inferenceLine("2026-06-30T01:00:00.000Z", 2, { prompt: 500_000, completion: 0 }),
+        ].join("\n"),
+      )
+
+      const result = plugin.probe(ctx)
+      const byLabel = Object.fromEntries(result.lines.map((l) => [l.label, l]))
+      expect(byLabel["Today"].value).toContain("1M")
+      expect(byLabel["Today"].value).not.toContain("9M")
+      expect(byLabel["Last 30 Days"].value).toContain("1.6M")
+      expect(byLabel["Last 30 Days"].value).not.toContain("9M")
+      expect(byLabel["Last 30 Days"].value).not.toContain("$99")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("prettify keeps grok-4.5 consistent across CLI and OpenCode model IDs", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.prettifyGrokModelName("grok-4.5")).toBe("Grok 4.5")
+  })
 })

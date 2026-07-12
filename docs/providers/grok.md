@@ -23,12 +23,12 @@ SuperGrok subscribers use the **same data path** as pay-as-you-go Grok Build use
 | Auth | `~/.grok/auth.json` (created by `grok login`) |
 | Billing credits | `GET https://cli-chat-proxy.grok.com/v1/billing` |
 | Plan label | `GET https://cli-chat-proxy.grok.com/v1/settings` → `subscription_tier_display` (e.g. `SuperGrok`, `SuperGrok Heavy`) |
-| Share graph / model breakdown | `~/.grok/logs/unified.jsonl` (or `$GROK_HOME/logs/unified.jsonl`) |
+| Share graph / model breakdown | `~/.grok/logs/unified.jsonl` (or `$GROK_HOME/logs/unified.jsonl`), plus OpenCode xAI history from `~/.local/share/opencode/opencode.db` when present |
 
 A web-only SuperGrok subscription does **not** populate UsagePal by itself. Run `grok login` once so the CLI auth file exists, then enable the Grok plugin. After that:
 
 - **Provider card & overview** show your subscription tier and included-credit usage from the billing API.
-- **Share graph** estimates CLI spend from `unified.jsonl` (Today, Yesterday, Last 30 Days, per-model lines). Usage on grok.com that never goes through the CLI is not in that log.
+- **Share graph** estimates spend from local CLI logs and/or OpenCode xAI history (Today, Yesterday, Last 30 Days, per-model lines). Usage on grok.com that never goes through the CLI or OpenCode is not included.
 
 X Premium+ subscribers with bundled Grok Build access follow the same flow.
 
@@ -100,13 +100,26 @@ Used fields:
 
 ## Share Graph
 
-When `~/.grok/logs/unified.jsonl` exists (or `$GROK_HOME/logs/unified.jsonl`), UsagePal also estimates local spend for the Share graph:
+UsagePal estimates local spend for the Share graph from two sources on the **Grok** provider only:
 
-- **Today / Yesterday / Last 30 Days** — dollar and token totals priced from embedded `GROK_PRICING` rates (unknown models count toward tokens at $0)
+1. **Grok CLI logs** — `~/.grok/logs/unified.jsonl` (or `$GROK_HOME/logs/unified.jsonl`)
+2. **OpenCode xAI history** — assistant messages in `~/.local/share/opencode/opencode.db` with `providerID = 'xai'` (OpenCode OAuth / xAI usage). Estimated USD when OpenCode stores cost or when tokens can be priced from embedded `GROK_PRICING` rates.
+
+OpenCode Go (`providerID = 'opencode-go'`) stays on its own provider card and does **not** include xAI rows.
+
+### Merge rule
+
+When both sources have data for the same UTC day, UsagePal prefers the CLI log for that entire day (CLI inference rows win). OpenCode xAI rows are used only for days with no CLI inference. Days are never summed across sources, so overlapping spend is not double-counted.
+
+Displayed lines:
+
+- **Today / Yesterday / Last 30 Days** — dollar and token totals (unknown models count toward tokens at $0)
 - **Usage Trend** — daily token bar chart for the last 31 days
 - **Per-model breakdown** — one text line per model with 30-day share and Today/Yesterday/7d/30d spend (spend segments omitted when $0)
 
-Token rows come from `shell.turn.inference_done` events; model attribution uses per-process (`pid`) timelines from the CLI's model-change events. If the log is missing or unreadable, billing lines still render and share-graph lines are omitted.
+CLI token rows come from `shell.turn.inference_done` events; model attribution uses per-process (`pid`) timelines from the CLI's model-change events. Model IDs from both sources are prettified the same way (for example `grok-4.5` → `Grok 4.5`) so they merge on one line when they share a day source.
+
+If both sources are missing or unreadable, billing lines still render and share-graph lines are omitted. Credits used / billing API path is unchanged.
 
 ## Errors
 
