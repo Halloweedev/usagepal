@@ -5,21 +5,21 @@
 Beta follow-up: more providers in the share graph, spend/token metrics, donut readability, and Share layout polish.
 
 ### New Features
-- Share graph model/spend support for Cursor, OpenCode Go, Grok, OpenRouter, and ClinePass — Today / Yesterday / Last 30 Days, usage trends, and per-model breakdowns
-- Share graph metric modes — Usage, Price, and Price/M — with toggles for breakdown, total, and date
-- Cross-provider model name grouping so the same model from different providers merges into one slice
-- OpenCode Go estimates spend from token × published rates when stored cost is missing or zero
-- Grok SuperGrok / SuperGrok Heavy / X Premium+ docs and share-graph pricing from local CLI logs
+- Share graph model/spend support for Cursor, OpenCode Go, Grok, OpenRouter, and ClinePass — Today / Yesterday / Last 30 Days, usage trends, and per-model breakdowns by @Halloweedev
+- Share graph metric modes — Usage, Price, and Price/M — with toggles for breakdown, total, and date by @Halloweedev
+- Cross-provider model name grouping so the same model from different providers merges into one slice by @Halloweedev
+- OpenCode Go estimates spend from token × published rates when stored cost is missing or zero by @Halloweedev
+- Grok SuperGrok / SuperGrok Heavy / X Premium+ docs and share-graph pricing from local CLI logs by @Halloweedev
 
 ### Bug Fixes
-- ClinePass spend now converts micro-USD correctly (same unit as the Cline app)
-- Grok unknown models still count tokens toward usage while cost stays $0
-- Amp Free daily-% usage format + displayText redaction
+- ClinePass spend now converts micro-USD correctly (same unit as the Cline app) by @Halloweedev
+- Grok unknown models still count tokens toward usage while cost stays $0 by @Halloweedev
+- Amp Free daily-% usage format + displayText redaction ([#12](https://github.com/Halloweedev/usagepal/pull/12)) by @divaltor
 
 ### Improvements
-- Donut min-slice floor with proportional scaling so tiny slices stay visible without drowning large ones
-- Share provider layout — full-width overview, max 6 providers per row, and menubar-matched spacing
-- Richer model-slice colors (hue/lightness spread) while provider slices stay on-brand
+- Donut min-slice floor with proportional scaling so tiny slices stay visible without drowning large ones by @Halloweedev
+- Share provider layout — full-width overview, max 6 providers per row, and menubar-matched spacing by @Halloweedev
+- Richer model-slice colors (hue/lightness spread) while provider slices stay on-brand by @Halloweedev
 
 ---
 
