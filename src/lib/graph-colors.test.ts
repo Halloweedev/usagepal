@@ -103,7 +103,7 @@ describe("assignGraphEntryColors", () => {
     expect(Math.abs(opus.l - sonnet.l)).toBeGreaterThanOrEqual(0.08)
   })
 
-  it("provider mode: locks each slice to its brand hue", () => {
+  it("provider mode: locks Claude and Codex to their exact brand colors", () => {
     const colors = assignGraphEntryColors(
       [
         { key: "claude", brandColor: "#DE7356" },
@@ -112,10 +112,29 @@ describe("assignGraphEntryColors", () => {
       "provider",
       "dark"
     )
-    const claudeHue = hexToOklch("#DE7356")!.h
-    const codexHue = hexToOklch("#74AA9C")!.h
-    expect(Math.abs(hexToOklch(colors.get("claude")!)!.h - claudeHue)).toBeLessThanOrEqual(4)
-    expect(Math.abs(hexToOklch(colors.get("codex")!)!.h - codexHue)).toBeLessThanOrEqual(4)
+    expect(colors.get("claude")).toBe("#de7356")
+    expect(colors.get("codex")).toBe("#74aa9c")
+  })
+
+  it("provider mode: Cursor is pure black and the only black slice", () => {
+    const colors = assignGraphEntryColors(
+      [
+        { key: "cursor", brandColor: "#000000" },
+        { key: "opencode-go", brandColor: "#000000" },
+        { key: "cline-pass", brandColor: "#000000" },
+        { key: "claude", brandColor: "#DE7356" },
+        { key: "codex", brandColor: "#74AA9C" },
+      ],
+      "provider",
+      "dark"
+    )
+    expect(colors.get("cursor")).toBe("#000000")
+    expect(colors.get("claude")).toBe("#de7356")
+    expect(colors.get("codex")).toBe("#74aa9c")
+    for (const key of ["opencode-go", "cline-pass", "claude", "codex"]) {
+      expect(colors.get(key)).not.toBe("#000000")
+    }
+    expect(colors.get("opencode-go")).not.toBe(colors.get("cline-pass"))
   })
 })
 

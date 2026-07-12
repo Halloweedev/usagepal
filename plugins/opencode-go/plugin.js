@@ -286,6 +286,8 @@
     return s
       .split("-")
       .map(function (part) {
+        if (part === "glm") return "GLM";
+        if (part === "gpt") return "GPT";
         if (/^\d/.test(part)) return part;
         return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
       })

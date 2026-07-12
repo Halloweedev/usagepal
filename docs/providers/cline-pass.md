@@ -20,6 +20,8 @@ When the usages API returns history, the plugin also emits share-graph lines:
 - **Usage Trend** — daily token bar chart for the last 31 days
 - **Per-model breakdown** — one text line per model with 30-day share and Today/Yesterday/7d/30d spend
 
+Model names are prettified for display (for example `glm-5.2` → `GLM 5.2`, `gpt-5.4` → `GPT 5.4`).
+
 Costs come from each transaction's `costUsd` field (or `creditsUsed` when absent), stored in **micro-USD** (1/1,000,000 of a dollar — the same unit the Cline app uses for usage history) and converted to dollars for display. If the usages endpoint is unavailable, progress bars and balance still work; share-graph lines are omitted.
 
 ## Where credentials come from

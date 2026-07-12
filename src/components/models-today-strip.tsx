@@ -32,7 +32,7 @@ const PERIODS: { id: UsagePeriod; label: string }[] = [
 ]
 
 const DONUT_SIZE = 96
-const DONUT_GAP = 2
+const DONUT_GAP = 0.8
 const DONUT_RADIUS = 36
 const DONUT_STROKE = 13
 
@@ -49,14 +49,16 @@ type StripEntry = {
 }
 
 function ModelTooltip({ model }: { model: TodayModelEntry }) {
+  const providers =
+    model.providerNames.length > 0 ? model.providerNames : model.providerName ? [model.providerName] : []
   return (
     <div className="flex min-w-40 flex-col gap-1 text-xs">
       <span className="flex justify-between gap-4 font-semibold">
         <span>{model.name}</span>
         <span className="tabular-nums">{formatShareCost(model.todayCost)}</span>
       </span>
-      {!model.isOthers && (
-        <span className="text-muted-foreground">{model.providerName}</span>
+      {!model.isOthers && providers.length > 0 && (
+        <span className="text-muted-foreground">{providers.join(" · ")}</span>
       )}
     </div>
   )

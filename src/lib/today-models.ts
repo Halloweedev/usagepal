@@ -9,6 +9,8 @@ export type TodayModelEntry = {
   name: string
   providerId: string
   providerName: string
+  /** Unique provider display names that contributed to this entry (dominant first). */
+  providerNames: string[]
   brandColor: string | null
   todayCost: number
   /** Raw token count for the active period, when the provider exposes it. */
@@ -65,6 +67,19 @@ export function normalizeModelName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ")
 }
 
+/** Unions provider display names, keeping the dominant provider first. */
+function mergeProviderNames(dominant: string, a: string[], b: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const name of [dominant, ...a, ...b]) {
+    const key = name.trim()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(key)
+  }
+  return out
+}
+
 /** Merges same-named models across providers into one ranked entry. */
 function mergeModelsByName(models: TodayModelEntry[]): TodayModelEntry[] {
   const byName = new Map<string, TodayModelEntry>()
@@ -72,7 +87,10 @@ function mergeModelsByName(models: TodayModelEntry[]): TodayModelEntry[] {
     const key = normalizeModelName(model.name)
     const existing = byName.get(key)
     if (!existing) {
-      byName.set(key, { ...model })
+      byName.set(key, {
+        ...model,
+        providerNames: model.providerNames.length > 0 ? [...model.providerNames] : [model.providerName],
+      })
       continue
     }
     const dominant = existing.todayCost >= model.todayCost ? existing : model
@@ -84,6 +102,7 @@ function mergeModelsByName(models: TodayModelEntry[]): TodayModelEntry[] {
       name: dominant.name,
       providerId: dominant.providerId,
       providerName: dominant.providerName,
+      providerNames: mergeProviderNames(dominant.providerName, existing.providerNames, model.providerNames),
       brandColor: dominant.brandColor,
       todayCost: existing.todayCost + model.todayCost,
       tokenCount: mergedTokens != null && mergedTokens > 0 ? mergedTokens : null,
@@ -182,6 +201,7 @@ export function buildModelUsage(plugins: TodayModelsSource[], period: UsagePerio
     const base = {
       providerId: plugin.meta.id,
       providerName: plugin.meta.name,
+      providerNames: [plugin.meta.name],
       brandColor: plugin.meta.brandColor,
     }
     const providerTokens = parseProviderPeriodTokens(plugin.data.lines, providerLabel)

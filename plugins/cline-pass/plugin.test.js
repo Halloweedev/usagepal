@@ -441,7 +441,7 @@ describe("cline-pass share graph", () => {
         "Last 30 Days",
         "Usage Trend",
         "Claude Sonnet 4.6",
-        "Gpt 5.4",
+        "GPT 5.4",
       ]),
     )
     expect(findLine(result, "Today").value).toContain("$1.50")
@@ -453,6 +453,8 @@ describe("cline-pass share graph", () => {
     expect(plugin.__test.prettifyModelName("anthropic", "claude-sonnet-4-6")).toBe(
       "Claude Sonnet 4.6",
     )
+    expect(plugin.__test.prettifyModelName("zai", "glm-5.2")).toBe("GLM 5.2")
+    expect(plugin.__test.prettifyModelName("openai", "gpt-5.4")).toBe("GPT 5.4")
   })
 
   it("aggregates usage transactions into daily buckets", async () => {
@@ -499,6 +501,6 @@ describe("cline-pass share graph", () => {
 
     expect(findLine(result, "Today").value).toContain("$51.82")
     expect(findLine(result, "Today").value).not.toContain("$51,822,951")
-    expect(findLine(result, "Glm 5.2").value).toContain("$51.82")
+    expect(findLine(result, "GLM 5.2").value).toContain("$51.82")
   })
 })

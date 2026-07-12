@@ -1,7 +1,8 @@
 /** OKLCH color derivation for the models graph: turns a provider brand hex
- * into readable slice colors. Provider slices stay on-brand; model slices spread
- * hue and lightness so every entry reads as its own color. Conversion matrices
- * are Björn Ottosson's OKLab reference implementation. */
+ * into readable slice colors. Provider slices stay on-brand; monochrome brands
+ * (black/white/gray) fan out across a spaced hue ramp so they don't collide.
+ * Model slices spread hue and lightness so every entry reads as its own color.
+ * Conversion matrices are Björn Ottosson's OKLab reference implementation. */
 
 import type { GraphGroupBy } from "@/lib/today-models"
 
@@ -69,10 +70,19 @@ const HUE_OFFSETS = [0, 34, -30, 52, -44, 22, -58, 40]
 const CHROMA_MIN = 0.13
 const CHROMA_MAX = 0.24
 /** Below this input chroma a brand reads as monochrome (black/white/gray);
- * those get a muted slate ramp — identity then rides on the labeled list. */
+ * those get a spaced hue ramp so multiple black-logo providers stay distinct. */
 const MONO_CHROMA = 0.03
+/** Chroma for mono provider slices — high enough to tell them apart, low enough
+ * not to invent a fake brand color. */
+const MONO_PROVIDER_CHROMA = 0.11
+/** Well-spaced hues for monochrome brand providers other than Cursor
+ * (OpenCode Go, ClinePass, Grok, …). Cursor alone stays pure black. */
+const MONO_PROVIDER_HUES = [250, 30, 145, 310, 85, 200, 15, 175] as const
 const SLATE_HUE = 255
 const SLATE_CHROMA = 0.05
+
+/** Cursor is the only provider rendered as pure black. */
+export const CURSOR_PROVIDER_COLOR = "#000000"
 
 /** Neutral in-band grays for the "Others" bucket. */
 export const OTHERS_COLORS: Record<GraphTheme, string> = {
@@ -84,11 +94,25 @@ function clampLightness(l: number, theme: GraphTheme): number {
   return theme === "dark" ? Math.min(Math.max(l, 0.42), 0.80) : Math.min(Math.max(l, 0.38), 0.76)
 }
 
-/** One on-brand provider accent — hue locked to the brand, chroma boosted. */
-export function deriveProviderColor(brandColor: string | null, theme: GraphTheme): string {
+export function isMonoBrandColor(brandColor: string | null): boolean {
+  const base = brandColor ? hexToOklch(brandColor) : null
+  return !base || base.c < MONO_CHROMA
+}
+
+function canonicalizeHex(hex: string): string {
+  const value = hex.startsWith("#") ? hex.slice(1) : hex
+  return `#${value.slice(0, 6).toLowerCase()}`
+}
+
+/** One on-brand provider accent — hue locked to the brand, chroma boosted.
+ * Monochrome brands take `monoRank` so several black logos don't share a slice color.
+ * Cursor is handled separately as {@link CURSOR_PROVIDER_COLOR}. */
+export function deriveProviderColor(brandColor: string | null, theme: GraphTheme, monoRank = 0): string {
   const base = brandColor ? hexToOklch(brandColor) : null
   if (!base || base.c < MONO_CHROMA) {
-    return oklchToHex({ l: theme === "dark" ? 0.58 : 0.50, c: SLATE_CHROMA, h: SLATE_HUE })
+    const h = MONO_PROVIDER_HUES[monoRank % MONO_PROVIDER_HUES.length]
+    const l = LIGHTNESS_STEPS[theme][monoRank % LIGHTNESS_STEPS[theme].length]
+    return oklchToHex({ l, c: MONO_PROVIDER_CHROMA, h })
   }
   const l = clampLightness(base.l, theme)
   const c = Math.min(Math.max(base.c, CHROMA_MIN), CHROMA_MAX)
@@ -117,8 +141,9 @@ export type GraphColorEntry = {
   isOthers?: boolean
 }
 
-/** Colors for graph/strip slices. Provider mode keeps brand hues; model mode
- * walks the ranked list so every model gets a globally distinct shade. */
+/** Colors for graph/strip slices. Provider mode keeps brand hues; Cursor is
+ * pure black (alone); other mono brands fan out. Model mode walks the ranked
+ * list so every model gets a globally distinct shade. */
 export function assignGraphEntryColors(
   entries: GraphColorEntry[],
   groupBy: GraphGroupBy,
@@ -126,11 +151,24 @@ export function assignGraphEntryColors(
 ): Map<string, string> {
   const colors = new Map<string, string>()
   if (groupBy === "provider") {
+    let monoRank = 0
     for (const entry of entries) {
-      colors.set(
-        entry.key,
-        entry.isOthers ? OTHERS_COLORS[theme] : deriveProviderColor(entry.brandColor, theme)
-      )
+      if (entry.isOthers) {
+        colors.set(entry.key, OTHERS_COLORS[theme])
+        continue
+      }
+      if (entry.key === "cursor") {
+        colors.set(entry.key, CURSOR_PROVIDER_COLOR)
+        continue
+      }
+      // Claude / Codex / other chromatic brands: keep the brand hex as-is so
+      // orange and teal stay exactly on-brand (no OKLCH remix).
+      if (entry.brandColor && !isMonoBrandColor(entry.brandColor)) {
+        colors.set(entry.key, canonicalizeHex(entry.brandColor))
+        continue
+      }
+      colors.set(entry.key, deriveProviderColor(entry.brandColor, theme, monoRank))
+      monoRank += 1
     }
     return colors
   }

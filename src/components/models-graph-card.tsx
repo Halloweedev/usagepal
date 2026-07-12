@@ -66,7 +66,7 @@ function StackedBar({ entries, colors }: { entries: GraphEntry[]; colors: Map<st
 // Slim proportions matching the Overview strip donut (stroke/radius ≈ 0.36),
 // scaled up to this card's larger canvas.
 const DONUT_SIZE = 132
-const DONUT_GAP = 2
+const DONUT_GAP = 0.8
 const DONUT_RADIUS = 50
 const DONUT_STROKE = 18
 

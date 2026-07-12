@@ -86,6 +86,21 @@ describe("ModelsTodayStrip", () => {
     expect(screen.getByRole("button", { name: "Donut chart" })).toBeInTheDocument()
   })
 
+  it("lists every provider that used a model in the model hover", async () => {
+    loadOverviewGraphGroupByMock.mockResolvedValue("model")
+    const opencode = makeSource({ id: "opencode-go", name: "OpenCode Go", brandColor: "#000000" }, [
+      ["GLM 5.2", "100% · Today $4.00"],
+    ])
+    const clinePass = makeSource({ id: "cline-pass", name: "ClinePass", brandColor: "#F59E0B" }, [
+      ["GLM 5.2", "100% · Today $1.50"],
+    ])
+    render(<ModelsTodayStrip plugins={[opencode, clinePass]} />)
+
+    const row = await screen.findByTestId("strip-entry-row")
+    expect(within(row).getByText("GLM 5.2")).toBeInTheDocument()
+    expect(screen.getAllByText("OpenCode Go · ClinePass").length).toBeGreaterThan(0)
+  })
+
   it("switches windows on period tab click and disables empty periods", async () => {
     const user = userEvent.setup()
     const claudeP = makeSource({ id: "claude", name: "Claude", brandColor: "#DE7356" }, [

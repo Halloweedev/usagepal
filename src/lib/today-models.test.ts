@@ -284,8 +284,8 @@ describe("buildModelUsage — periods", () => {
     modelLine("Today", "$5.00 · 500K"),
     modelLine("Yesterday", "$3.00 · 300K"),
     modelLine("Last 30 Days", "$20.00 · 2M"),
-    modelLine("Glm 5.1", "60% · Yesterday $1.80 · Today $3.00 · 30d $12.00"),
-    modelLine("Gpt 5.4", "40% · Yesterday $1.20 · Today $2.00 · 30d $8.00"),
+    modelLine("GLM 5.1", "60% · Yesterday $1.80 · Today $3.00 · 30d $12.00"),
+    modelLine("GPT 5.4", "40% · Yesterday $1.20 · Today $2.00 · 30d $8.00"),
   ])
   // Grok: local log estimates with per-model breakdown.
   const grokPeriods = makeSource("grok", "Grok", "#000000", [
@@ -367,9 +367,9 @@ describe("buildModelUsage — periods", () => {
   it("includes OpenCode Go models in buildModelUsage when breakdown lines exist", () => {
     const usage = buildModelUsage([opencodeGoPeriods], "today")
     expect(usage.providers.map((p) => p.id)).toContain("opencode-go")
-    expect(usage.models.some((m) => m.name === "Glm 5.1")).toBe(true)
-    expect(usage.models.some((m) => m.name === "Gpt 5.4")).toBe(true)
-    const glm = usage.models.find((m) => m.name === "Glm 5.1")!
+    expect(usage.models.some((m) => m.name === "GLM 5.1")).toBe(true)
+    expect(usage.models.some((m) => m.name === "GPT 5.4")).toBe(true)
+    const glm = usage.models.find((m) => m.name === "GLM 5.1")!
     expect(glm.todayCost).toBe(3)
     expect(glm.providerId).toBe("opencode-go")
   })
@@ -379,7 +379,7 @@ describe("buildModelUsage — periods", () => {
     const opencode = usage.providers.find((p) => p.id === "opencode-go")!
 
     expect(opencode.todayCost).toBeCloseTo(3)
-    expect(opencode.models.map((m) => m.name)).toEqual(["Glm 5.1", "Gpt 5.4"])
+    expect(opencode.models.map((m) => m.name)).toEqual(["GLM 5.1", "GPT 5.4"])
     expect(opencode.models[0].todayCost).toBeCloseTo(1.8)
     expect(opencode.models[1].todayCost).toBeCloseTo(1.2)
   })
@@ -389,7 +389,7 @@ describe("buildModelUsage — periods", () => {
     const opencode = usage.providers.find((p) => p.id === "opencode-go")!
 
     expect(opencode.todayCost).toBeCloseTo(20)
-    expect(opencode.models.map((m) => m.name)).toEqual(["Glm 5.1", "Gpt 5.4"])
+    expect(opencode.models.map((m) => m.name)).toEqual(["GLM 5.1", "GPT 5.4"])
     expect(opencode.models[0].todayCost).toBeCloseTo(12)
     expect(opencode.models[1].todayCost).toBeCloseTo(8)
   })
@@ -419,7 +419,7 @@ describe("buildModelUsage — periods", () => {
   it("merges same-named models across providers into one ranked entry", () => {
     const cursorGpt = makeSource("cursor", "Cursor", "#000000", [
       modelLine("Today", "$5.00 · 2M"),
-      modelLine("Gpt 4", "100% · Today $5.00"),
+      modelLine("GPT 4", "100% · Today $5.00"),
     ])
     const codexGpt = makeSource("codex", "Codex", "#74AA9C", [
       modelLine("Today", "$3.00 · 1M"),
@@ -428,9 +428,26 @@ describe("buildModelUsage — periods", () => {
     const usage = buildModelUsage([cursorGpt, codexGpt], "today")
 
     expect(usage.models).toHaveLength(1)
-    expect(usage.models[0].name).toBe("Gpt 4")
+    expect(usage.models[0].name).toBe("GPT 4")
     expect(usage.models[0].todayCost).toBeCloseTo(8)
+    expect(usage.models[0].providerName).toBe("Cursor")
+    expect(usage.models[0].providerNames).toEqual(["Cursor", "Codex"])
     expect(usage.providers).toHaveLength(2)
+  })
+
+  it("lists both providers when a model is used on OpenCode Go and ClinePass", () => {
+    const opencode = makeSource("opencode-go", "OpenCode Go", "#000000", [
+      modelLine("GLM 5.2", "100% · Today $4.00"),
+    ])
+    const clinePass = makeSource("cline-pass", "ClinePass", "#F59E0B", [
+      modelLine("GLM 5.2", "100% · Today $1.50"),
+    ])
+    const usage = buildModelUsage([opencode, clinePass], "today")
+
+    expect(usage.models).toHaveLength(1)
+    expect(usage.models[0].name).toBe("GLM 5.2")
+    expect(usage.models[0].todayCost).toBeCloseTo(5.5)
+    expect(usage.models[0].providerNames).toEqual(["OpenCode Go", "ClinePass"])
   })
 
   it("dedupes duplicate display names within one provider", () => {

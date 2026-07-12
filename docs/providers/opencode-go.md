@@ -60,7 +60,7 @@ When local history is available, the plugin also emits share-graph lines:
 - **Usage Trend** — daily token bar chart for the last 31 days (only when tokens exist)
 - **Per-model breakdown** — one text line per model with 30-day share and Today/Yesterday/7d/30d spend
 
-Model names come from `modelID` (with `model` / `modelName` fallbacks) and are prettified for display (for example `glm-5.1` → `Glm 5.1`). If no model ID is stored on any row, UsagePal shows a single aggregate line labeled **OpenCode Go** at 100%.
+Model names come from `modelID` (with `model` / `modelName` fallbacks) and are prettified for display (for example `glm-5.1` → `GLM 5.1`). If no model ID is stored on any row, UsagePal shows a single aggregate line labeled **OpenCode Go** at 100%.
 
 Day buckets use UTC calendar dates, matching the Cursor share-graph behavior.
 

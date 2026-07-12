@@ -284,8 +284,8 @@ describe("opencode-go spend aggregation", () => {
 
   it("prettifies model IDs like glm-5.1", async () => {
     const plugin = await loadPlugin();
-    expect(plugin.__test.prettifyModelName("glm-5.1")).toBe("Glm 5.1");
-    expect(plugin.__test.prettifyModelName("gpt-5.4")).toBe("Gpt 5.4");
+    expect(plugin.__test.prettifyModelName("glm-5.1")).toBe("GLM 5.1");
+    expect(plugin.__test.prettifyModelName("gpt-5.4")).toBe("GPT 5.4");
   });
 
   it("aggregates daily spend and tokens by UTC day", async () => {
@@ -401,7 +401,7 @@ describe("opencode-go spend aggregation", () => {
     expect(byLabel["Last 30 Days"].value).toContain("3M");
     expect(byLabel["Usage Trend"].type).toBe("barChart");
     expect(byLabel["Usage Trend"].points).toHaveLength(2);
-    expect(byLabel["Glm 5.1"].value).toContain("100%");
+    expect(byLabel["GLM 5.1"].value).toContain("100%");
   });
 
   it("selects Today's bucket by UTC day, not local timezone", async () => {
@@ -465,8 +465,8 @@ describe("opencode-go spend aggregation", () => {
         "Yesterday",
         "Last 30 Days",
         "Usage Trend",
-        "Glm 5.1",
-        "Gpt 5.4",
+        "GLM 5.1",
+        "GPT 5.4",
       ]),
     );
   });

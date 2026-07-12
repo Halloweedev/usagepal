@@ -454,6 +454,14 @@
         out.push(part)
         continue
       }
+      if (part.toLowerCase() === "glm") {
+        out.push("GLM")
+        continue
+      }
+      if (part.toLowerCase() === "gpt") {
+        out.push("GPT")
+        continue
+      }
       out.push(part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     }
     return out.join(" ")
