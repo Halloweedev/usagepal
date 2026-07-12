@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.7.34-beta.2
+
+Beta follow-up: more providers in the share graph, spend/token metrics, donut readability, and Share layout polish.
+
+### New Features
+- Share graph model/spend support for Cursor, OpenCode Go, Grok, OpenRouter, and ClinePass — Today / Yesterday / Last 30 Days, usage trends, and per-model breakdowns
+- Share graph metric modes — Usage, Price, and Price/M — with toggles for breakdown, total, and date
+- Cross-provider model name grouping so the same model from different providers merges into one slice
+- OpenCode Go estimates spend from token × published rates when stored cost is missing or zero
+- Grok SuperGrok / SuperGrok Heavy / X Premium+ docs and share-graph pricing from local CLI logs
+
+### Bug Fixes
+- ClinePass spend now converts micro-USD correctly (same unit as the Cline app)
+- Grok unknown models still count tokens toward usage while cost stays $0
+- Amp Free daily-% usage format + displayText redaction
+
+### Improvements
+- Donut min-slice floor with proportional scaling so tiny slices stay visible without drowning large ones
+- Share provider layout — full-width overview, max 6 providers per row, and menubar-matched spacing
+- Richer model-slice colors (hue/lightness spread) while provider slices stay on-brand
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.34-beta.1...v0.7.34-beta.2](https://github.com/Halloweedev/usagepal/compare/v0.7.34-beta.1...v0.7.34-beta.2)
+
 ## v0.7.34-beta.1
 
 Beta release for the cross-provider models graph, Overview models strip, and Codex rate-limit reset fix.
