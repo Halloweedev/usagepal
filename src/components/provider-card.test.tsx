@@ -1159,6 +1159,34 @@ describe("ProviderCard", () => {
     expect(screen.getByText("100%")).toBeInTheDocument()
   })
 
+  it("derives a hover breakdown for percent-only models from the provider's period totals", () => {
+    render(
+      <ProviderCard
+        name="Codex"
+        displayMode="used"
+        scopeFilter="all"
+        skeletonLines={[
+          { type: "text", label: "Today", scope: "detail" },
+          { type: "text", label: "Last 30 Days", scope: "detail" },
+        ]}
+        lines={[
+          { type: "text", label: "Today", value: "$458.16 · 333M" },
+          { type: "text", label: "Last 30 Days", value: "$774.65 · 563M" },
+          { type: "text", label: "GPT-5.6 Sol", value: "99.7%" },
+          { type: "text", label: "GPT-5.5", value: "0.3%" },
+        ]}
+      />
+    )
+
+    // Percent stays inline; Today/30d are derived (provider total × the row's %)
+    // into the tooltip, matching Claude's per-model hover.
+    expect(screen.getByText("99.7%")).toBeInTheDocument()
+    expect(screen.getByText("Today $456.79")).toBeInTheDocument()
+    expect(screen.getByText("30 days $772.33")).toBeInTheDocument()
+    // No 7-day source for this provider, so that line is omitted.
+    expect(screen.queryByText(/7 days/)).not.toBeInTheDocument()
+  })
+
   it("keeps normal rendering for unmatched text lines that are not model-shaped", () => {
     render(
       <ProviderCard

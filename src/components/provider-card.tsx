@@ -13,6 +13,11 @@ import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode, type TimeFormatMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
 import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
+import {
+  modelBreakdownDetailLines,
+  parseProviderPeriodTotal,
+  type ModelCostBasis,
+} from "@/lib/today-models"
 import { groupLinesByType } from "@/lib/group-lines-by-type"
 import { selectEscalatedLine } from "@/lib/metric-escalation"
 import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
@@ -160,6 +165,16 @@ export function ProviderCard({
 
   const hasResetCountdown = displayLines.some(
     (line) => line.type === "progress" && Boolean(line.resetsAt)
+  )
+
+  // Percent-only model rows (e.g. Codex) carry no per-model $, so their hover
+  // breakdown is derived from the provider's own period totals × the model's %.
+  const modelCostBasis = useMemo<ModelCostBasis>(
+    () => ({
+      today: parseProviderPeriodTotal(lines, "Today"),
+      thirtyDay: parseProviderPeriodTotal(lines, "Last 30 Days"),
+    }),
+    [lines]
   )
 
   // "has ever loaded" — true if either we have a prior success timestamp,
@@ -341,6 +356,7 @@ export function ProviderCard({
                       key={`${line.label}-${gi}-${li}`}
                       line={line}
                       isModelBreakdown={!manifestLabels.has(line.label)}
+                      modelCostBasis={modelCostBasis}
                       displayMode={displayMode}
                       resetTimerDisplayMode={resetTimerDisplayMode}
                       timeFormatMode={timeFormatMode}
@@ -358,6 +374,7 @@ export function ProviderCard({
                       key={`${line.label}-${gi}-${li}`}
                       line={line}
                       isModelBreakdown={!manifestLabels.has(line.label)}
+                      modelCostBasis={modelCostBasis}
                       displayMode={displayMode}
                       resetTimerDisplayMode={resetTimerDisplayMode}
                       timeFormatMode={timeFormatMode}
@@ -382,6 +399,7 @@ export function ProviderCard({
 function MetricLineRenderer({
   line,
   isModelBreakdown = false,
+  modelCostBasis = { today: null, thirtyDay: null },
   displayMode,
   resetTimerDisplayMode,
   timeFormatMode,
@@ -392,6 +410,7 @@ function MetricLineRenderer({
 }: {
   line: MetricLine
   isModelBreakdown?: boolean
+  modelCostBasis?: ModelCostBasis
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   timeFormatMode: TimeFormatMode
@@ -405,11 +424,7 @@ function MetricLineRenderer({
     // into a tooltip instead of a long truncated "· Today … · 7d …" string.
     const modelParsed = isModelBreakdown ? parseModelBreakdownValue(line.value) : null
     if (modelParsed) {
-      const details = [
-        modelParsed.today && `Today ${modelParsed.today}`,
-        modelParsed.sevenDay && `7 days ${modelParsed.sevenDay}`,
-        modelParsed.thirtyDay && `30 days ${modelParsed.thirtyDay}`,
-      ].filter((detail): detail is string => Boolean(detail))
+      const details = modelBreakdownDetailLines(modelParsed, modelCostBasis)
 
       return (
         <div className="flex justify-between items-center h-[18px] gap-2" data-testid="model-breakdown-line">
