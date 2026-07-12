@@ -135,6 +135,56 @@ pub fn show_panel_from_tray(app_handle: &AppHandle, view: &str) {
     }
 }
 
+/// Build (or show) a 560×620 chromeless, transparent, centered window — the shape
+/// shared by the onboarding setup window and the what's-new window. If a window
+/// with the given label already exists, just show and focus it.
+pub fn create_chromeless_window(
+    app_handle: &AppHandle,
+    label: &str,
+    url: &str,
+    title: &str,
+) -> tauri::Result<()> {
+    if let Some(window) = app_handle.get_webview_window(label) {
+        window.show()?;
+        window.set_focus()?;
+        return Ok(());
+    }
+
+    tauri::WebviewWindowBuilder::new(
+        app_handle,
+        label,
+        tauri::WebviewUrl::App(url.into()),
+    )
+    .title(title)
+    .inner_size(560.0, 620.0)
+    .min_inner_size(560.0, 620.0)
+    .resizable(false)
+    .decorations(false)
+    .transparent(true)
+    .center()
+    .visible(true)
+    .focused(true)
+    .build()?;
+
+    Ok(())
+}
+
+/// Close a window by label, then show the tray panel at the given view.
+/// Used by both `finish_onboarding` and `dismiss_whats_new`.
+pub fn close_window_and_show_panel(
+    app_handle: &AppHandle,
+    label: &str,
+    view: &str,
+) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window(label) {
+        window
+            .close()
+            .map_err(|error| format!("failed to close {label} window: {error}"))?;
+    }
+    show_panel_from_tray(app_handle, view);
+    Ok(())
+}
+
 pub fn toggle_panel_at_tray_rect(
     app_handle: &AppHandle,
     icon_position: Position,

@@ -1,4 +1,4 @@
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 use tauri_plugin_store::StoreExt;
 
 pub const SETTINGS_STORE: &str = "settings.json";
@@ -22,29 +22,12 @@ pub fn show_setup_window_if_needed(app_handle: &tauri::AppHandle) -> tauri::Resu
         return Ok(());
     }
 
-    if let Some(window) = app_handle.get_webview_window("setup") {
-        window.show()?;
-        window.set_focus()?;
-        return Ok(());
-    }
-
-    tauri::WebviewWindowBuilder::new(
+    crate::panel::create_chromeless_window(
         app_handle,
         "setup",
-        tauri::WebviewUrl::App("index.html#/setup".into()),
-    )
-    .title("UsagePal Setup")
-    .inner_size(560.0, 620.0)
-    .min_inner_size(560.0, 620.0)
-    .resizable(false)
-    // Chromeless: the web header carries the drag region; Escape dismisses.
-    // Transparent so the CSS rounded corners are the real window shape.
-    .decorations(false)
-    .transparent(true)
-    .center()
-    .visible(true)
-    .focused(true)
-    .build()?;
+        "index.html#/setup",
+        "UsagePal Setup",
+    )?;
 
     Ok(())
 }
@@ -74,16 +57,11 @@ pub fn finish_onboarding(app_handle: tauri::AppHandle, open_settings: bool) -> R
         log::error!("failed to emit plugins:changed: {error}");
     }
 
-    if let Some(window) = app_handle.get_webview_window("setup") {
-        window
-            .close()
-            .map_err(|error| format!("failed to close setup window: {error}"))?;
-    }
-
-    crate::panel::show_panel_from_tray(
+    crate::panel::close_window_and_show_panel(
         &app_handle,
+        "setup",
         if open_settings { "settings" } else { "home" },
-    );
+    )?;
 
     Ok(())
 }
