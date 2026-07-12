@@ -455,6 +455,25 @@ describe("App", () => {
     expect(screen.queryByText("Alpha")).not.toBeInTheDocument()
   })
 
+  it("renders what's-new app on whats-new route", async () => {
+    window.location.hash = "#/whats-new"
+    state.isTauriMock.mockReturnValue(true)
+    state.invokeMock.mockResolvedValue([
+      {
+        version: "0.7.35",
+        summary: "Test release.",
+        sections: [{ title: "New Features", items: ["Test feature"] }],
+      },
+    ])
+
+    render(<App />)
+
+    expect(await screen.findByRole("heading", { name: "What's New" })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "v0.7.35" })).toBeInTheDocument()
+    expect(screen.getByText("Test feature")).toBeInTheDocument()
+    expect(screen.queryByText("Alpha")).not.toBeInTheDocument()
+  })
+
   it("renders normal app outside setup route", async () => {
     window.location.hash = "#/settings"
 
