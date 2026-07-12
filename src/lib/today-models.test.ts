@@ -5,9 +5,11 @@ import {
   buildTodayModelUsage,
   formatShareCost,
   formatSharePercent,
+  graphEntities,
   modelBreakdownDetailLines,
   parseDollarAmount,
   parseProviderPeriodTotal,
+  selectGraphEntries,
   MAX_GRAPH_MODELS,
   type TodayModelsSource,
 } from "@/lib/today-models"
@@ -107,6 +109,47 @@ describe("buildTodayModelUsage", () => {
     expect(usage.models).toEqual([])
     expect(usage.providers).toEqual([])
     expect(usage.totalCost).toBe(0)
+  })
+})
+
+describe("graph grouping + selection", () => {
+  const usage = buildTodayModelUsage([claude, codex])
+
+  it("lists providers as entities in provider mode, ranked", () => {
+    const entities = graphEntities(usage, "provider")
+    expect(entities.map((e) => e.key)).toEqual(["claude", "codex"])
+    expect(entities[0].todayCost).toBeCloseTo(16.5)
+  })
+
+  it("lists models as entities in model mode", () => {
+    const entities = graphEntities(usage, "model")
+    expect(entities.map((e) => e.name)).toEqual(["Opus 4.8", "Sonnet 5", "GPT-5.4"])
+    expect(entities[0].key).toBe("claude::Opus 4.8")
+  })
+
+  it("keeps only selected entities and re-normalizes share + total", () => {
+    const entities = graphEntities(usage, "provider")
+    const { entries, totalCost } = selectGraphEntries(entities, (key) => key === "claude")
+
+    expect(entries.map((e) => e.key)).toEqual(["claude"])
+    expect(entries[0].share).toBeCloseTo(1) // sole survivor fills the ring
+    expect(totalCost).toBeCloseTo(16.5)
+  })
+
+  it("re-normalizes a two-of-three model selection to sum to 1", () => {
+    const entities = graphEntities(usage, "model")
+    const { entries } = selectGraphEntries(entities, (key) =>
+      key === "claude::Opus 4.8" || key === "codex::GPT-5.4"
+    )
+    expect(entries.map((e) => e.name)).toEqual(["Opus 4.8", "GPT-5.4"])
+    expect(entries.reduce((s, e) => s + e.share, 0)).toBeCloseTo(1)
+  })
+
+  it("returns an empty result when nothing is selected", () => {
+    expect(selectGraphEntries(graphEntities(usage, "provider"), () => false)).toEqual({
+      entries: [],
+      totalCost: 0,
+    })
   })
 })
 

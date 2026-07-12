@@ -5,33 +5,35 @@ describe("normalizeShareSettings graph fields", () => {
   it("defaults the graph fields when absent", () => {
     const settings = normalizeShareSettings({})
     expect(settings.graphStyle).toBe("bar")
-    expect(settings.graphShowModelPrices).toBe(false)
-    expect(settings.graphShowProviderPrices).toBe(false)
+    expect(settings.graphGroupBy).toBe("provider")
+    expect(settings.graphShowPrices).toBe(false)
   })
 
   it("round-trips valid graph fields", () => {
     const settings = normalizeShareSettings({
       graphStyle: "donut",
-      graphShowModelPrices: true,
-      graphShowProviderPrices: true,
+      graphGroupBy: "model",
+      graphShowPrices: true,
     })
     expect(settings.graphStyle).toBe("donut")
-    expect(settings.graphShowModelPrices).toBe(true)
-    expect(settings.graphShowProviderPrices).toBe(true)
+    expect(settings.graphGroupBy).toBe("model")
+    expect(settings.graphShowPrices).toBe(true)
   })
 
   it("falls back to defaults on invalid values", () => {
     const settings = normalizeShareSettings({
       graphStyle: "pie",
-      graphShowModelPrices: "yes",
+      graphGroupBy: "team",
+      graphShowPrices: "yes",
     })
     expect(settings.graphStyle).toBe("bar")
-    expect(settings.graphShowModelPrices).toBe(false)
+    expect(settings.graphGroupBy).toBe("provider")
+    expect(settings.graphShowPrices).toBe(false)
   })
 
   it("keeps the defaults object in sync", () => {
     expect(DEFAULT_SHARE_SETTINGS.graphStyle).toBe("bar")
-    expect(DEFAULT_SHARE_SETTINGS.graphShowModelPrices).toBe(false)
-    expect(DEFAULT_SHARE_SETTINGS.graphShowProviderPrices).toBe(false)
+    expect(DEFAULT_SHARE_SETTINGS.graphGroupBy).toBe("provider")
+    expect(DEFAULT_SHARE_SETTINGS.graphShowPrices).toBe(false)
   })
 })

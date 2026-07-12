@@ -61,6 +61,9 @@ export type ShareTheme = "dark" | "light";
 
 export type ShareGraphStyle = "bar" | "donut";
 
+/** Cross-provider graph grouping: one slice per provider, or per model. */
+export type ShareGraphGroupBy = "provider" | "model";
+
 /** Overview "Models today" strip presentation. Independent of the Share
  * panel's graphStyle by design. */
 export type OverviewGraphStyle = "compact" | "detailed";
@@ -82,10 +85,10 @@ export type ShareSettings = {
   showWatermark: boolean;
   showPlan: boolean;
   modelDisplay: ShareModelDisplay;
-  /** Options for the cross-provider "Models used today" graph (Share "All" tab). */
+  /** Options for the cross-provider usage graph (Share "All" tab). */
   graphStyle: ShareGraphStyle;
-  graphShowModelPrices: boolean;
-  graphShowProviderPrices: boolean;
+  graphGroupBy: ShareGraphGroupBy;
+  graphShowPrices: boolean;
 };
 
 export const DEFAULT_SHARE_SETTINGS: ShareSettings = {
@@ -102,8 +105,8 @@ export const DEFAULT_SHARE_SETTINGS: ShareSettings = {
     showThirtyDay: true,
   },
   graphStyle: "bar",
-  graphShowModelPrices: false,
-  graphShowProviderPrices: false,
+  graphGroupBy: "provider",
+  graphShowPrices: false,
 };
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -535,7 +538,7 @@ export function normalizeShareSettings(value: unknown): ShareSettings {
     ? (record.theme as ShareTheme)
     : DEFAULT_SHARE_SETTINGS.theme;
 
-  const readBool = (key: "showWatermark" | "showPlan" | "graphShowModelPrices" | "graphShowProviderPrices") =>
+  const readBool = (key: "showWatermark" | "showPlan" | "graphShowPrices") =>
     typeof record[key] === "boolean" ? (record[key] as boolean) : DEFAULT_SHARE_SETTINGS[key];
 
   const md = record.modelDisplay && typeof record.modelDisplay === "object"
@@ -560,8 +563,11 @@ export function normalizeShareSettings(value: unknown): ShareSettings {
     graphStyle: SHARE_GRAPH_STYLES.includes(record.graphStyle as ShareGraphStyle)
       ? (record.graphStyle as ShareGraphStyle)
       : DEFAULT_SHARE_SETTINGS.graphStyle,
-    graphShowModelPrices: readBool("graphShowModelPrices"),
-    graphShowProviderPrices: readBool("graphShowProviderPrices"),
+    graphGroupBy:
+      record.graphGroupBy === "provider" || record.graphGroupBy === "model"
+        ? (record.graphGroupBy as ShareGraphGroupBy)
+        : DEFAULT_SHARE_SETTINGS.graphGroupBy,
+    graphShowPrices: readBool("graphShowPrices"),
   };
 }
 

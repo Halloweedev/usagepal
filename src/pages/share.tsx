@@ -10,7 +10,14 @@ import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import { buildShareableLines, type ShareableLine, type ShareLineScope } from "@/lib/share-lines"
 import { copyCardImage } from "@/lib/share-image"
 import type { ModelDisplayOptions } from "@/lib/model-breakdown-format"
-import { ALL_SHARE_TAB_ID, buildModelUsage, type UsagePeriod } from "@/lib/today-models"
+import {
+  ALL_SHARE_TAB_ID,
+  buildModelUsage,
+  graphEntities,
+  selectGraphEntries,
+  type GraphGroupBy,
+  type UsagePeriod,
+} from "@/lib/today-models"
 import { useAppShareStore } from "@/stores/app-share-store"
 import { cn } from "@/lib/utils"
 
@@ -75,8 +82,12 @@ export function SharePage({ plugins }: SharePageProps) {
   const [customizeOpen, setCustomizeOpen] = useState(false)
   const [modelDisplay, setModelDisplay] = useState<ModelDisplayOptions>(shareSnapshot.modelDisplay)
   const [graphStyle, setGraphStyle] = useState<GraphStyle>(shareSnapshot.graphStyle)
-  const [graphShowModelPrices, setGraphShowModelPrices] = useState(shareSnapshot.graphShowModelPrices)
-  const [graphShowProviderPrices, setGraphShowProviderPrices] = useState(shareSnapshot.graphShowProviderPrices)
+  const [graphGroupBy, setGraphGroupBy] = useState<GraphGroupBy>(shareSnapshot.graphGroupBy)
+  const [graphShowPrices, setGraphShowPrices] = useState(shareSnapshot.graphShowPrices)
+  // Slices the user has hidden from the graph, by entry key. Tracking the
+  // hidden set (rather than the shown set) keeps new entities shown by default,
+  // and makes a group-by switch a no-op since provider and model keys differ.
+  const [hiddenSlices, setHiddenSlices] = useState<Set<string>>(new Set())
   const [copyState, setCopyState] = useState<CopyState>("idle")
   const [copyError, setCopyError] = useState<string | null>(null)
   const [cardHeightPx, setCardHeightPx] = useState<number | null>(null)
@@ -112,6 +123,16 @@ export function SharePage({ plugins }: SharePageProps) {
   const activeGraphPeriod = graphUsages[graphPeriod].totalCost > 0 ? graphPeriod : firstGraphPeriod ?? "today"
   const graphUsage = graphUsages[activeGraphPeriod]
   const activeGraphLabel = GRAPH_PERIODS.find((p) => p.id === activeGraphPeriod)!.label
+  // Every selectable slice for the current grouping, and the subset the user
+  // kept (re-normalized so what's shown fills the ring).
+  const graphAllEntries = useMemo(
+    () => graphEntities(graphUsage, graphGroupBy),
+    [graphUsage, graphGroupBy]
+  )
+  const graphSelection = useMemo(
+    () => selectGraphEntries(graphAllEntries, (key) => !hiddenSlices.has(key)),
+    [graphAllEntries, hiddenSlices]
+  )
   const dateLabel = useMemo(
     () => new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     []
@@ -161,8 +182,8 @@ export function SharePage({ plugins }: SharePageProps) {
       showPlan,
       modelDisplay,
       graphStyle,
-      graphShowModelPrices,
-      graphShowProviderPrices,
+      graphGroupBy,
+      graphShowPrices,
     })
   }, [
     patchShare,
@@ -174,8 +195,8 @@ export function SharePage({ plugins }: SharePageProps) {
     showPlan,
     modelDisplay,
     graphStyle,
-    graphShowModelPrices,
-    graphShowProviderPrices,
+    graphGroupBy,
+    graphShowPrices,
   ])
 
   const checkedLines = useMemo(
@@ -254,7 +275,10 @@ export function SharePage({ plugins }: SharePageProps) {
     <section className="space-y-1.5">
       <Button
         onClick={handleCopy}
-        disabled={copying || (!isAllTab && checkedLines.length === 0)}
+        disabled={
+          copying ||
+          (isAllTab ? graphSelection.entries.length === 0 : checkedLines.length === 0)
+        }
         className="w-full font-semibold"
       >
         {copying ? "Copying..." : "Copy Image"}
@@ -336,11 +360,12 @@ export function SharePage({ plugins }: SharePageProps) {
                 <div className="origin-top-left" style={{ transform: `scale(${previewScale})` }}>
                   <div ref={cardRef} className="w-fit">
                     <ModelsGraphCard
-                      usage={graphUsage}
+                      entries={graphSelection.entries}
+                      totalCost={graphSelection.totalCost}
+                      groupBy={graphGroupBy}
                       graphStyle={graphStyle}
                       theme={theme}
-                      showModelPrices={graphShowModelPrices}
-                      showProviderPrices={graphShowProviderPrices}
+                      showPrices={graphShowPrices}
                       showWatermark={showWatermark}
                       dateLabel={dateLabel}
                       periodLabel={activeGraphLabel}
@@ -437,21 +462,21 @@ export function SharePage({ plugins }: SharePageProps) {
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
                     <label className="flex items-center gap-1.5 text-xs">
                       <Checkbox
-                        aria-label="Price per model"
-                        checked={graphShowModelPrices}
-                        onCheckedChange={(checked) => setGraphShowModelPrices(checked === true)}
+                        aria-label="Show models"
+                        checked={graphGroupBy === "model"}
+                        onCheckedChange={(checked) => setGraphGroupBy(checked === true ? "model" : "provider")}
                         disabled={copying}
                       />
-                      Price per model
+                      Show models
                     </label>
                     <label className="flex items-center gap-1.5 text-xs">
                       <Checkbox
-                        aria-label="Price per provider"
-                        checked={graphShowProviderPrices}
-                        onCheckedChange={(checked) => setGraphShowProviderPrices(checked === true)}
+                        aria-label="Prices"
+                        checked={graphShowPrices}
+                        onCheckedChange={(checked) => setGraphShowPrices(checked === true)}
                         disabled={copying}
                       />
-                      Price per provider
+                      Prices
                     </label>
                     <label className="flex items-center gap-1.5 text-xs">
                       <Checkbox
@@ -462,6 +487,35 @@ export function SharePage({ plugins }: SharePageProps) {
                       />
                       Watermark
                     </label>
+                  </div>
+                  {/* Choose which providers / models to show off. */}
+                  <div className="flex flex-col gap-1.5" data-testid="share-graph-entities">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {graphGroupBy === "model" ? "Models" : "Providers"}
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {graphAllEntries.map((entry) => (
+                        <label
+                          key={entry.key}
+                          className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs"
+                        >
+                          <Checkbox
+                            aria-label={entry.name}
+                            checked={!hiddenSlices.has(entry.key)}
+                            onCheckedChange={(checked) =>
+                              setHiddenSlices((prev) => {
+                                const next = new Set(prev)
+                                if (checked === true) next.delete(entry.key)
+                                else next.add(entry.key)
+                                return next
+                              })
+                            }
+                            disabled={copying}
+                          />
+                          {entry.name}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}

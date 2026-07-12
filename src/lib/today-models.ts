@@ -207,6 +207,65 @@ export function buildTodayModelUsage(plugins: TodayModelsSource[]): TodayModelUs
   return buildModelUsage(plugins, "today")
 }
 
+/** How the Share graph slices usage: one slice per provider, or per model. */
+export type GraphGroupBy = "provider" | "model"
+
+/** A selectable, renderable graph slice — a provider or a model, flattened to
+ * a common shape so the graph card and the "what to show" checklist share it. */
+export type GraphEntry = {
+  /** Stable id for selection state and React keys. */
+  key: string
+  name: string
+  providerId: string
+  brandColor: string | null
+  todayCost: number
+  /** Fraction of the selected total, 0..1. */
+  share: number
+  isOthers?: boolean
+}
+
+/** Stable key for a model within the ranked list (provider + name); providers
+ * key on their own id. */
+export function modelEntryKey(model: Pick<TodayModelEntry, "providerId" | "name">): string {
+  return `${model.providerId}::${model.name}`
+}
+
+/** Every selectable slice for a grouping, unfiltered — the source for the
+ * Share "what to show" checklist. Ranked as the usage already is. */
+export function graphEntities(usage: TodayModelUsage, groupBy: GraphGroupBy): GraphEntry[] {
+  if (groupBy === "provider") {
+    return usage.providers.map((provider) => ({
+      key: provider.id,
+      name: provider.name,
+      providerId: provider.id,
+      brandColor: provider.brandColor,
+      todayCost: provider.todayCost,
+      share: provider.share,
+    }))
+  }
+  return usage.models.map((model) => ({
+    key: modelEntryKey(model),
+    name: model.name,
+    providerId: model.providerId,
+    brandColor: model.brandColor,
+    todayCost: model.todayCost,
+    share: model.share,
+    isOthers: model.isOthers,
+  }))
+}
+
+/** Keeps only the selected slices and re-normalizes share + total over them, so
+ * the graph fills the ring with whatever the user chose to show off. */
+export function selectGraphEntries(
+  entities: GraphEntry[],
+  isSelected: (key: string) => boolean
+): { entries: GraphEntry[]; totalCost: number } {
+  const kept = entities.filter((entry) => isSelected(entry.key))
+  const totalCost = kept.reduce((sum, entry) => sum + entry.todayCost, 0)
+  if (totalCost <= 0) return { entries: [], totalCost: 0 }
+  return { entries: kept.map((entry) => ({ ...entry, share: entry.todayCost / totalCost })), totalCost }
+}
+
 /** Matches the plugins' fmtModelCost: cents under $1000, grouped whole dollars above. */
 export function formatShareCost(amount: number): string {
   if (amount < 1000) return "$" + amount.toFixed(2)

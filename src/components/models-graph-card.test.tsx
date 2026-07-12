@@ -1,33 +1,32 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
-import { ModelsGraphCard, assignModelColors } from "@/components/models-graph-card"
-import type { TodayModelUsage } from "@/lib/today-models"
+import { ModelsGraphCard, assignEntryColors } from "@/components/models-graph-card"
+import type { GraphEntry } from "@/lib/today-models"
 
-const usage: TodayModelUsage = {
-  models: [
-    { name: "Opus 4.8", providerId: "claude", providerName: "Claude", brandColor: "#DE7356", todayCost: 12.4, share: 12.4 / 19.7 },
-    { name: "Sonnet 5", providerId: "claude", providerName: "Claude", brandColor: "#DE7356", todayCost: 4.1, share: 4.1 / 19.7 },
-    { name: "GPT-5.4", providerId: "codex", providerName: "Codex", brandColor: "#74AA9C", todayCost: 3.2, share: 3.2 / 19.7 },
-  ],
-  providers: [
-    { id: "claude", name: "Claude", todayCost: 16.5 },
-    { id: "codex", name: "Codex", todayCost: 3.2 },
-  ],
-  totalCost: 19.7,
-}
+const modelEntries: GraphEntry[] = [
+  { key: "claude::Opus 4.8", name: "Opus 4.8", providerId: "claude", brandColor: "#DE7356", todayCost: 12.4, share: 12.4 / 19.7 },
+  { key: "claude::Sonnet 5", name: "Sonnet 5", providerId: "claude", brandColor: "#DE7356", todayCost: 4.1, share: 4.1 / 19.7 },
+  { key: "codex::GPT-5.4", name: "GPT-5.4", providerId: "codex", brandColor: "#74AA9C", todayCost: 3.2, share: 3.2 / 19.7 },
+]
+
+const providerEntries: GraphEntry[] = [
+  { key: "claude", name: "Claude", providerId: "claude", brandColor: "#DE7356", todayCost: 16.5, share: 16.5 / 19.7 },
+  { key: "codex", name: "Codex", providerId: "codex", brandColor: "#74AA9C", todayCost: 3.2, share: 3.2 / 19.7 },
+]
 
 const baseProps = {
-  usage,
+  entries: modelEntries,
+  totalCost: 19.7,
+  groupBy: "model" as const,
   graphStyle: "bar" as const,
   theme: "dark" as const,
-  showModelPrices: false,
-  showProviderPrices: false,
+  showPrices: false,
   showWatermark: true,
   dateLabel: "Jul 10, 2026",
 }
 
 describe("ModelsGraphCard", () => {
-  it("renders the header, one bar segment and one list row per model", () => {
+  it("renders the header, one bar segment and one list row per entry", () => {
     render(<ModelsGraphCard {...baseProps} />)
 
     expect(screen.getByText("Models used today")).toBeInTheDocument()
@@ -41,38 +40,35 @@ describe("ModelsGraphCard", () => {
     expect(screen.getByText("63%")).toBeInTheDocument()
   })
 
+  it("titles the card by grouping (Usage for providers)", () => {
+    render(<ModelsGraphCard {...baseProps} entries={providerEntries} groupBy="provider" />)
+
+    expect(screen.getByText("Usage today")).toBeInTheDocument()
+    expect(screen.getAllByTestId("models-graph-row").map((row) => row.textContent)).toEqual(["Claude", "Codex"])
+    expect(screen.getAllByTestId("models-graph-segment")).toHaveLength(2)
+  })
+
   it("weaves a non-today periodLabel into the headings", () => {
-    render(<ModelsGraphCard {...baseProps} periodLabel="yesterday" graphStyle="donut" showModelPrices />)
+    render(<ModelsGraphCard {...baseProps} periodLabel="yesterday" graphStyle="donut" showPrices />)
 
     expect(screen.getByText("Models used yesterday")).toBeInTheDocument()
     expect(screen.getByTestId("models-graph-total")).toHaveTextContent("Total yesterday")
-    // Donut subtitle also reflects the period.
     expect(screen.getByText("yesterday")).toBeInTheDocument()
   })
 
-  it("hides prices, provider subtotals and total by default", () => {
+  it("hides prices and total by default", () => {
     render(<ModelsGraphCard {...baseProps} />)
 
     expect(screen.queryByText("$12.40")).not.toBeInTheDocument()
-    expect(screen.queryByTestId("models-graph-providers")).not.toBeInTheDocument()
     expect(screen.queryByTestId("models-graph-total")).not.toBeInTheDocument()
   })
 
-  it("shows per-model prices and the total when enabled", () => {
-    render(<ModelsGraphCard {...baseProps} showModelPrices />)
+  it("shows per-entry prices and the total when enabled", () => {
+    render(<ModelsGraphCard {...baseProps} showPrices />)
 
     expect(screen.getByText("$12.40")).toBeInTheDocument()
     expect(screen.getByTestId("models-graph-total")).toHaveTextContent("Total today")
     expect(screen.getByTestId("models-graph-total")).toHaveTextContent("$19.70")
-  })
-
-  it("shows provider subtotals and the total when enabled", () => {
-    render(<ModelsGraphCard {...baseProps} showProviderPrices />)
-
-    const providers = screen.getByTestId("models-graph-providers")
-    expect(providers).toHaveTextContent("Claude")
-    expect(providers).toHaveTextContent("$16.50")
-    expect(screen.getByTestId("models-graph-total")).toBeInTheDocument()
   })
 
   it("swaps the bar for a donut with the centered total", () => {
@@ -93,14 +89,19 @@ describe("ModelsGraphCard", () => {
   })
 })
 
-describe("assignModelColors", () => {
-  it("gives same-provider models distinct shades and Others the neutral", () => {
-    const others = { name: "Others", providerId: "", providerName: "", brandColor: null, todayCost: 1, share: 0.05, isOthers: true }
-    const models = [...usage.models, others]
-    const colors = assignModelColors(models, "dark")
+describe("assignEntryColors", () => {
+  it("model mode: same-provider models get distinct shades, Others the neutral", () => {
+    const others: GraphEntry = { key: "::Others", name: "Others", providerId: "", brandColor: null, todayCost: 1, share: 0.05, isOthers: true }
+    const colors = assignEntryColors([...modelEntries, others], "model", "dark")
 
-    expect(colors.get(models[0])).not.toBe(colors.get(models[1]))
-    expect(colors.get(others)).toBe("#757575")
-    expect(new Set(models.map((model) => colors.get(model))).size).toBe(4)
+    expect(colors.get("claude::Opus 4.8")).not.toBe(colors.get("claude::Sonnet 5"))
+    expect(colors.get("::Others")).toBe("#757575")
+  })
+
+  it("provider mode: each provider slice gets its own brand hue", () => {
+    const colors = assignEntryColors(providerEntries, "provider", "dark")
+
+    expect(colors.get("claude")).toBeTruthy()
+    expect(colors.get("claude")).not.toBe(colors.get("codex"))
   })
 })

@@ -636,8 +636,8 @@ describe("settings", () => {
       showWatermark: true, // invalid -> default
       showPlan: true, // missing -> default
       graphStyle: "bar", // missing -> default
-      graphShowModelPrices: false, // missing -> default
-      graphShowProviderPrices: false, // missing -> default
+      graphGroupBy: "provider", // missing -> default
+      graphShowPrices: false, // missing -> default
       modelDisplay: {
         showPercent: false,
         showToday: true, // invalid -> default
@@ -656,8 +656,8 @@ describe("settings", () => {
       showWatermark: false,
       showPlan: false,
       graphStyle: "bar" as const,
-      graphShowModelPrices: false,
-      graphShowProviderPrices: false,
+      graphGroupBy: "provider" as const,
+      graphShowPrices: false,
       modelDisplay: { showPercent: true, showToday: false, showSevenDay: true, showThirtyDay: false },
     }
 
@@ -676,8 +676,8 @@ describe("settings", () => {
       showWatermark: false,
       showPlan: false,
       graphStyle: "bar" as const,
-      graphShowModelPrices: false,
-      graphShowProviderPrices: false,
+      graphGroupBy: "provider" as const,
+      graphShowPrices: false,
       modelDisplay: { showPercent: true, showToday: false, showSevenDay: true, showThirtyDay: false },
     }
 

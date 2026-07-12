@@ -348,8 +348,8 @@ describe("SharePage", () => {
         showPlan: false,
         modelDisplay: { showPercent: true, showToday: true, showSevenDay: true, showThirtyDay: true },
         graphStyle: "bar",
-        graphShowModelPrices: false,
-        graphShowProviderPrices: false,
+        graphGroupBy: "provider",
+        graphShowPrices: false,
       },
     })
 
@@ -399,11 +399,15 @@ describe("SharePage", () => {
 
     expect(screen.getByTestId("models-graph-card-mock")).toBeInTheDocument()
     const props = graphCardMock.mock.calls.at(-1)?.[0] as {
-      usage: { totalCost: number; models: { name: string }[] }
+      totalCost: number
+      groupBy: string
+      entries: { name: string }[]
       graphStyle: string
     }
-    expect(props.usage.totalCost).toBeCloseTo(12.4)
-    expect(props.usage.models[0].name).toBe("claude-sonnet-5")
+    // Defaults to provider grouping, like the Overview strip.
+    expect(props.groupBy).toBe("provider")
+    expect(props.totalCost).toBeCloseTo(12.4)
+    expect(props.entries[0].name).toBe("Claude")
     expect(props.graphStyle).toBe("bar")
   })
 
@@ -435,33 +439,59 @@ describe("SharePage", () => {
     // No Yesterday figure for Claude → that tab is disabled.
     expect(screen.getByRole("radio", { name: "Yesterday" })).toBeDisabled()
 
-    const today = graphCardMock.mock.calls.at(-1)?.[0] as { usage: { totalCost: number }; periodLabel: string }
+    const today = graphCardMock.mock.calls.at(-1)?.[0] as { totalCost: number; periodLabel: string }
     expect(today.periodLabel).toBe("today")
-    expect(today.usage.totalCost).toBeCloseTo(12.4)
+    expect(today.totalCost).toBeCloseTo(12.4)
 
     await user.click(screen.getByRole("radio", { name: "30 Days" }))
 
-    const thirty = graphCardMock.mock.calls.at(-1)?.[0] as { usage: { totalCost: number }; periodLabel: string }
+    const thirty = graphCardMock.mock.calls.at(-1)?.[0] as { totalCost: number; periodLabel: string }
     expect(thirty.periodLabel).toBe("30 days")
-    expect(thirty.usage.totalCost).toBeCloseTo(200)
+    expect(thirty.totalCost).toBeCloseTo(200)
   })
 
-  it("exposes price toggles in Customize on the All tab", async () => {
+  it("toggles grouping and prices in Customize on the All tab", async () => {
     const user = userEvent.setup()
     render(<SharePage plugins={[makePlugin()]} />)
 
     await user.click(screen.getByRole("radio", { name: "All providers" }))
     await user.click(screen.getByRole("button", { name: "Customize" }))
 
-    await user.click(screen.getByRole("checkbox", { name: "Price per model" }))
-    await user.click(screen.getByRole("checkbox", { name: "Price per provider" }))
+    const last = () => graphCardMock.mock.calls.at(-1)?.[0] as { groupBy: string; showPrices: boolean }
+    expect(last().groupBy).toBe("provider")
 
-    const props = graphCardMock.mock.calls.at(-1)?.[0] as {
-      showModelPrices: boolean
-      showProviderPrices: boolean
-    }
-    expect(props.showModelPrices).toBe(true)
-    expect(props.showProviderPrices).toBe(true)
+    await user.click(screen.getByRole("checkbox", { name: "Show models" }))
+    expect(last().groupBy).toBe("model")
+
+    await user.click(screen.getByRole("checkbox", { name: "Prices" }))
+    expect(last().showPrices).toBe(true)
+  })
+
+  it("lets the user choose which slices to show off, re-normalizing the total", async () => {
+    const user = userEvent.setup()
+    const plugin = makePlugin({
+      data: {
+        providerId: "claude",
+        displayName: "Claude",
+        iconUrl: "/claude.svg",
+        lines: [
+          { type: "text", label: "claude-opus", value: "70% · Today $10.00" },
+          { type: "text", label: "claude-sonnet", value: "30% · Today $4.00" },
+        ],
+      },
+    })
+    render(<SharePage plugins={[plugin]} />)
+    await user.click(screen.getByRole("radio", { name: "All providers" }))
+    await user.click(screen.getByRole("button", { name: "Customize" }))
+    await user.click(screen.getByRole("checkbox", { name: "Show models" }))
+
+    const last = () => graphCardMock.mock.calls.at(-1)?.[0] as { entries: { name: string }[]; totalCost: number }
+    expect(last().entries.map((e) => e.name)).toEqual(["claude-opus", "claude-sonnet"])
+
+    // Hide one model → it drops from the graph and the total re-normalizes.
+    await user.click(screen.getByRole("checkbox", { name: "claude-sonnet" }))
+    expect(last().entries.map((e) => e.name)).toEqual(["claude-opus"])
+    expect(last().totalCost).toBeCloseTo(10)
   })
 
   it("shows the empty state on the All tab when no model was used today", async () => {

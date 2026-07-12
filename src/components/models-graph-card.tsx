@@ -1,5 +1,5 @@
 import { Fragment, useMemo } from "react"
-import type { TodayModelEntry, TodayModelUsage } from "@/lib/today-models"
+import type { GraphEntry, GraphGroupBy } from "@/lib/today-models"
 import { formatShareCost, formatSharePercent } from "@/lib/today-models"
 import { deriveModelColors, OTHERS_COLORS } from "@/lib/graph-colors"
 import { THEME_STYLES, type ShareCardTheme } from "@/components/share-card-theme"
@@ -10,11 +10,13 @@ import { cn } from "@/lib/utils"
 export type GraphStyle = "bar" | "donut"
 
 export type ModelsGraphCardProps = {
-  usage: TodayModelUsage
+  /** Already filtered to the user's selection and re-normalized. */
+  entries: GraphEntry[]
+  totalCost: number
+  groupBy: GraphGroupBy
   graphStyle: GraphStyle
   theme: ShareCardTheme
-  showModelPrices: boolean
-  showProviderPrices: boolean
+  showPrices: boolean
   showWatermark: boolean
   /** Preformatted date (e.g. "Jul 10, 2026") — injected so tests are stable. */
   dateLabel: string
@@ -23,50 +25,49 @@ export type ModelsGraphCardProps = {
   periodLabel?: string
 }
 
-/** Colors follow the entity: each provider's brand hue in shade steps assigned
- * in ranked order within that provider; the Others bucket gets the neutral. */
-export function assignModelColors(
-  models: TodayModelEntry[],
+/** Colors follow the entity. Provider grouping: each slice takes its provider's
+ * brand hue (like the Overview strip). Model grouping: each provider's models
+ * step through shades of its hue in ranked order; the Others bucket is neutral.
+ * Keyed by entry.key. */
+export function assignEntryColors(
+  entries: GraphEntry[],
+  groupBy: GraphGroupBy,
   theme: ShareCardTheme
-): Map<TodayModelEntry, string> {
-  const byProvider = new Map<string, TodayModelEntry[]>()
-  for (const model of models) {
-    if (model.isOthers) continue
-    const group = byProvider.get(model.providerId) ?? []
-    group.push(model)
-    byProvider.set(model.providerId, group)
+): Map<string, string> {
+  const colors = new Map<string, string>()
+  if (groupBy === "provider") {
+    for (const entry of entries) colors.set(entry.key, deriveModelColors(entry.brandColor, 1, theme)[0])
+    return colors
   }
-  const colors = new Map<TodayModelEntry, string>()
+  const byProvider = new Map<string, GraphEntry[]>()
+  for (const entry of entries) {
+    if (entry.isOthers) continue
+    const group = byProvider.get(entry.providerId) ?? []
+    group.push(entry)
+    byProvider.set(entry.providerId, group)
+  }
   for (const group of byProvider.values()) {
     const palette = deriveModelColors(group[0].brandColor, group.length, theme)
-    group.forEach((model, index) => colors.set(model, palette[index]))
+    group.forEach((entry, index) => colors.set(entry.key, palette[index]))
   }
-  for (const model of models) {
-    if (model.isOthers) colors.set(model, OTHERS_COLORS[theme])
+  for (const entry of entries) {
+    if (entry.isOthers) colors.set(entry.key, OTHERS_COLORS[theme])
   }
   return colors
 }
 
-const modelKey = (model: TodayModelEntry) => `${model.providerId}-${model.name}`
-
-function StackedBar({
-  models,
-  colors,
-}: {
-  models: TodayModelEntry[]
-  colors: Map<TodayModelEntry, string>
-}) {
+function StackedBar({ entries, colors }: { entries: GraphEntry[]; colors: Map<string, string> }) {
   return (
     <div data-testid="models-graph-bar" className="flex h-3 gap-[2px] overflow-hidden rounded-full">
-      {models.map((model) => (
+      {entries.map((entry) => (
         <div
-          key={modelKey(model)}
+          key={entry.key}
           data-testid="models-graph-segment"
           className="h-full rounded-[2px] first:rounded-l-full last:rounded-r-full"
           style={{
-            width: `${model.share * 100}%`,
+            width: `${entry.share * 100}%`,
             minWidth: MIN_BAR_SEGMENT_PX,
-            backgroundColor: colors.get(model),
+            backgroundColor: colors.get(entry.key),
           }}
         />
       ))}
@@ -82,17 +83,17 @@ const DONUT_GAP = 2
 const DONUT_RADIUS = 50
 const DONUT_STROKE = 18
 
-// Floor so a ~1% or smaller model still paints a visible block in the bar view.
+// Floor so a ~1% or smaller slice still paints a visible block in the bar view.
 const MIN_BAR_SEGMENT_PX = 4
 
 function DonutChart({
-  models,
+  entries,
   colors,
   totalLabel,
   periodLabel,
 }: {
-  models: TodayModelEntry[]
-  colors: Map<TodayModelEntry, string>
+  entries: GraphEntry[]
+  colors: Map<string, string>
   totalLabel: string
   periodLabel: string
 }) {
@@ -103,10 +104,10 @@ function DonutChart({
       stroke={DONUT_STROKE}
       gap={DONUT_GAP}
       testId="models-graph-donut"
-      slices={models.map((model) => ({
-        key: modelKey(model),
-        share: model.share,
-        color: colors.get(model) ?? "currentColor",
+      slices={entries.map((entry) => ({
+        key: entry.key,
+        share: entry.share,
+        color: colors.get(entry.key) ?? "currentColor",
       }))}
     >
       <text
@@ -134,40 +135,41 @@ function DonutChart({
 }
 
 export function ModelsGraphCard({
-  usage,
+  entries,
+  totalCost,
+  groupBy,
   graphStyle,
   theme,
-  showModelPrices,
-  showProviderPrices,
+  showPrices,
   showWatermark,
   dateLabel,
   periodLabel = "today",
 }: ModelsGraphCardProps) {
   const styles = THEME_STYLES[theme]
-  const colors = useMemo(() => assignModelColors(usage.models, theme), [usage, theme])
-  const showTotal = showModelPrices || showProviderPrices
+  const colors = useMemo(() => assignEntryColors(entries, groupBy, theme), [entries, groupBy, theme])
+  const heading = groupBy === "model" ? `Models used ${periodLabel}` : `Usage ${periodLabel}`
 
   const list = (
     <div
       data-testid="models-graph-list"
       className="grid items-baseline gap-x-3 gap-y-1.5"
       style={{
-        gridTemplateColumns: showModelPrices
+        gridTemplateColumns: showPrices
           ? "auto minmax(0, 1fr) max-content max-content"
           : "auto minmax(0, 1fr) max-content",
       }}
     >
-      {usage.models.map((model) => (
-        <Fragment key={modelKey(model)}>
-          <span className="size-[9px] self-center rounded-[3px]" style={{ backgroundColor: colors.get(model) }} />
+      {entries.map((entry) => (
+        <Fragment key={entry.key}>
+          <span className="size-[9px] self-center rounded-[3px]" style={{ backgroundColor: colors.get(entry.key) }} />
           <span data-testid="models-graph-row" className="truncate text-sm">
-            {model.name}
+            {entry.name}
           </span>
           <span className={cn("text-right text-xs tabular-nums", styles.subtext)}>
-            {formatSharePercent(model.share)}
+            {formatSharePercent(entry.share)}
           </span>
-          {showModelPrices && (
-            <span className="text-right text-xs tabular-nums">{formatShareCost(model.todayCost)}</span>
+          {showPrices && (
+            <span className="text-right text-xs tabular-nums">{formatShareCost(entry.todayCost)}</span>
           )}
         </Fragment>
       ))}
@@ -180,39 +182,29 @@ export function ModelsGraphCard({
     <div data-testid="models-graph-card" className={cn("flex w-[440px] flex-col p-2", styles.frame, styles.text)}>
       <div className={cn("flex flex-col gap-4 rounded-xl border p-5", styles.bg, styles.border)}>
         <div className="flex items-baseline justify-between">
-          <span className="text-base font-semibold">Models used {periodLabel}</span>
+          <span className="text-base font-semibold">{heading}</span>
           <span className={cn("text-xs", styles.subtext)}>{dateLabel}</span>
         </div>
         {graphStyle === "bar" ? (
           <>
-            <StackedBar models={usage.models} colors={colors} />
+            <StackedBar entries={entries} colors={colors} />
             {list}
           </>
         ) : (
           <div className="flex items-center gap-6">
             <DonutChart
-              models={usage.models}
+              entries={entries}
               colors={colors}
-              totalLabel={formatShareCost(usage.totalCost)}
+              totalLabel={formatShareCost(totalCost)}
               periodLabel={periodLabel}
             />
             <div className="min-w-0 flex-1">{list}</div>
           </div>
         )}
-        {showProviderPrices && (
-          <div data-testid="models-graph-providers" className={cn("flex flex-col gap-1.5 border-t pt-3", styles.border)}>
-            {usage.providers.map((provider) => (
-              <div key={provider.id} className={cn("flex items-center justify-between text-xs", styles.subtext)}>
-                <span>{provider.name}</span>
-                <span className="tabular-nums">{formatShareCost(provider.todayCost)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {showTotal && (
+        {showPrices && (
           <div data-testid="models-graph-total" className="flex items-center justify-between text-sm font-semibold">
             <span>Total {periodLabel}</span>
-            <span className="tabular-nums">{formatShareCost(usage.totalCost)}</span>
+            <span className="tabular-nums">{formatShareCost(totalCost)}</span>
           </div>
         )}
       </div>
