@@ -37,7 +37,7 @@ UsagePal lives in your menu bar and shows you how much of your AI coding subscri
 
 ## Supported Providers
 
-- [**Amp**](docs/providers/amp.md) / free tier, bonus, credits
+- [**Amp**](docs/providers/amp.md) / daily free usage, credits
 - [**Antigravity**](docs/providers/antigravity.md) / all models
 - [**Claude**](docs/providers/claude.md) / session, weekly, extra usage, local token usage (ccusage)
 - [**ClinePass**](docs/providers/cline-pass.md) / Session, weekly, monthly limits, balance, usage trend
