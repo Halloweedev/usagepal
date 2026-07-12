@@ -2,7 +2,7 @@
 
 Version: 0.31 (2026-06-10)
 
-> OpenUsage is a public-facing Tauri desktop app for tracking AI provider usage across plugins.
+> UsagePal is a public-facing Tauri desktop app for tracking AI provider usage across plugins.
 
 ## Roadmap: Windows & Linux Support
 
