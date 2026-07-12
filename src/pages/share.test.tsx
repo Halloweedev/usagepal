@@ -419,6 +419,33 @@ describe("SharePage", () => {
     expect(useAppShareStore.getState().settings.graphStyle).toBe("donut")
   })
 
+  it("switches the graph window via the Period radiogroup", async () => {
+    const user = userEvent.setup()
+    const plugin = makePlugin({
+      data: {
+        providerId: "claude",
+        displayName: "Claude",
+        iconUrl: "/claude.svg",
+        lines: [{ type: "text", label: "claude-sonnet-5", value: "62% · Today $12.40 · 30d $200.00" }],
+      },
+    })
+    render(<SharePage plugins={[plugin]} />)
+    await user.click(screen.getByRole("radio", { name: "All providers" }))
+
+    // No Yesterday figure for Claude → that tab is disabled.
+    expect(screen.getByRole("radio", { name: "Yesterday" })).toBeDisabled()
+
+    const today = graphCardMock.mock.calls.at(-1)?.[0] as { usage: { totalCost: number }; periodLabel: string }
+    expect(today.periodLabel).toBe("today")
+    expect(today.usage.totalCost).toBeCloseTo(12.4)
+
+    await user.click(screen.getByRole("radio", { name: "30 Days" }))
+
+    const thirty = graphCardMock.mock.calls.at(-1)?.[0] as { usage: { totalCost: number }; periodLabel: string }
+    expect(thirty.periodLabel).toBe("30 days")
+    expect(thirty.usage.totalCost).toBeCloseTo(200)
+  })
+
   it("exposes price toggles in Customize on the All tab", async () => {
     const user = userEvent.setup()
     render(<SharePage plugins={[makePlugin()]} />)
@@ -454,7 +481,7 @@ describe("SharePage", () => {
 
     await user.click(screen.getByRole("radio", { name: "All providers" }))
 
-    expect(screen.getByText("No model usage recorded today.")).toBeInTheDocument()
+    expect(screen.getByText("No model usage recorded.")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Copy Image" })).not.toBeInTheDocument()
   })
 

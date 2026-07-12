@@ -4,8 +4,8 @@ import { formatShareCost, formatSharePercent } from "@/lib/today-models"
 import { deriveModelColors, OTHERS_COLORS } from "@/lib/graph-colors"
 import { THEME_STYLES, type ShareCardTheme } from "@/components/share-card-theme"
 import { ShareWatermark } from "@/components/share-watermark"
+import { Donut } from "@/components/donut"
 import { cn } from "@/lib/utils"
-import { donutSegments, roundCapDash, roundCapPad } from "@/lib/donut-math"
 
 export type GraphStyle = "bar" | "donut"
 
@@ -18,6 +18,9 @@ export type ModelsGraphCardProps = {
   showWatermark: boolean
   /** Preformatted date (e.g. "Jul 10, 2026") — injected so tests are stable. */
   dateLabel: string
+  /** Time window the numbers describe, woven into the headings ("today",
+   * "yesterday", "30 days"). */
+  periodLabel?: string
 }
 
 /** Colors follow the entity: each provider's brand hue in shade steps assigned
@@ -60,63 +63,52 @@ function StackedBar({
           key={modelKey(model)}
           data-testid="models-graph-segment"
           className="h-full rounded-[2px] first:rounded-l-full last:rounded-r-full"
-          style={{ width: `${model.share * 100}%`, backgroundColor: colors.get(model) }}
+          style={{
+            width: `${model.share * 100}%`,
+            minWidth: MIN_BAR_SEGMENT_PX,
+            backgroundColor: colors.get(model),
+          }}
         />
       ))}
     </div>
   )
 }
 
+// Slim proportions matching the Overview strip donut (stroke/radius ≈ 0.36),
+// scaled up to this card's larger canvas.
 const DONUT_SIZE = 132
 const DONUT_CENTER = DONUT_SIZE / 2
-// Segment gap in pathLength units (of 100), rendered by shortening each dash.
-const DONUT_GAP = 0.8
-const DONUT_RADIUS = 45
-const DONUT_STROKE = 26
-const DONUT_CAP_PAD = roundCapPad(DONUT_RADIUS, DONUT_STROKE)
+const DONUT_GAP = 2
+const DONUT_RADIUS = 50
+const DONUT_STROKE = 18
+
+// Floor so a ~1% or smaller model still paints a visible block in the bar view.
+const MIN_BAR_SEGMENT_PX = 4
 
 function DonutChart({
   models,
   colors,
   totalLabel,
+  periodLabel,
 }: {
   models: TodayModelEntry[]
   colors: Map<TodayModelEntry, string>
   totalLabel: string
+  periodLabel: string
 }) {
-  const segments = donutSegments(
-    models.map((model) => model.share),
-    DONUT_GAP
-  )
   return (
-    <svg
-      data-testid="models-graph-donut"
-      width={DONUT_SIZE}
-      height={DONUT_SIZE}
-      viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}
-      className="shrink-0"
+    <Donut
+      size={DONUT_SIZE}
+      radius={DONUT_RADIUS}
+      stroke={DONUT_STROKE}
+      gap={DONUT_GAP}
+      testId="models-graph-donut"
+      slices={models.map((model) => ({
+        key: modelKey(model),
+        share: model.share,
+        color: colors.get(model) ?? "currentColor",
+      }))}
     >
-      {segments.map((segment, index) => {
-        const model = models[index]
-        const { dash, offset } = roundCapDash(segment, DONUT_GAP, DONUT_CAP_PAD)
-        return (
-          <circle
-            key={modelKey(model)}
-            cx={DONUT_CENTER}
-            cy={DONUT_CENTER}
-            r={DONUT_RADIUS}
-            fill="none"
-            strokeWidth={DONUT_STROKE}
-            strokeLinecap="round"
-            pathLength={100}
-            stroke={colors.get(model)}
-            strokeDasharray={`${dash} ${100 - dash}`}
-            strokeDashoffset={offset}
-            // Start segments at 12 o'clock instead of SVG's 3 o'clock default.
-            transform={`rotate(-90 ${DONUT_CENTER} ${DONUT_CENTER})`}
-          />
-        )
-      })}
       <text
         x={DONUT_CENTER}
         y={DONUT_CENTER - 2}
@@ -135,9 +127,9 @@ function DonutChart({
         opacity={0.6}
         fontSize={10}
       >
-        today
+        {periodLabel}
       </text>
-    </svg>
+    </Donut>
   )
 }
 
@@ -149,6 +141,7 @@ export function ModelsGraphCard({
   showProviderPrices,
   showWatermark,
   dateLabel,
+  periodLabel = "today",
 }: ModelsGraphCardProps) {
   const styles = THEME_STYLES[theme]
   const colors = useMemo(() => assignModelColors(usage.models, theme), [usage, theme])
@@ -187,7 +180,7 @@ export function ModelsGraphCard({
     <div data-testid="models-graph-card" className={cn("flex w-[440px] flex-col p-2", styles.frame, styles.text)}>
       <div className={cn("flex flex-col gap-4 rounded-xl border p-5", styles.bg, styles.border)}>
         <div className="flex items-baseline justify-between">
-          <span className="text-base font-semibold">Models used today</span>
+          <span className="text-base font-semibold">Models used {periodLabel}</span>
           <span className={cn("text-xs", styles.subtext)}>{dateLabel}</span>
         </div>
         {graphStyle === "bar" ? (
@@ -197,7 +190,12 @@ export function ModelsGraphCard({
           </>
         ) : (
           <div className="flex items-center gap-6">
-            <DonutChart models={usage.models} colors={colors} totalLabel={formatShareCost(usage.totalCost)} />
+            <DonutChart
+              models={usage.models}
+              colors={colors}
+              totalLabel={formatShareCost(usage.totalCost)}
+              periodLabel={periodLabel}
+            />
             <div className="min-w-0 flex-1">{list}</div>
           </div>
         )}
@@ -213,7 +211,7 @@ export function ModelsGraphCard({
         )}
         {showTotal && (
           <div data-testid="models-graph-total" className="flex items-center justify-between text-sm font-semibold">
-            <span>Total today</span>
+            <span>Total {periodLabel}</span>
             <span className="tabular-nums">{formatShareCost(usage.totalCost)}</span>
           </div>
         )}

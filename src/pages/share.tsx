@@ -10,7 +10,7 @@ import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import { buildShareableLines, type ShareableLine, type ShareLineScope } from "@/lib/share-lines"
 import { copyCardImage } from "@/lib/share-image"
 import type { ModelDisplayOptions } from "@/lib/model-breakdown-format"
-import { ALL_SHARE_TAB_ID, buildTodayModelUsage } from "@/lib/today-models"
+import { ALL_SHARE_TAB_ID, buildModelUsage, type UsagePeriod } from "@/lib/today-models"
 import { useAppShareStore } from "@/stores/app-share-store"
 import { cn } from "@/lib/utils"
 
@@ -27,6 +27,14 @@ const PRESETS = [
 ] as const satisfies readonly { id: string; label: string; scopes: readonly ShareLineScope[] }[]
 
 type PresetId = (typeof PRESETS)[number]["id"]
+
+// Windows the shareable graph can show. `label` is woven into the card's
+// headings ("Models used …", "Total …", donut subtitle).
+const GRAPH_PERIODS = [
+  { id: "today", tab: "Today", label: "today" },
+  { id: "yesterday", tab: "Yesterday", label: "yesterday" },
+  { id: "thirtyDay", tab: "30 Days", label: "30 days" },
+] as const satisfies readonly { id: UsagePeriod; tab: string; label: string }[]
 
 // The card renders (and exports) at this size; the on-screen preview scales
 // down to whatever width the panel gives it.
@@ -89,7 +97,21 @@ export function SharePage({ plugins }: SharePageProps) {
   )
 
   const isAllTab = selectedId === ALL_SHARE_TAB_ID
-  const todayUsage = useMemo(() => buildTodayModelUsage(plugins), [plugins])
+  const [graphPeriod, setGraphPeriod] = useState<UsagePeriod>("today")
+  // All three windows so tabs know which have data. Session-local (resets to
+  // Today each open), so it stays out of the persisted share store.
+  const graphUsages = useMemo(
+    () => ({
+      today: buildModelUsage(plugins, "today"),
+      yesterday: buildModelUsage(plugins, "yesterday"),
+      thirtyDay: buildModelUsage(plugins, "thirtyDay"),
+    }),
+    [plugins]
+  )
+  const firstGraphPeriod = GRAPH_PERIODS.find((p) => graphUsages[p.id].totalCost > 0)?.id
+  const activeGraphPeriod = graphUsages[graphPeriod].totalCost > 0 ? graphPeriod : firstGraphPeriod ?? "today"
+  const graphUsage = graphUsages[activeGraphPeriod]
+  const activeGraphLabel = GRAPH_PERIODS.find((p) => p.id === activeGraphPeriod)!.label
   const dateLabel = useMemo(
     () => new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     []
@@ -299,8 +321,8 @@ export function SharePage({ plugins }: SharePageProps) {
       </section>
 
       {isAllTab ? (
-        todayUsage.totalCost <= 0 ? (
-          <p className="text-sm text-muted-foreground">No model usage recorded today.</p>
+        !firstGraphPeriod ? (
+          <p className="text-sm text-muted-foreground">No model usage recorded.</p>
         ) : (
           <>
             <section ref={previewRef} data-testid="share-page-preview">
@@ -314,13 +336,14 @@ export function SharePage({ plugins }: SharePageProps) {
                 <div className="origin-top-left" style={{ transform: `scale(${previewScale})` }}>
                   <div ref={cardRef} className="w-fit">
                     <ModelsGraphCard
-                      usage={todayUsage}
+                      usage={graphUsage}
                       graphStyle={graphStyle}
                       theme={theme}
                       showModelPrices={graphShowModelPrices}
                       showProviderPrices={graphShowProviderPrices}
                       showWatermark={showWatermark}
                       dateLabel={dateLabel}
+                      periodLabel={activeGraphLabel}
                     />
                   </div>
                 </div>
@@ -328,6 +351,29 @@ export function SharePage({ plugins }: SharePageProps) {
             </section>
 
             <section className="space-y-2">
+              <div className="bg-muted/50 rounded-lg p-1">
+                <div className="flex gap-1" role="radiogroup" aria-label="Period">
+                  {GRAPH_PERIODS.map((option) => {
+                    const available = graphUsages[option.id].totalCost > 0
+                    const isActive = option.id === activeGraphPeriod
+                    return (
+                      <Button
+                        key={option.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={isActive}
+                        variant={isActive ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1"
+                        disabled={copying || !available}
+                        onClick={() => setGraphPeriod(option.id)}
+                      >
+                        {option.tab}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
               <div className="bg-muted/50 rounded-lg p-1">
                 <div className="flex gap-1" role="radiogroup" aria-label="Graph Style">
                   {(["bar", "donut"] as const).map((value) => {

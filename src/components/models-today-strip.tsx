@@ -1,28 +1,39 @@
 import { useEffect, useMemo, useState } from "react"
 import { ChartNoAxesGantt, ChartPie } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Donut } from "@/components/donut"
 import { useDarkMode } from "@/hooks/use-dark-mode"
-import { donutSegments, roundCapDash, roundCapPad } from "@/lib/donut-math"
 import { deriveModelColors } from "@/lib/graph-colors"
+import { cn } from "@/lib/utils"
 import {
   loadOverviewGraphStyle,
   saveOverviewGraphStyle,
   type OverviewGraphStyle,
 } from "@/lib/settings"
 import {
-  buildTodayModelUsage,
+  buildModelUsage,
   formatShareCost,
   formatSharePercent,
   type TodayModelsSource,
   type TodayProviderEntry,
+  type UsagePeriod,
 } from "@/lib/today-models"
+
+const PERIODS: { id: UsagePeriod; label: string }[] = [
+  { id: "today", label: "Today" },
+  { id: "yesterday", label: "Yesterday" },
+  { id: "thirtyDay", label: "30 Days" },
+]
 
 const DONUT_SIZE = 96
 const DONUT_CENTER = DONUT_SIZE / 2
-const DONUT_GAP = 0.8
-const DONUT_RADIUS = 33
-const DONUT_STROKE = 20
-const DONUT_CAP_PAD = roundCapPad(DONUT_RADIUS, DONUT_STROKE)
+const DONUT_GAP = 2
+// A slim ring reads cleaner at this size than a thick one.
+const DONUT_RADIUS = 36
+const DONUT_STROKE = 13
+
+// Floor so a ~1% or smaller provider still paints a visible block in the bar view.
+const MIN_BAR_SEGMENT_PX = 4
 
 function ProviderTooltip({ provider }: { provider: TodayProviderEntry }) {
   return (
@@ -54,48 +65,28 @@ function StripDonut({
   colors: Map<string, string>
   totalLabel: string
 }) {
-  const segments = donutSegments(
-    providers.map((provider) => provider.share),
-    DONUT_GAP
-  )
   return (
-    <svg
-      data-testid="strip-donut"
-      width={DONUT_SIZE}
-      height={DONUT_SIZE}
-      viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}
-      className="shrink-0"
-    >
-      {segments.map((segment, index) => {
-        const provider = providers[index]
-        const { dash, offset } = roundCapDash(segment, DONUT_GAP, DONUT_CAP_PAD)
-        return (
-          <Tooltip key={provider.id}>
-            <TooltipTrigger
-              render={
-                <circle
-                  data-testid="strip-donut-segment"
-                  cx={DONUT_CENTER}
-                  cy={DONUT_CENTER}
-                  r={DONUT_RADIUS}
-                  fill="none"
-                  strokeWidth={DONUT_STROKE}
-                  strokeLinecap="round"
-                  pathLength={100}
-                  stroke={colors.get(provider.id)}
-                  strokeDasharray={`${dash} ${100 - dash}`}
-                  strokeDashoffset={offset}
-                  // Start segments at 12 o'clock instead of SVG's 3 o'clock default.
-                  transform={`rotate(-90 ${DONUT_CENTER} ${DONUT_CENTER})`}
-                />
-              }
-            />
+    <Donut
+      size={DONUT_SIZE}
+      radius={DONUT_RADIUS}
+      stroke={DONUT_STROKE}
+      gap={DONUT_GAP}
+      testId="strip-donut"
+      sliceTestId="strip-donut-segment"
+      slices={providers.map((provider) => ({
+        key: provider.id,
+        share: provider.share,
+        color: colors.get(provider.id) ?? "currentColor",
+        wrap: (arc) => (
+          <Tooltip>
+            <TooltipTrigger render={arc} />
             <TooltipContent side="top">
               <ProviderTooltip provider={provider} />
             </TooltipContent>
           </Tooltip>
-        )
-      })}
+        ),
+      }))}
+    >
       <text
         x={DONUT_CENTER}
         y={DONUT_CENTER + 5}
@@ -106,18 +97,35 @@ function StripDonut({
       >
         {totalLabel}
       </text>
-    </svg>
+    </Donut>
   )
 }
 
-/** Compact "Models today" strip for the Overview page, grouped by provider:
- * bar or donut (user choice, persisted), per-model detail one hover away.
- * Hidden entirely when no model usage was recorded today. */
+/** Compact models strip for the Overview page, grouped by provider, with a
+ * Today / Yesterday / 30 Days period toggle and a bar/donut style toggle
+ * (persisted). Per-model detail is one hover away. Hidden entirely when no
+ * model usage was recorded in any window. */
 export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) {
   const isDark = useDarkMode()
-  const usage = useMemo(() => buildTodayModelUsage(plugins), [plugins])
   const theme = isDark ? ("dark" as const) : ("light" as const)
   const [style, setStyle] = useState<OverviewGraphStyle>("compact")
+  const [period, setPeriod] = useState<UsagePeriod>("today")
+
+  // Build all three windows so tabs know which have data; period is session
+  // state (resets to Today each open), so no persistence here.
+  const usages = useMemo(
+    () => ({
+      today: buildModelUsage(plugins, "today"),
+      yesterday: buildModelUsage(plugins, "yesterday"),
+      thirtyDay: buildModelUsage(plugins, "thirtyDay"),
+    }),
+    [plugins]
+  )
+  // A tab is offered only when its window has spend; fall back to the first that
+  // does so the user never lands on an empty selected period.
+  const firstAvailable = PERIODS.find((p) => usages[p.id].totalCost > 0)?.id
+  const activePeriod = usages[period].totalCost > 0 ? period : firstAvailable ?? "today"
+  const usage = usages[activePeriod]
 
   useEffect(() => {
     let active = true
@@ -137,7 +145,7 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
     return map
   }, [usage, theme])
 
-  if (usage.totalCost <= 0) return null
+  if (!firstAvailable) return null
 
   const toggleStyle = () => {
     const next: OverviewGraphStyle = style === "compact" ? "detailed" : "compact"
@@ -147,13 +155,35 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
 
   return (
     <div data-testid="models-today-strip" className="mb-3 rounded-xl border p-3">
-      <div className="mb-2.5 flex items-center justify-between">
-        <span className="text-sm font-semibold">Models today</span>
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <div role="radiogroup" aria-label="Period" className="flex min-w-0 gap-0.5">
+          {PERIODS.map((p) => {
+            const available = usages[p.id].totalCost > 0
+            const isActive = p.id === activePeriod
+            return (
+              <button
+                key={p.id}
+                type="button"
+                role="radio"
+                aria-checked={isActive}
+                disabled={!available}
+                onClick={() => setPeriod(p.id)}
+                className={cn(
+                  "rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors",
+                  isActive ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+                  !available && "cursor-default opacity-35 hover:text-muted-foreground"
+                )}
+              >
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
         <button
           type="button"
           aria-label={style === "compact" ? "Show detailed view" : "Show compact view"}
           onClick={toggleStyle}
-          className="text-muted-foreground transition-colors hover:text-foreground"
+          className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
         >
           {style === "compact" ? <ChartPie className="size-3.5" /> : <ChartNoAxesGantt className="size-3.5" />}
         </button>
@@ -168,7 +198,11 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
                     <div
                       data-testid="strip-segment"
                       className="h-full transition-[filter] hover:brightness-125 first:rounded-l-full last:rounded-r-full"
-                      style={{ width: `${provider.share * 100}%`, backgroundColor: colors.get(provider.id) }}
+                      style={{
+                        width: `${provider.share * 100}%`,
+                        minWidth: MIN_BAR_SEGMENT_PX,
+                        backgroundColor: colors.get(provider.id),
+                      }}
                     />
                   }
                 />

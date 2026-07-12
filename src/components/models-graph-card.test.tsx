@@ -41,6 +41,15 @@ describe("ModelsGraphCard", () => {
     expect(screen.getByText("63%")).toBeInTheDocument()
   })
 
+  it("weaves a non-today periodLabel into the headings", () => {
+    render(<ModelsGraphCard {...baseProps} periodLabel="yesterday" graphStyle="donut" showModelPrices />)
+
+    expect(screen.getByText("Models used yesterday")).toBeInTheDocument()
+    expect(screen.getByTestId("models-graph-total")).toHaveTextContent("Total yesterday")
+    // Donut subtitle also reflects the period.
+    expect(screen.getByText("yesterday")).toBeInTheDocument()
+  })
+
   it("hides prices, provider subtotals and total by default", () => {
     render(<ModelsGraphCard {...baseProps} />)
 

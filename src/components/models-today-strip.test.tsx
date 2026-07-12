@@ -64,7 +64,7 @@ describe("ModelsTodayStrip", () => {
   it("renders one bar segment and one legend chip per provider, percentages only", async () => {
     render(<ModelsTodayStrip plugins={[claude, codex]} />)
 
-    expect(screen.getByText("Models today")).toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: "Today" })).toHaveAttribute("aria-checked", "true")
     expect(await screen.findByTestId("strip-bar")).toBeInTheDocument()
     expect(screen.getAllByTestId("strip-segment")).toHaveLength(2)
     const chips = screen.getAllByTestId("strip-legend-chip")
@@ -73,6 +73,34 @@ describe("ModelsTodayStrip", () => {
     expect(chips[1]).toHaveTextContent("Codex 16%")
     expect(chips[0]).not.toHaveTextContent("$")
     expect(screen.queryByRole("button", { name: "Share models graph" })).not.toBeInTheDocument()
+  })
+
+  it("switches windows on period tab click and disables empty periods", async () => {
+    const user = userEvent.setup()
+    const claudeP = makeSource({ id: "claude", name: "Claude", brandColor: "#DE7356" }, [
+      ["Opus 4.8", "70% · Today $12.40 · 30d $200.00"],
+      ["Sonnet 5", "30% · Today $4.10 · 30d $50.00"],
+    ])
+    const codexP = makeSource({ id: "codex", name: "Codex", brandColor: "#74AA9C" }, [
+      ["Today", "$400.00 · 333M"],
+      ["Last 30 Days", "$800.00 · 563M"],
+      ["GPT-5.6 Sol", "99.7%"],
+      ["GPT-5.5", "0.3%"],
+    ])
+    render(<ModelsTodayStrip plugins={[claudeP, codexP]} />)
+    await screen.findByTestId("strip-bar")
+
+    // Neither provider has Yesterday data → that tab is disabled.
+    expect(screen.getByRole("radio", { name: "Yesterday" })).toBeDisabled()
+    // Today: Codex provider total is $400 (shown in its inline tooltip).
+    expect(screen.getAllByText("$400.00").length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole("radio", { name: "30 Days" }))
+
+    expect(screen.getByRole("radio", { name: "30 Days" })).toHaveAttribute("aria-checked", "true")
+    // 30-day window: Codex total is now $800, and the today figure is gone.
+    expect(screen.getAllByText("$800.00").length).toBeGreaterThan(0)
+    expect(screen.queryByText("$400.00")).not.toBeInTheDocument()
   })
 
   it("shows provider total and per-model rows in the tooltip", async () => {
