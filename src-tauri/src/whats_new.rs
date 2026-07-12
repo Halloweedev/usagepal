@@ -140,6 +140,26 @@ pub fn parse_release_notes(
     selected
 }
 
+/// Pure decision function for whether the what's-new window should open.
+/// - Onboarding not complete → false (onboarding window handles it).
+/// - Onboarding complete, no last seen version → false (first time or
+///   existing user upgrading to the feature-introducing version).
+/// - Onboarding complete, last seen == current → false (same version relaunch).
+/// - Onboarding complete, last seen != current → true.
+pub fn should_show_whats_new(
+    onboarding_done: bool,
+    last_seen: Option<&str>,
+    current: &str,
+) -> bool {
+    if !onboarding_done {
+        return false;
+    }
+    match last_seen {
+        None => false,
+        Some(seen) => seen != current,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +367,27 @@ Previous stable.
         assert_eq!(notes.len(), 2);
         assert_eq!(notes[0].version, "0.7.35-beta.2");
         assert_eq!(notes[1].version, "0.7.35-beta.1");
+    }
+
+    #[test]
+    fn should_show_whats_new_onboarding_not_done() {
+        assert!(!should_show_whats_new(false, None, "0.7.35"));
+        assert!(!should_show_whats_new(false, Some("0.7.34"), "0.7.35"));
+    }
+
+    #[test]
+    fn should_show_whats_new_last_seen_absent() {
+        // Existing users upgrading to the feature-introducing version — no popup.
+        assert!(!should_show_whats_new(true, None, "0.7.35"));
+    }
+
+    #[test]
+    fn should_show_whats_new_same_version_relaunch() {
+        assert!(!should_show_whats_new(true, Some("0.7.35"), "0.7.35"));
+    }
+
+    #[test]
+    fn should_show_whats_new_different_version() {
+        assert!(should_show_whats_new(true, Some("0.7.34"), "0.7.35"));
     }
 }
