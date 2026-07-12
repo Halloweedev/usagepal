@@ -10,6 +10,7 @@ mod panel;
 mod keylight;
 mod plugin_engine;
 mod tray;
+mod whats_new;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
