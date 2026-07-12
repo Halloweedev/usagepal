@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.7.34-beta.1
+
+Beta release for the cross-provider models graph, Overview models strip, and Codex rate-limit reset fix.
+
+### New Features
+- Cross-provider models graph on Share — bar and donut styles, All tab, OKLCH brand-derived colors, and a refreshed watermark by @Halloweedev
+- Models-today strip on Overview with hover details and a share shortcut by @Halloweedev
+- Period toggle (today, yesterday, and more) with shared proportional donut math across Overview and Share by @Halloweedev
+- Provider-grouped view — switch between per-model and per-provider breakdown in Overview and Share by @Halloweedev
+- Share and Overview settings persist graph style, price visibility, and grouping preference by @Halloweedev
+
+### Bug Fixes
+- Codex rate-limit resets now fetch expiry from the real `rate-limit-reset-credits` API instead of estimating from local `grants.json` by @Halloweedev
+- Per-model hover breakdown for percent-only providers on Overview by @Halloweedev
+
+### Improvements
+- Round donut segment caps for a softer, modern look by @Halloweedev
+- Period-aware model usage with Codex cost helpers by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.33...v0.7.34-beta.1](https://github.com/Halloweedev/usagepal/compare/v0.7.33...v0.7.34-beta.1)
+
 ## v0.7.33
 
 ### New Features

@@ -1,6 +1,6 @@
 [package]
 name = "usagepal"
-version = "0.7.33"
+version = "0.7.34-beta.1"
 description = "UsagePal is an open source AI subscription limit tracker (a fork of OpenUsage)"
 authors = ["Nicolas Demanez"]
 edition = "2024"
