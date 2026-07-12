@@ -730,7 +730,7 @@ describe("codex plugin", () => {
       const plugin = await loadPlugin()
       plugin.probe(ctx)
 
-      expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+      expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
     } finally {
       vi.useRealTimers()
     }
@@ -750,7 +750,7 @@ describe("codex plugin", () => {
     const plugin = await loadPlugin()
     plugin.probe(ctx)
 
-    expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+    expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
   })
 
   it("proactively refreshes a JWT within five minutes of expiry", async () => {
@@ -780,7 +780,7 @@ describe("codex plugin", () => {
       const plugin = await loadPlugin()
       plugin.probe(ctx)
 
-      expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+      expect(ctx.host.http.request).toHaveBeenCalledTimes(3)
     } finally {
       vi.useRealTimers()
     }
@@ -824,7 +824,7 @@ describe("codex plugin", () => {
       const plugin = await loadPlugin()
       plugin.probe(ctx)
 
-      expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+      expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
     } finally {
       vi.useRealTimers()
     }
@@ -1398,13 +1398,29 @@ describe("codex plugin", () => {
       tokens: { access_token: "token" },
       last_refresh: new Date().toISOString(),
     }))
-    ctx.host.http.request.mockReturnValue({
-      status: 200,
-      headers: {},
-      bodyText: JSON.stringify({
-        rate_limit_reset_credits: { available_count: 1 },
-        credits: { balance: 100 },
-      }),
+    const expiresAt = "2026-08-01T12:00:00.000Z"
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("rate-limit-reset-credits")) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({
+            available_count: 1,
+            credits: [{
+              id: "RateLimitResetCredit_1",
+              status: "available",
+              expires_at: expiresAt,
+            }],
+          }),
+        }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          credits: { balance: 100 },
+        }),
+      }
     })
     ctx.host.ccusage.query.mockReturnValue({
       status: "ok",
@@ -1421,8 +1437,8 @@ describe("codex plugin", () => {
       type: "text",
       label: "Rate Limit Resets",
       value: "1 available",
+      resetExpiry: [expiresAt],
     })
-    expect(result.lines[resetIndex].resetExpiry).toBeDefined()
     expect(resetIndex).toBeGreaterThanOrEqual(0)
     expect(resetIndex).toBe(firstTextIndex)
     expect(creditsIndex).toBe(resetIndex + 1)
@@ -1436,88 +1452,100 @@ describe("codex plugin", () => {
     }))
     const plugin = await loadPlugin()
 
-    ctx.host.http.request.mockReturnValueOnce({
-      status: 200,
-      headers: {},
-      bodyText: JSON.stringify({
-        rate_limit_reset_credits: { available_count: 0 },
-      }),
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("rate-limit-reset-credits")) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ available_count: 0, credits: [] }),
+        }
+      }
+      return { status: 200, headers: {}, bodyText: JSON.stringify({}) }
     })
     const zeroResult = plugin.probe(ctx)
     expect(zeroResult.lines.find((line) => line.label === "Rate Limit Resets")?.value)
       .toBe("0 available")
 
-    ctx.host.http.request.mockReturnValueOnce({
-      status: 200,
-      headers: {},
-      bodyText: JSON.stringify({
-        rate_limit_reset_credits: { available_count: null },
-      }),
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("rate-limit-reset-credits")) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ available_count: null }),
+        }
+      }
+      return { status: 200, headers: {}, bodyText: JSON.stringify({}) }
     })
     const malformedResult = plugin.probe(ctx)
     expect(malformedResult.lines.find((line) => line.label === "Rate Limit Resets"))
       .toBeUndefined()
   })
 
-  it("writes grants.json when banked reset count increases and includes resetExpiry", async () => {
+  it("uses expires_at from rate-limit-reset-credits for resetExpiry", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
       last_refresh: new Date().toISOString(),
     }))
 
-    const now = 1_700_000_000_000
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now)
-    const issuedAtMs = now
-    const expectedExpiryMs = issuedAtMs + 30 * 24 * 60 * 60 * 1000
-    const expectedExpiryIso = new Date(expectedExpiryMs).toISOString()
-
-    ctx.host.http.request.mockReturnValue({
-      status: 200,
-      headers: {},
-      bodyText: JSON.stringify({
-        rate_limit_reset_credits: { available_count: 2 },
-      }),
+    const sooner = "2026-07-20T00:00:00.000Z"
+    const later = "2026-08-01T00:00:00.000Z"
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("rate-limit-reset-credits")) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({
+            available_count: 2,
+            credits: [
+              {
+                id: "RateLimitResetCredit_later",
+                status: "available",
+                expires_at: later,
+              },
+              {
+                id: "RateLimitResetCredit_sooner",
+                status: "available",
+                expires_at: sooner,
+              },
+              {
+                id: "RateLimitResetCredit_used",
+                status: "redeemed",
+                expires_at: "2026-07-01T00:00:00.000Z",
+              },
+            ],
+          }),
+        }
+      }
+      return { status: 200, headers: {}, bodyText: JSON.stringify({}) }
     })
     ctx.host.ccusage.query.mockReturnValue({ status: "ok", data: { daily: [] } })
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-
-    expect(ctx.host.fs.writeText).toHaveBeenCalledWith(
-      expect.stringContaining("grants.json"),
-      expect.any(String),
-    )
-
-    // Verify grants.json content
-    const writeCall = ctx.host.fs.writeText.mock.calls.find(([p]) =>
-      String(p).endsWith("grants.json"),
-    )
-    expect(writeCall).toBeTruthy()
-    const grantsData = JSON.parse(writeCall[1])
-    expect(grantsData.grants).toHaveLength(2)
-    expect(grantsData.grants[0].issuedAt).toBe(issuedAtMs)
-    expect(grantsData.grants[1].issuedAt).toBe(issuedAtMs)
-
-    // Verify output line has resetExpiry (array of all expiry ISOs, soonest first)
     const line = result.lines.find((l) => l.label === "Rate Limit Resets")
-    expect(line.resetExpiry).toEqual([expectedExpiryIso, expectedExpiryIso])
-
-    nowSpy.mockRestore()
+    expect(line.value).toBe("2 available")
+    expect(line.resetExpiry).toEqual([sooner, later])
+    expect(ctx.host.fs.writeText.mock.calls.find(([p]) =>
+      String(p).endsWith("grants.json"),
+    )).toBeUndefined()
   })
 
-  it("omits resetExpiry when banked reset count is zero", async () => {
+  it("omits resetExpiry when available count is zero", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
       last_refresh: new Date().toISOString(),
     }))
-    ctx.host.http.request.mockReturnValue({
-      status: 200,
-      headers: {},
-      bodyText: JSON.stringify({
-        rate_limit_reset_credits: { available_count: 0 },
-      }),
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("rate-limit-reset-credits")) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ available_count: 0, credits: [] }),
+        }
+      }
+      return { status: 200, headers: {}, bodyText: JSON.stringify({}) }
     })
     ctx.host.ccusage.query.mockReturnValue({ status: "ok", data: { daily: [] } })
 
@@ -1529,47 +1557,31 @@ describe("codex plugin", () => {
     expect(line.resetExpiry).toBeUndefined()
   })
 
-  it("reads previously-written grants and returns next resetExpiry on subsequent probes", async () => {
+  it("falls back to usage available_count without expiry when reset-credits endpoint fails", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
       last_refresh: new Date().toISOString(),
     }))
-
-    // Both grants issued at different times but both still within their 30-day lifetime
-    const now = Date.now()
-    const olderIssuedAtMs = now - 15 * 24 * 60 * 60 * 1000   // 15 days ago
-    const newerIssuedAtMs = now - 5 * 24 * 60 * 60 * 1000    // 5 days ago
-    const olderExpiryMs = olderIssuedAtMs + 30 * 24 * 60 * 60 * 1000 // 15 days from now
-
-    // Pre-populate grants.json in the format the plugin expects: { grants: [...] }
-    const grantsPath = ctx.app.pluginDataDir + "/grants.json"
-    ctx.host.fs.writeText(grantsPath, JSON.stringify({
-      grants: [
-        { issuedAt: olderIssuedAtMs },
-        { issuedAt: newerIssuedAtMs },
-      ],
-    }))
-
-    ctx.host.http.request.mockReturnValue({
-      status: 200,
-      headers: {},
-      bodyText: JSON.stringify({
-        rate_limit_reset_credits: { available_count: 2 },
-      }),
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("rate-limit-reset-credits")) {
+        return { status: 500, headers: {}, bodyText: "error" }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          rate_limit_reset_credits: { available_count: 2 },
+        }),
+      }
     })
     ctx.host.ccusage.query.mockReturnValue({ status: "ok", data: { daily: [] } })
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     const line = result.lines.find((l) => l.label === "Rate Limit Resets")
-
-    // All grant expiries sorted soonest-first
-    const newerExpiryMs = newerIssuedAtMs + 30 * 24 * 60 * 60 * 1000
-    expect(line.resetExpiry).toEqual([
-      new Date(olderExpiryMs).toISOString(),
-      new Date(newerExpiryMs).toISOString(),
-    ])
+    expect(line.value).toBe("2 available")
+    expect(line.resetExpiry).toBeUndefined()
   })
 
   it("omits resetsAt when window lacks reset info", async () => {

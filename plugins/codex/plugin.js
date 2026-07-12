@@ -5,6 +5,7 @@
   const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
   const REFRESH_URL = "https://auth.openai.com/oauth/token"
   const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+  const RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
   const CREDIT_USD_RATE = 0.04
   const REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000
   const ACCESS_TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000
@@ -306,7 +307,7 @@
     }
   }
 
-  function fetchUsage(ctx, accessToken, accountId) {
+  function chatgptHeaders(accessToken, accountId) {
     const headers = {
       Authorization: "Bearer " + accessToken,
       Accept: "application/json",
@@ -315,12 +316,88 @@
     if (accountId) {
       headers["ChatGPT-Account-Id"] = accountId
     }
+    return headers
+  }
+
+  function fetchUsage(ctx, accessToken, accountId) {
     return ctx.util.request({
       method: "GET",
       url: USAGE_URL,
-      headers,
+      headers: chatgptHeaders(accessToken, accountId),
       timeoutMs: 10000,
     })
+  }
+
+  function fetchRateLimitResetCredits(ctx, accessToken, accountId) {
+    return ctx.util.request({
+      method: "GET",
+      url: RESET_CREDITS_URL,
+      headers: chatgptHeaders(accessToken, accountId),
+      timeoutMs: 10000,
+    })
+  }
+
+  function parseRateLimitResetCredits(data) {
+    if (!data || typeof data !== "object") return null
+
+    const credits = Array.isArray(data.credits) ? data.credits : []
+    const availableCredits = []
+    for (let i = 0; i < credits.length; i++) {
+      const credit = credits[i]
+      if (!credit || typeof credit !== "object") continue
+      const status = typeof credit.status === "string" ? credit.status : "available"
+      if (status !== "available") continue
+      availableCredits.push(credit)
+    }
+
+    const reported = data.available_count == null ? null : readNumber(data.available_count)
+    const availableCount = reported !== null
+      ? Math.max(0, Math.floor(reported))
+      : availableCredits.length
+
+    // Only treat an explicit available_count or a credits list as a valid payload.
+    if (reported === null && !Array.isArray(data.credits)) return null
+
+    const expiryIsos = []
+    for (let i = 0; i < availableCredits.length; i++) {
+      const expiresAt = availableCredits[i].expires_at
+      if (typeof expiresAt === "string" && expiresAt) {
+        expiryIsos.push(expiresAt)
+      }
+    }
+    expiryIsos.sort(function (a, b) {
+      return new Date(a).getTime() - new Date(b).getTime()
+    })
+
+    return { availableCount: availableCount, expiryIsos: expiryIsos }
+  }
+
+  function loadRateLimitResetCredits(ctx, accessToken, accountId, usageData) {
+    try {
+      const resp = fetchRateLimitResetCredits(ctx, accessToken, accountId)
+      if (resp.status >= 200 && resp.status < 300) {
+        const data = ctx.util.tryParseJson(resp.bodyText)
+        const parsed = parseRateLimitResetCredits(data)
+        if (parsed) return parsed
+        ctx.host.log.warn("rate limit reset credits response invalid")
+      } else {
+        ctx.host.log.warn("rate limit reset credits returned status=" + resp.status)
+      }
+    } catch (e) {
+      ctx.host.log.warn("rate limit reset credits request failed: " + String(e))
+    }
+
+    const nestedRaw =
+      usageData &&
+      usageData.rate_limit_reset_credits &&
+      typeof usageData.rate_limit_reset_credits === "object"
+        ? usageData.rate_limit_reset_credits.available_count
+        : null
+    const nested = nestedRaw == null ? null : readNumber(nestedRaw)
+    if (nested !== null && nested >= 0) {
+      return { availableCount: Math.floor(nested), expiryIsos: [] }
+    }
+    return null
   }
 
   function readPercent(value) {
@@ -366,91 +443,6 @@
   // Period durations in milliseconds
   var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
-  var BANKED_RESET_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
-
-  var GRANTS_FILE = "grants.json"
-
-  function readGrantsFile(ctx) {
-    try {
-      var path = ctx.app.pluginDataDir + "/" + GRANTS_FILE
-      if (!ctx.host.fs.exists(path)) return null
-      var text = ctx.host.fs.readText(path)
-      return JSON.parse(text)
-    } catch (e) {
-      return null
-    }
-  }
-
-  function writeGrantsFile(ctx, data) {
-    try {
-      ctx.host.fs.writeText(
-        ctx.app.pluginDataDir + "/" + GRANTS_FILE,
-        JSON.stringify(data)
-      )
-    } catch (e) {
-      ctx.host.log.warn("failed to persist banked reset grants: " + String(e))
-    }
-  }
-
-  function formatBankedExpiry(nowMs, expiresAtMs) {
-    if (expiresAtMs <= nowMs) return "expired"
-    var totalSec = Math.round((expiresAtMs - nowMs) / 1000)
-    var d = Math.floor(totalSec / 86400)
-    var h = Math.floor((totalSec % 86400) / 3600)
-    var m = Math.floor((totalSec % 3600) / 60)
-    if (d > 0) return "in " + d + "d " + h + "h"
-    if (h > 0) return "in " + h + "h " + m + "m"
-    if (m > 0) return "in " + m + "m"
-    return "soon"
-  }
-
-  function updateBankedResetGrants(ctx, nowSec, availableCount) {
-    var stored = readGrantsFile(ctx) || { grants: [] }
-    var storedGrants = Array.isArray(stored.grants) ? stored.grants : []
-    var nowMs = nowSec * 1000
-
-    // Prune expired grants
-    var unexpired = []
-    for (var i = 0; i < storedGrants.length; i++) {
-      if (typeof storedGrants[i].issuedAt === "number" &&
-          storedGrants[i].issuedAt + BANKED_RESET_LIFETIME_MS > nowMs) {
-        unexpired.push(storedGrants[i])
-      }
-    }
-    storedGrants = unexpired
-
-    var storedCount = storedGrants.length
-    var changed = false
-
-    if (availableCount > storedCount) {
-      // New grants observed — record them
-      var newCount = availableCount - storedCount
-      for (var j = 0; j < newCount; j++) {
-        storedGrants.push({ issuedAt: nowMs })
-      }
-      changed = true
-    } else if (availableCount < storedCount) {
-      // Count decreased — remove oldest (most likely consumed or expired)
-      storedGrants = storedGrants.slice(storedCount - availableCount)
-      changed = true
-    }
-
-    // Collect all expiry timestamps (soonest first)
-    var expiries = []
-    for (var k = 0; k < storedGrants.length; k++) {
-      var expMs = storedGrants[k].issuedAt + BANKED_RESET_LIFETIME_MS
-      if (expMs > nowMs) {
-        expiries.push(expMs)
-      }
-    }
-    expiries.sort(function(a, b) { return a - b })
-
-    if (changed) {
-      writeGrantsFile(ctx, { grants: storedGrants })
-    }
-
-    return expiries
-  }
 
   function queryTokenUsage(ctx) {
     if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
@@ -971,24 +963,19 @@
         }
       }
 
-      const resetCredits =
-        data.rate_limit_reset_credits &&
-        typeof data.rate_limit_reset_credits === "object" &&
-        data.rate_limit_reset_credits.available_count != null
-          ? readNumber(data.rate_limit_reset_credits.available_count)
-          : null
-      if (resetCredits !== null && resetCredits >= 0) {
-        const resetCount = Math.floor(resetCredits)
-        const allExpiryMs = resetCount > 0
-          ? updateBankedResetGrants(ctx, nowSec, resetCount)
-          : []
-        const resetExpiry = allExpiryMs.length > 0
-          ? allExpiryMs.map(function(ms) { return ctx.util.toIso(ms / 1000) })
-          : null
+      const resetCreditsInfo = loadRateLimitResetCredits(
+        ctx,
+        auth.tokens.access_token || accessToken,
+        accountId,
+        data
+      )
+      if (resetCreditsInfo) {
         lines.push(ctx.line.text({
           label: "Rate Limit Resets",
-          value: resetCount + " available",
-          resetExpiry: resetExpiry,
+          value: resetCreditsInfo.availableCount + " available",
+          resetExpiry: resetCreditsInfo.expiryIsos.length > 0
+            ? resetCreditsInfo.expiryIsos
+            : null,
         }))
       }
 
