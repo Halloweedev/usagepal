@@ -5,7 +5,7 @@ import { ChevronLeft } from "lucide-react"
 
 import { syncAutostart } from "@/lib/autostart"
 
-import { Logo } from "@/components/logo"
+import { ChromelessWindowShell } from "@/components/chromeless-window-shell"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { PACE_MILESTONES } from "@/lib/pace-notifications"
@@ -116,67 +116,60 @@ function OnboardingApp() {
   }, [])
 
   return (
-    // The window itself is transparent; this rounded container is its shape.
-    <main className="flex h-screen flex-col overflow-hidden rounded-xl border bg-card text-foreground">
-      <section className="flex h-full min-h-0 flex-col">
-        {/* data-tauri-drag-region makes the header the window's drag handle. */}
-        <div data-tauri-drag-region className="flex shrink-0 items-center justify-between border-b px-6 py-4">
-          <div className="pointer-events-none flex items-center gap-3 text-lg font-semibold">
-            <Logo className="size-9 text-foreground" aria-hidden />
-            UsagePal
-          </div>
-          <div className="pointer-events-none flex w-28 gap-1.5" aria-label={`Step ${stepIndex(step) + 1} of ${steps.length}`}>
-            {steps.map((item) => (
-              <span
-                key={item}
-                className={cn(
-                  "h-1.5 flex-1 rounded-full bg-border transition-colors duration-500",
-                  stepIndex(item) <= stepIndex(step) && "bg-primary"
-                )}
-              />
-            ))}
-          </div>
+    <ChromelessWindowShell
+      headerRight={
+        <div
+          className="flex w-28 gap-1.5"
+          aria-label={`Step ${stepIndex(step) + 1} of ${steps.length}`}
+        >
+          {steps.map((item) => (
+            <span
+              key={item}
+              className={cn(
+                "h-1.5 flex-1 rounded-full bg-border transition-colors duration-500",
+                stepIndex(item) <= stepIndex(step) && "bg-primary"
+              )}
+            />
+          ))}
         </div>
-
-        <div className="min-h-0 flex-1 px-6 py-5 sm:px-8">
-          <div
-            key={step}
-            className={cn(
-              "h-full animate-in fade-in duration-300",
-              direction === "forward" ? "slide-in-from-right-8" : "slide-in-from-left-8"
-            )}
-          >
-            {step === "welcome" && (
-              <WelcomeStep onContinue={next} onSkip={() => finish(false)} skipBusy={busyAction === "finish"} />
-            )}
-            {step === "tour" && <TourStep onContinue={next} backButton={backButton} />}
-            {step === "notifications" && (
-              <NotificationsStep
-                onEnable={enableNotifications}
-                onSkip={next}
-                busy={busyAction === "notifications"}
-                backButton={backButton}
-              />
-            )}
-            {step === "login" && (
-              <LoginStep
-                onContinue={applyStartOnLogin}
-                busy={busyAction === "login"}
-                backButton={backButton}
-              />
-            )}
-            {step === "done" && (
-              <DoneStep
-                alertsEnabled={alertsEnabled}
-                startOnLogin={startOnLogin}
-                onFinish={finish}
-                busy={busyAction !== null}
-              />
-            )}
-          </div>
-        </div>
-      </section>
-    </main>
+      }
+    >
+      <div
+        key={step}
+        className={cn(
+          "h-full animate-in fade-in duration-300",
+          direction === "forward" ? "slide-in-from-right-8" : "slide-in-from-left-8"
+        )}
+      >
+        {step === "welcome" && (
+          <WelcomeStep onContinue={next} onSkip={() => finish(false)} skipBusy={busyAction === "finish"} />
+        )}
+        {step === "tour" && <TourStep onContinue={next} backButton={backButton} />}
+        {step === "notifications" && (
+          <NotificationsStep
+            onEnable={enableNotifications}
+            onSkip={next}
+            busy={busyAction === "notifications"}
+            backButton={backButton}
+          />
+        )}
+        {step === "login" && (
+          <LoginStep
+            onContinue={applyStartOnLogin}
+            busy={busyAction === "login"}
+            backButton={backButton}
+          />
+        )}
+        {step === "done" && (
+          <DoneStep
+            alertsEnabled={alertsEnabled}
+            startOnLogin={startOnLogin}
+            onFinish={finish}
+            busy={busyAction !== null}
+          />
+        )}
+      </div>
+    </ChromelessWindowShell>
   )
 }
 
