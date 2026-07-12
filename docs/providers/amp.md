@@ -5,7 +5,7 @@
 - **Protocol:** JSON-RPC (`POST /api/internal`)
 - **URL:** `https://ampcode.com/api/internal`
 - **Auth:** API key from Amp CLI (`~/.local/share/amp/secrets.json`)
-- **Tier:** Free (daily replenishing quota) and/or individual credits
+- **Tier:** Free (daily quota) and/or individual credits
 
 ## Authentication
 
@@ -40,7 +40,7 @@ The response contains a `displayText` string whose contents vary by user tier:
 **Free tier + credits:**
 ```
 Signed in as <user>
-Amp Free: $<remaining>/$<total> remaining (replenishes +$<rate>/hour) [optional: +N% bonus for N more days] - https://ampcode.com/settings#amp-free
+Amp Free: <percent>% remaining today (resets daily) - https://ampcode.com/settings#amp-free
 Individual credits: $<credits> remaining - https://ampcode.com/settings
 ```
 
@@ -51,15 +51,13 @@ Individual credits: $<credits> remaining - https://ampcode.com/settings
 ```
 
 The plugin parses the display text with regex to extract:
-- **Balance:** `$remaining/$total remaining` → dollar amounts (only if Amp Free enabled)
-- **Rate:** `replenishes +$rate/hour` → replenishment speed (only if Amp Free enabled)
-- **Bonus:** `[+N% bonus for N more days]` → optional promotional bonus 
+- **Free quota:** `<percent>% remaining today` → daily percentage remaining
 - **Credits:** `Individual credits: $N remaining` → paid credits balance
 
 ### Usage Calculation (Free tier only)
 
-- **Used:** `total - remaining` (clamped to 0 minimum)
-- **Reset time:** `used / hourlyRate` hours from now (null if nothing used or rate is zero)
+- **Used:** `100 - percent remaining` (clamped between 0% and 100%)
+- **Reset time:** Not supplied by the API; the response only states that it resets daily
 - **Period:** 24 hours (fixed)
 
 ## Plan Detection
@@ -73,13 +71,13 @@ The plugin parses the display text with regex to extract:
 
 | Line       | Scope    | Condition                   | Description                            |
 |------------|----------|-----------------------------|----------------------------------------|
-| Free       | overview | Amp Free enabled            | Dollar amount consumed as progress bar |
-| Bonus      | detail   | Amp Free + active promotion | Bonus percentage and duration          |
+| Free       | overview | Amp Free enabled            | Daily usage consumed as a percentage progress bar |
 | Credits    | overview | Credits > $0, or credits-only accounts | Individual credits balance      |
 
 Progress line includes:
-- `resetsAt` — ISO timestamp of estimated full replenishment (null if nothing used or rate is zero)
 - `periodDurationMs` — 24 hours for pace tracking
+
+The API does not provide an exact reset time, so the progress line does not include `resetsAt`.
 
 ## Errors
 

@@ -163,6 +163,28 @@ describe("amp plugin", () => {
 
   // --- Balance parsing ---
 
+  it("parses the current daily percentage response", async () => {
+    var ctx = makeCtx()
+    writeSecrets(ctx)
+    var text = "Signed in as user@test.com (testuser)\n"
+      + "Amp Free: 48% remaining today (resets daily) - https://ampcode.com/settings#amp-free\n"
+      + "Individual credits: $0 remaining - https://ampcode.com/settings"
+    ctx.host.http.request.mockReturnValue(balanceResponse(text))
+    var plugin = await loadPlugin()
+    var result = plugin.probe(ctx)
+    expect(result.plan).toBe("Free")
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0]).toMatchObject({
+      type: "progress",
+      label: "Free",
+      used: 52,
+      limit: 100,
+      format: { kind: "percent" },
+      periodDurationMs: 24 * 3600 * 1000,
+    })
+    expect(result.lines[0].resetsAt).toBeUndefined()
+  })
+
   it("parses standard balance text", async () => {
     var ctx = makeCtx()
     writeSecrets(ctx)
