@@ -9,6 +9,7 @@ interface OverviewPageProps {
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   timeFormatMode?: TimeFormatMode
+  overviewSpendStripEnabled?: boolean
   onResetTimerDisplayModeToggle?: () => void
 }
 
@@ -18,6 +19,7 @@ export function OverviewPage({
   displayMode,
   resetTimerDisplayMode,
   timeFormatMode = "auto",
+  overviewSpendStripEnabled = true,
   onResetTimerDisplayModeToggle,
 }: OverviewPageProps) {
   return (
@@ -28,7 +30,12 @@ export function OverviewPage({
         </div>
       ) : (
         <>
-          <ModelsTodayStrip plugins={plugins} />
+          {overviewSpendStripEnabled && (
+            <section className="mb-3 pt-2">
+              <h3 className="text-lg font-semibold mb-2">Quick Usage Overview</h3>
+              <ModelsTodayStrip plugins={plugins} />
+            </section>
+          )}
           {plugins.map((plugin, index) => (
             <ProviderCard
               key={plugin.meta.id}

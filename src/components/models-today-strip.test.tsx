@@ -1,12 +1,19 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/components/ui/tooltip", () => import("@/test/tooltip-mock"))
 
-const { loadOverviewGraphStyleMock, saveOverviewGraphStyleMock } = vi.hoisted(() => ({
+const {
+  loadOverviewGraphStyleMock,
+  saveOverviewGraphStyleMock,
+  loadOverviewGraphGroupByMock,
+  saveOverviewGraphGroupByMock,
+} = vi.hoisted(() => ({
   loadOverviewGraphStyleMock: vi.fn(),
   saveOverviewGraphStyleMock: vi.fn(),
+  loadOverviewGraphGroupByMock: vi.fn(),
+  saveOverviewGraphGroupByMock: vi.fn(),
 }))
 
 vi.mock("@/lib/settings", async () => {
@@ -15,6 +22,8 @@ vi.mock("@/lib/settings", async () => {
     ...actual,
     loadOverviewGraphStyle: loadOverviewGraphStyleMock,
     saveOverviewGraphStyle: saveOverviewGraphStyleMock,
+    loadOverviewGraphGroupBy: loadOverviewGraphGroupByMock,
+    saveOverviewGraphGroupBy: saveOverviewGraphGroupByMock,
   }
 })
 
@@ -50,8 +59,10 @@ const codex = makeSource({ id: "codex", name: "Codex", brandColor: "#74AA9C" }, 
 
 describe("ModelsTodayStrip", () => {
   beforeEach(() => {
-    loadOverviewGraphStyleMock.mockReset().mockResolvedValue("compact")
+    loadOverviewGraphStyleMock.mockReset().mockResolvedValue("donut")
     saveOverviewGraphStyleMock.mockReset().mockResolvedValue(undefined)
+    loadOverviewGraphGroupByMock.mockReset().mockResolvedValue("provider")
+    saveOverviewGraphGroupByMock.mockReset().mockResolvedValue(undefined)
   })
 
   it("renders nothing without today data", async () => {
@@ -61,18 +72,18 @@ describe("ModelsTodayStrip", () => {
     await waitFor(() => expect(container.firstChild).toBeNull())
   })
 
-  it("renders one bar segment and one legend chip per provider, percentages only", async () => {
+  it("renders donut provider view by default", async () => {
     render(<ModelsTodayStrip plugins={[claude, codex]} />)
 
     expect(screen.getByRole("radio", { name: "Today" })).toHaveAttribute("aria-checked", "true")
-    expect(await screen.findByTestId("strip-bar")).toBeInTheDocument()
-    expect(screen.getAllByTestId("strip-segment")).toHaveLength(2)
-    const chips = screen.getAllByTestId("strip-legend-chip")
-    expect(chips).toHaveLength(2)
-    expect(chips[0]).toHaveTextContent("Claude 84%")
-    expect(chips[1]).toHaveTextContent("Codex 16%")
-    expect(chips[0]).not.toHaveTextContent("$")
-    expect(screen.queryByRole("button", { name: "Share models graph" })).not.toBeInTheDocument()
+    expect(await screen.findByTestId("strip-donut")).toBeInTheDocument()
+    expect(screen.getAllByTestId("strip-donut-segment")).toHaveLength(2)
+    const rows = screen.getAllByTestId("strip-entry-row")
+    expect(rows).toHaveLength(2)
+    expect(within(rows[0]).getByText("Claude")).toBeInTheDocument()
+    expect(within(rows[1]).getByText("Codex")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Show models" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Donut chart" })).toBeInTheDocument()
   })
 
   it("switches windows on period tab click and disables empty periods", async () => {
@@ -88,57 +99,71 @@ describe("ModelsTodayStrip", () => {
       ["GPT-5.5", "0.3%"],
     ])
     render(<ModelsTodayStrip plugins={[claudeP, codexP]} />)
-    await screen.findByTestId("strip-bar")
+    await screen.findByTestId("strip-donut")
 
-    // Neither provider has Yesterday data → that tab is disabled.
     expect(screen.getByRole("radio", { name: "Yesterday" })).toBeDisabled()
-    // Today: Codex provider total is $400 (shown in its inline tooltip).
-    expect(screen.getAllByText("$400.00").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("GPT-5.6 Sol").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("$398.80").length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole("radio", { name: "30 Days" }))
 
     expect(screen.getByRole("radio", { name: "30 Days" })).toHaveAttribute("aria-checked", "true")
-    // 30-day window: Codex total is now $800, and the today figure is gone.
-    expect(screen.getAllByText("$800.00").length).toBeGreaterThan(0)
-    expect(screen.queryByText("$400.00")).not.toBeInTheDocument()
+    expect(screen.getAllByText("$797.60").length).toBeGreaterThan(0)
+    expect(screen.queryByText("$398.80")).not.toBeInTheDocument()
   })
 
-  it("shows provider total and per-model rows in the tooltip", async () => {
+  it("shows model and provider in the tooltip", async () => {
+    loadOverviewGraphGroupByMock.mockResolvedValue("model")
     render(<ModelsTodayStrip plugins={[claude, codex]} />)
-    await screen.findByTestId("strip-bar")
+    await screen.findByTestId("strip-donut")
 
-    // tooltip-mock renders content inline; within-provider percentages
-    expect(screen.getAllByText("$16.50").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Opus 4.8").length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/75%/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/25%/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Claude").length).toBeGreaterThan(0)
     expect(screen.getAllByText("$12.40").length).toBeGreaterThan(0)
   })
 
-  it("toggles to the donut view and persists the choice", async () => {
+  it("toggles to bar view and persists the choice", async () => {
     const user = userEvent.setup()
+    render(<ModelsTodayStrip plugins={[claude, codex]} />)
+    await screen.findByTestId("strip-donut")
+
+    await user.click(screen.getByRole("button", { name: "Donut chart" }))
+
+    expect(screen.queryByTestId("strip-donut")).not.toBeInTheDocument()
+    expect(screen.getByTestId("strip-bar")).toBeInTheDocument()
+    expect(screen.getAllByTestId("strip-segment")).toHaveLength(2)
+    expect(saveOverviewGraphStyleMock).toHaveBeenCalledWith("bar")
+    expect(screen.getByRole("button", { name: "Bar chart" })).toBeInTheDocument()
+  })
+
+  it("toggles to model grouping and persists the choice", async () => {
+    const user = userEvent.setup()
+    loadOverviewGraphStyleMock.mockResolvedValue("bar")
     render(<ModelsTodayStrip plugins={[claude, codex]} />)
     await screen.findByTestId("strip-bar")
 
-    await user.click(screen.getByRole("button", { name: "Show detailed view" }))
+    await user.click(screen.getByRole("button", { name: "Show models" }))
 
-    expect(screen.queryByTestId("strip-bar")).not.toBeInTheDocument()
-    expect(screen.getByTestId("strip-donut")).toBeInTheDocument()
-    expect(screen.getAllByTestId("strip-donut-segment")).toHaveLength(2)
-    expect(screen.getByText("$19.70")).toBeInTheDocument()
-    const rows = screen.getAllByTestId("strip-provider-row")
-    expect(rows).toHaveLength(2)
-    expect(rows[0]).toHaveTextContent("Claude")
-    expect(rows[0]).toHaveTextContent("$16.50")
-    expect(saveOverviewGraphStyleMock).toHaveBeenCalledWith("detailed")
-    expect(screen.getByRole("button", { name: "Show compact view" })).toBeInTheDocument()
+    expect(screen.getAllByTestId("strip-segment")).toHaveLength(3)
+    const chips = screen.getAllByTestId("strip-legend-chip")
+    expect(within(chips[0]).getByText("Opus 4.8")).toBeInTheDocument()
+    expect(within(chips[0]).getByText("63%")).toBeInTheDocument()
+    expect(within(chips[1]).getByText("Sonnet 5")).toBeInTheDocument()
+    expect(within(chips[1]).getByText("21%")).toBeInTheDocument()
+    expect(within(chips[2]).getByText("GPT-5.4")).toBeInTheDocument()
+    expect(within(chips[2]).getByText("16%")).toBeInTheDocument()
+    expect(saveOverviewGraphGroupByMock).toHaveBeenCalledWith("model")
+    expect(screen.getByRole("button", { name: "Show providers" })).toBeInTheDocument()
   })
 
-  it("hydrates a persisted detailed style on mount", async () => {
-    loadOverviewGraphStyleMock.mockResolvedValue("detailed")
+  it("hydrates persisted bar style and model grouping on mount", async () => {
+    loadOverviewGraphStyleMock.mockResolvedValue("bar")
+    loadOverviewGraphGroupByMock.mockResolvedValue("model")
     render(<ModelsTodayStrip plugins={[claude, codex]} />)
 
-    expect(await screen.findByTestId("strip-donut")).toBeInTheDocument()
-    expect(screen.queryByTestId("strip-bar")).not.toBeInTheDocument()
+    expect(await screen.findByTestId("strip-bar")).toBeInTheDocument()
+    expect(screen.getAllByTestId("strip-segment")).toHaveLength(3)
+    expect(screen.getByRole("button", { name: "Show providers" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Bar chart" })).toBeInTheDocument()
   })
 })

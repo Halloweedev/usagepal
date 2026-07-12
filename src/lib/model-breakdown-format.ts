@@ -1,6 +1,7 @@
 export type ModelBreakdownParsed = {
   percent: string
   today?: string
+  yesterday?: string
   sevenDay?: string
   thirtyDay?: string
 }
@@ -25,6 +26,7 @@ export function parseModelBreakdownValue(value: string): ModelBreakdownParsed | 
 
   for (const segment of rest.split(" · ")) {
     if (segment.startsWith("Today ")) parsed.today = segment.slice("Today ".length)
+    else if (segment.startsWith("Yesterday ")) parsed.yesterday = segment.slice("Yesterday ".length)
     else if (segment.startsWith("7d ")) parsed.sevenDay = segment.slice("7d ".length)
     else if (segment.startsWith("30d ")) parsed.thirtyDay = segment.slice("30d ".length)
   }

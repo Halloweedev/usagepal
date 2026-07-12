@@ -1944,6 +1944,48 @@ describe("cursor imputation + aggregation", () => {
     expect(jul1.costUSD).toBeCloseTo(0.5, 9) // 1e6 input * composer-2 input(0.5)/1e6; unknown adds 0
     expect(ctx.host.log.info).toHaveBeenCalledWith("cursor pricing: unknown model unknownx")
   })
+
+  it("aggregates CSV rows by model with today/7d/30d cost and token totals", async () => {
+    const plugin = await loadPlugin()
+    const nowMs = Date.parse("2026-07-12T12:00:00.000Z")
+    const rows = [
+      { date: "2026-07-12T10:00:00.000Z", model: "composer-2", maxMode: "No", cacheWrite: 0, input: 1_000_000, cacheRead: 0, output: 0, totalTokens: 1_000_000 },
+      { date: "2026-07-12T11:00:00.000Z", model: "claude-4-sonnet", maxMode: "No", cacheWrite: 0, input: 500_000, cacheRead: 0, output: 0, totalTokens: 500_000 },
+      { date: "2026-07-11T10:00:00.000Z", model: "composer-2", maxMode: "No", cacheWrite: 0, input: 200_000, cacheRead: 0, output: 0, totalTokens: 200_000 },
+    ]
+    const result = plugin.__test.aggregateModelUsageFromCsvRows(makeCtx(), rows, nowMs, false)
+    expect(result.models.map((m) => m.name)).toEqual(["composer-2", "claude-4-sonnet"])
+    expect(result.models[0].tokens["30d"]).toBeGreaterThan(0)
+    expect(result.models[0].costUSD.Today).toBeGreaterThan(0)
+    expect(result.models[0].costUSD.Yesterday).toBeGreaterThan(0)
+    expect(result.models[0].costUSD["30d"]).toBeGreaterThan(result.models[0].costUSD.Today)
+  })
+
+  it("emits runtime model breakdown lines from CSV aggregation", async () => {
+    const plugin = await loadPlugin()
+    const lines = []
+    const lineCtx = {
+      line: {
+        text: (o) => o,
+      },
+    }
+    const modelUsage = {
+      models: [
+        {
+          name: "composer-2",
+          percent: 70,
+          tokens: { Today: 1e6, "7d": 2e6, "30d": 5e6 },
+          costUSD: { Today: 1.5, "7d": 3.0, "30d": 10.0 },
+        },
+      ],
+    }
+    plugin.__test.pushCursorModelUsageLines(lines, lineCtx, modelUsage)
+    expect(lines).toHaveLength(1)
+    expect(lines[0].label).toBe("Composer 2")
+    expect(lines[0].value).toMatch(/^70%/)
+    expect(lines[0].value).toContain("Today $1.50")
+    expect(lines[0].value).toContain("30d $10.00")
+  })
 })
 
 describe("cursor spend history assembly", () => {
@@ -2083,6 +2125,10 @@ describe("cursor probe integrates spend history", () => {
       const result = plugin.probe(ctx)
       const labels = result.lines.map((l) => l.label)
       expect(labels).toEqual(expect.arrayContaining(["Today", "Yesterday", "Last 30 Days", "Usage Trend"]))
+      const modelLine = result.lines.find((l) => l.label === "Composer 2")
+      expect(modelLine).toBeTruthy()
+      expect(modelLine.type).toBe("text")
+      expect(modelLine.value).toMatch(/%/)
     } finally {
       vi.useRealTimers()
     }

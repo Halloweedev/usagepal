@@ -12,6 +12,7 @@ import {
   DEFAULT_MENUBAR_METRIC,
   DEFAULT_MULTI_TRAY_DISPLAY_MODE,
   DEFAULT_MULTI_TRAY_PROVIDER_COUNT,
+  DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
@@ -25,6 +26,7 @@ import {
   loadMenubarMetric,
   loadMultiTrayDisplayMode,
   loadMultiTrayProviderCount,
+  loadOverviewSpendStripEnabled,
   migrateLegacyTraySettings,
   migrateWindsurfToDevin,
   loadPluginSettings,
@@ -62,6 +64,7 @@ type UseSettingsBootstrapArgs = {
   setMenubarMetric: (value: MenubarMetric) => void
   setMultiTrayProviderCount: (value: MultiTrayProviderCount) => void
   setMultiTrayDisplayMode: (value: MultiTrayDisplayMode) => void
+  setOverviewSpendStripEnabled: (value: boolean) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -82,6 +85,7 @@ export function useSettingsBootstrap({
   setMenubarMetric,
   setMultiTrayProviderCount,
   setMultiTrayDisplayMode,
+  setOverviewSpendStripEnabled,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -199,6 +203,13 @@ export function useSettingsBootstrap({
           console.error("Failed to load multi tray display mode:", error)
         }
 
+        let storedOverviewSpendStripEnabled = DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED
+        try {
+          storedOverviewSpendStripEnabled = await loadOverviewSpendStripEnabled()
+        } catch (error) {
+          console.error("Failed to load overview spend strip setting:", error)
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
@@ -213,6 +224,7 @@ export function useSettingsBootstrap({
           setMenubarMetric(storedMenubarMetric)
           setMultiTrayProviderCount(storedMultiTrayProviderCount)
           setMultiTrayDisplayMode(storedMultiTrayDisplayMode)
+          setOverviewSpendStripEnabled(storedOverviewSpendStripEnabled)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -247,6 +259,7 @@ export function useSettingsBootstrap({
     setMenubarMetric,
     setMultiTrayProviderCount,
     setMultiTrayDisplayMode,
+    setOverviewSpendStripEnabled,
     migrateWindsurfToDevin,
     migrateLegacyTraySettings,
     setPluginSettings,

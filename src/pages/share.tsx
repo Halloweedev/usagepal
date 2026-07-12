@@ -13,9 +13,11 @@ import type { ModelDisplayOptions } from "@/lib/model-breakdown-format"
 import {
   ALL_SHARE_TAB_ID,
   buildModelUsage,
+  formatShareGraphDateLabel,
   graphEntities,
-  selectGraphEntries,
+  selectGraphEntriesByMetric,
   type GraphGroupBy,
+  type GraphMetric,
   type UsagePeriod,
 } from "@/lib/today-models"
 import { useAppShareStore } from "@/stores/app-share-store"
@@ -35,8 +37,8 @@ const PRESETS = [
 
 type PresetId = (typeof PRESETS)[number]["id"]
 
-// Windows the shareable graph can show. `label` is woven into the card's
-// headings ("Models used …", "Total …", donut subtitle).
+// Windows the shareable graph can show. `label` is woven into headings; the
+// top-right date uses formatShareGraphDateLabel for the active window.
 const GRAPH_PERIODS = [
   { id: "today", tab: "Today", label: "today" },
   { id: "yesterday", tab: "Yesterday", label: "yesterday" },
@@ -47,6 +49,15 @@ const GRAPH_PERIODS = [
 // down to whatever width the panel gives it.
 const CARD_WIDTH_PX = 440
 const FALLBACK_PREVIEW_SCALE = 0.6
+const PROVIDERS_PER_ROW = 6
+
+function chunkItems<T>(items: readonly T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
+  }
+  return chunks
+}
 
 function presetLabels(shareableLines: ShareableLine[], presetId: PresetId): Set<string> {
   const scopes = PRESETS.find((preset) => preset.id === presetId)?.scopes ?? []
@@ -77,13 +88,15 @@ export function SharePage({ plugins }: SharePageProps) {
   const [preset, setPreset] = useState<PresetId | null>(shareSnapshot.preset)
   const [checkedLabels, setCheckedLabels] = useState<Set<string>>(new Set(shareSnapshot.checkedLabels))
   const [theme, setTheme] = useState<ShareCardTheme>(shareSnapshot.theme)
-  const [showWatermark, setShowWatermark] = useState(shareSnapshot.showWatermark)
   const [showPlan, setShowPlan] = useState(shareSnapshot.showPlan)
   const [customizeOpen, setCustomizeOpen] = useState(false)
   const [modelDisplay, setModelDisplay] = useState<ModelDisplayOptions>(shareSnapshot.modelDisplay)
   const [graphStyle, setGraphStyle] = useState<GraphStyle>(shareSnapshot.graphStyle)
   const [graphGroupBy, setGraphGroupBy] = useState<GraphGroupBy>(shareSnapshot.graphGroupBy)
-  const [graphShowPrices, setGraphShowPrices] = useState(shareSnapshot.graphShowPrices)
+  const [graphMetric, setGraphMetric] = useState<GraphMetric>(shareSnapshot.graphMetric)
+  const [graphShowBreakdown, setGraphShowBreakdown] = useState(shareSnapshot.graphShowBreakdown)
+  const [graphShowTotal, setGraphShowTotal] = useState(shareSnapshot.graphShowTotal)
+  const [graphShowDate, setGraphShowDate] = useState(shareSnapshot.graphShowDate)
   // Slices the user has hidden from the graph, by entry key. Tracking the
   // hidden set (rather than the shown set) keeps new entities shown by default,
   // and makes a group-by switch a no-op since provider and model keys differ.
@@ -122,6 +135,7 @@ export function SharePage({ plugins }: SharePageProps) {
   const firstGraphPeriod = GRAPH_PERIODS.find((p) => graphUsages[p.id].totalCost > 0)?.id
   const activeGraphPeriod = graphUsages[graphPeriod].totalCost > 0 ? graphPeriod : firstGraphPeriod ?? "today"
   const graphUsage = graphUsages[activeGraphPeriod]
+  const shareGraphReferenceDate = useMemo(() => new Date(), [])
   const activeGraphLabel = GRAPH_PERIODS.find((p) => p.id === activeGraphPeriod)!.label
   // Every selectable slice for the current grouping, and the subset the user
   // kept (re-normalized so what's shown fills the ring).
@@ -129,13 +143,19 @@ export function SharePage({ plugins }: SharePageProps) {
     () => graphEntities(graphUsage, graphGroupBy),
     [graphUsage, graphGroupBy]
   )
+  const graphHasTokens = useMemo(
+    () => graphAllEntries.some((entry) => entry.tokenCount != null && entry.tokenCount > 0),
+    [graphAllEntries]
+  )
+  const activeGraphMetric =
+    (graphMetric === "usage" || graphMetric === "pricePerM") && !graphHasTokens ? "price" : graphMetric
   const graphSelection = useMemo(
-    () => selectGraphEntries(graphAllEntries, (key) => !hiddenSlices.has(key)),
-    [graphAllEntries, hiddenSlices]
+    () => selectGraphEntriesByMetric(graphAllEntries, activeGraphMetric, (key) => !hiddenSlices.has(key)),
+    [graphAllEntries, activeGraphMetric, hiddenSlices]
   )
   const dateLabel = useMemo(
-    () => new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-    []
+    () => formatShareGraphDateLabel(activeGraphPeriod, shareGraphReferenceDate),
+    [activeGraphPeriod, shareGraphReferenceDate]
   )
 
   const shareableLines = useMemo(() => {
@@ -178,12 +198,14 @@ export function SharePage({ plugins }: SharePageProps) {
       preset,
       checkedLabels: Array.from(checkedLabels),
       theme,
-      showWatermark,
       showPlan,
       modelDisplay,
       graphStyle,
       graphGroupBy,
-      graphShowPrices,
+      graphMetric,
+      graphShowBreakdown,
+      graphShowTotal,
+      graphShowDate,
     })
   }, [
     patchShare,
@@ -191,12 +213,14 @@ export function SharePage({ plugins }: SharePageProps) {
     preset,
     checkedLabels,
     theme,
-    showWatermark,
     showPlan,
     modelDisplay,
     graphStyle,
     graphGroupBy,
-    graphShowPrices,
+    graphMetric,
+    graphShowBreakdown,
+    graphShowTotal,
+    graphShowDate,
   ])
 
   const checkedLines = useMemo(
@@ -232,6 +256,7 @@ export function SharePage({ plugins }: SharePageProps) {
   }, [selected, isAllTab])
 
   const previewScale = previewWidthPx ? Math.min(1, previewWidthPx / CARD_WIDTH_PX) : FALLBACK_PREVIEW_SCALE
+  const providerRows = useMemo(() => chunkItems(plugins, PROVIDERS_PER_ROW), [plugins])
 
   const applyPreset = (presetId: PresetId) => {
     setPreset(presetId)
@@ -300,9 +325,12 @@ export function SharePage({ plugins }: SharePageProps) {
     <div className="py-3 space-y-4" data-testid="share-page">
       <section>
         <h3 className="text-lg font-semibold mb-0">Share Usage</h3>
-        <p className="text-sm text-muted-foreground mb-2">Brag about your usage</p>
+        <p className="text-sm text-muted-foreground">Brag about your usage</p>
+      </section>
+
+      <section role="radiogroup" aria-label="Provider" data-testid="share-provider-radiogroup">
         <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Provider">
+          <div className="space-y-1">
             <Button
               type="button"
               role="radio"
@@ -310,36 +338,46 @@ export function SharePage({ plugins }: SharePageProps) {
               aria-label="All providers"
               variant={isAllTab ? "default" : "outline"}
               size="sm"
-              className="flex-1"
+              className="w-full"
               disabled={copying}
+              data-testid="share-provider-overview-row"
               onClick={() => setSelectedId(ALL_SHARE_TAB_ID)}
             >
               <Logo aria-hidden="true" className="size-4" />
             </Button>
-            {plugins.map((plugin) => {
-              const isActive = plugin.meta.id === selectedId
-              return (
-                <Button
-                  key={plugin.meta.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  aria-label={plugin.meta.name}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  disabled={copying}
-                  onClick={() => setSelectedId(plugin.meta.id)}
-                >
-                  <ProviderIconMask
-                    iconUrl={plugin.meta.iconUrl}
-                    pluginId={plugin.meta.id}
-                    sizePx={16}
-                    className="bg-current"
-                  />
-                </Button>
-              )
-            })}
+            {providerRows.map((row, rowIndex) => (
+              <div
+                key={rowIndex}
+                className="grid gap-1"
+                style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}
+                data-testid={`share-provider-row-${rowIndex}`}
+              >
+                {row.map((plugin) => {
+                  const isActive = plugin.meta.id === selectedId
+                  return (
+                    <Button
+                      key={plugin.meta.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      aria-label={plugin.meta.name}
+                      variant={isActive ? "default" : "outline"}
+                      size="sm"
+                      className="w-full"
+                      disabled={copying}
+                      onClick={() => setSelectedId(plugin.meta.id)}
+                    >
+                      <ProviderIconMask
+                        iconUrl={plugin.meta.iconUrl}
+                        pluginId={plugin.meta.id}
+                        sizePx={16}
+                        className="bg-current"
+                      />
+                    </Button>
+                  )
+                })}
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -362,11 +400,15 @@ export function SharePage({ plugins }: SharePageProps) {
                     <ModelsGraphCard
                       entries={graphSelection.entries}
                       totalCost={graphSelection.totalCost}
+                      totalTokens={graphSelection.totalTokens}
+                      metric={activeGraphMetric}
                       groupBy={graphGroupBy}
                       graphStyle={graphStyle}
                       theme={theme}
-                      showPrices={graphShowPrices}
-                      showWatermark={showWatermark}
+                      showBreakdown={graphShowBreakdown}
+                      showTotal={graphShowTotal}
+                      showDate={graphShowDate}
+                      showWatermark
                       dateLabel={dateLabel}
                       periodLabel={activeGraphLabel}
                     />
@@ -394,6 +436,57 @@ export function SharePage({ plugins }: SharePageProps) {
                         onClick={() => setGraphPeriod(option.id)}
                       >
                         {option.tab}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-1">
+                <div className="flex gap-1" role="radiogroup" aria-label="Group By">
+                  {(["provider", "model"] as const).map((value) => {
+                    const isActive = graphGroupBy === value
+                    return (
+                      <Button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={isActive}
+                        variant={isActive ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1"
+                        disabled={copying}
+                        onClick={() => setGraphGroupBy(value)}
+                      >
+                        {value === "provider" ? "Providers" : "Models"}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-1">
+                <div className="flex gap-1" role="radiogroup" aria-label="Share">
+                  {(
+                    [
+                      { id: "usage", label: "Usage" },
+                      { id: "pricePerM", label: "Token Price" },
+                      { id: "price", label: "Spend" },
+                    ] as const
+                  ).map((option) => {
+                    const needsTokens = option.id === "usage" || option.id === "pricePerM"
+                    const isActive = graphMetric === option.id
+                    return (
+                      <Button
+                        key={option.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={isActive}
+                        variant={isActive ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1"
+                        disabled={copying || (needsTokens && !graphHasTokens)}
+                        onClick={() => setGraphMetric(option.id)}
+                      >
+                        {option.label}
                       </Button>
                     )
                   })}
@@ -459,34 +552,39 @@ export function SharePage({ plugins }: SharePageProps) {
               </Button>
               {customizeOpen && (
                 <div className="mt-2 space-y-3" data-testid="share-graph-customize">
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                    <label className="flex items-center gap-1.5 text-xs">
-                      <Checkbox
-                        aria-label="Show models"
-                        checked={graphGroupBy === "model"}
-                        onCheckedChange={(checked) => setGraphGroupBy(checked === true ? "model" : "provider")}
-                        disabled={copying}
-                      />
-                      Show models
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs">
-                      <Checkbox
-                        aria-label="Prices"
-                        checked={graphShowPrices}
-                        onCheckedChange={(checked) => setGraphShowPrices(checked === true)}
-                        disabled={copying}
-                      />
-                      Prices
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs">
-                      <Checkbox
-                        aria-label="Watermark"
-                        checked={showWatermark}
-                        onCheckedChange={(checked) => setShowWatermark(checked === true)}
-                        disabled={copying}
-                      />
-                      Watermark
-                    </label>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Display
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      <label className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs">
+                        <Checkbox
+                          aria-label="Breakdown"
+                          checked={graphShowBreakdown}
+                          onCheckedChange={(checked) => setGraphShowBreakdown(checked === true)}
+                          disabled={copying}
+                        />
+                        Breakdown
+                      </label>
+                      <label className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs">
+                        <Checkbox
+                          aria-label="Total"
+                          checked={graphShowTotal}
+                          onCheckedChange={(checked) => setGraphShowTotal(checked === true)}
+                          disabled={copying}
+                        />
+                        Total
+                      </label>
+                      <label className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs">
+                        <Checkbox
+                          aria-label="Dates"
+                          checked={graphShowDate}
+                          onCheckedChange={(checked) => setGraphShowDate(checked === true)}
+                          disabled={copying}
+                        />
+                        Dates
+                      </label>
+                    </div>
                   </div>
                   {/* Choose which providers / models to show off. */}
                   <div className="flex flex-col gap-1.5" data-testid="share-graph-entities">
@@ -550,7 +648,7 @@ export function SharePage({ plugins }: SharePageProps) {
                     plan={showPlan ? selected.data.plan ?? undefined : undefined}
                     lines={checkedLines}
                     theme={theme}
-                    showWatermark={showWatermark}
+                    showWatermark
                     modelDisplay={modelDisplay}
                     modelBreakdownLabels={modelBreakdownLabels}
                   />
@@ -649,7 +747,7 @@ export function SharePage({ plugins }: SharePageProps) {
                     <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Model Details
                     </span>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                    <div className="flex flex-wrap gap-1.5">
                       {(
                         [
                           ["showPercent", "Usage %"],
@@ -658,7 +756,7 @@ export function SharePage({ plugins }: SharePageProps) {
                           ["showThirtyDay", "30 Days"],
                         ] as const
                       ).map(([field, label]) => (
-                        <label key={field} className="flex items-center gap-1.5 text-xs">
+                        <label key={field} className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs">
                           <Checkbox
                             aria-label={label}
                             checked={modelDisplay[field]}
@@ -672,20 +770,11 @@ export function SharePage({ plugins }: SharePageProps) {
                   </div>
                 )}
 
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Card</span>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                    <label className="flex items-center gap-1.5 text-xs">
-                      <Checkbox
-                        aria-label="Watermark"
-                        checked={showWatermark}
-                        onCheckedChange={(checked) => setShowWatermark(checked === true)}
-                        disabled={copying}
-                      />
-                      Watermark
-                    </label>
-                    {selected.data.plan && (
-                      <label className="flex items-center gap-1.5 text-xs">
+                {selected.data.plan && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Card</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      <label className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs">
                         <Checkbox
                           aria-label="Plan"
                           checked={showPlan}
@@ -694,9 +783,9 @@ export function SharePage({ plugins }: SharePageProps) {
                         />
                         Plan
                       </label>
-                    )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </section>

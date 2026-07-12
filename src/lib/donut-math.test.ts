@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { annularSectorPath, donutArcs, polarPoint } from "@/lib/donut-math"
+import { MIN_VISIBLE_ARC, annularSectorPath, donutArcs, polarPoint } from "@/lib/donut-math"
 
 describe("donutArcs", () => {
   it("lays strictly proportional arcs with uniform gaps that sum to 100", () => {
@@ -60,6 +60,40 @@ describe("donutArcs", () => {
 
   it("returns an empty array for no shares", () => {
     expect(donutArcs([], 1.5)).toEqual([])
+  })
+
+  it("keeps negligible shares smaller than modest ones when many models compete", () => {
+    // $20 dominant + fourteen ~$0.02 slivers — negligible shares must not match the leader.
+    const dominant = 20
+    const tiny = 0.02
+    const shares = [dominant, ...Array(14).fill(tiny)]
+    const gap = 2
+    const minSlice = 6
+    const arcs = donutArcs(shares, gap, minSlice)
+
+    expect(arcs[0].sweep).toBeGreaterThan(arcs[1].sweep * 20)
+    expect(arcs[1].sweep).toBeGreaterThanOrEqual(MIN_VISIBLE_ARC)
+    expect(arcs[1].sweep).toBeCloseTo(arcs[2].sweep, 1)
+    expect(arcs.reduce((sum, arc) => sum + arc.sweep, 0)).toBeCloseTo(100 - Math.min(shares.length * gap, 50))
+  })
+
+  it("gives few modest slices a readable floor without flattening proportions", () => {
+    const gap = 2
+    const minSlice = 6
+    const arcs = donutArcs([0.94, 0.03, 0.03], gap, minSlice)
+
+    // 3 gaps of 2 = 6, available 94. Floors at minSlice for the 3% pair.
+    expect(arcs[1].sweep).toBeGreaterThanOrEqual(MIN_VISIBLE_ARC)
+    expect(arcs[2].sweep).toBeGreaterThanOrEqual(MIN_VISIBLE_ARC)
+    expect(arcs[0].sweep).toBeGreaterThan(arcs[1].sweep * 10)
+    expect(arcs.reduce((sum, arc) => sum + arc.sweep, 0)).toBeCloseTo(94)
+  })
+
+  it("never renders a non-zero share below the hard visible minimum", () => {
+    const arcs = donutArcs([20, ...Array(14).fill(0.02)], 2, 6)
+    arcs.forEach((arc) => {
+      if (arc.sweep > 0) expect(arc.sweep).toBeGreaterThanOrEqual(MIN_VISIBLE_ARC)
+    })
   })
 })
 

@@ -3,6 +3,75 @@ import { annularSectorPath, donutArcs } from "@/lib/donut-math"
 
 const TWO_PI = Math.PI * 2
 
+/** Share-card donut size; center total font scales from this baseline. */
+export const SHARE_DONUT_REFERENCE_SIZE = 132
+export const SHARE_DONUT_CENTER_FONT_SIZE = 18
+
+export function donutCenterTotalFontSize(donutSize: number): number {
+  return Math.round((donutSize / SHARE_DONUT_REFERENCE_SIZE) * SHARE_DONUT_CENTER_FONT_SIZE)
+}
+
+export function DonutCenterTotal({
+  donutSize,
+  label,
+  unit,
+}: {
+  donutSize: number
+  label: string
+  /** Optional muted unit line below the amount (e.g. Million, Per Million). */
+  unit?: string
+}) {
+  const center = donutSize / 2
+  const fontSize = donutCenterTotalFontSize(donutSize)
+  if (!unit) {
+    return (
+      <text
+        x={center}
+        y={center}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="currentColor"
+        fontSize={fontSize}
+        fontWeight={600}
+      >
+        {label}
+      </text>
+    )
+  }
+  const unitFontSize = Math.max(10, Math.round(fontSize * 0.55))
+  const gap = 6
+  const blockHeight = fontSize + gap + unitFontSize
+  const amountCenterY = center - blockHeight / 2 + fontSize / 2
+  const unitCenterY = center + blockHeight / 2 - unitFontSize / 2
+  return (
+    <>
+      <text
+        x={center}
+        y={amountCenterY}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="currentColor"
+        fontSize={fontSize}
+        fontWeight={600}
+      >
+        {label}
+      </text>
+      <text
+        x={center}
+        y={unitCenterY}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="currentColor"
+        fontSize={unitFontSize}
+        fontWeight={400}
+        opacity={0.55}
+      >
+        {unit}
+      </text>
+    </>
+  )
+}
+
 export type DonutSlice = {
   key: string
   /** Fraction of the whole, 0..1. */
@@ -24,7 +93,7 @@ export function Donut({
   radius,
   stroke,
   gap = 0.8,
-  minSlice = 5,
+  minSlice = 6,
   cornerRadius = 4,
   slices,
   testId,

@@ -116,8 +116,10 @@ describe("openrouter plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(findLine(result, "Today").value).toBe("$1.50")
+    expect(findLine(result, "Yesterday").value).toBe("$0.00")
+    expect(findLine(result, "Last 30 Days").value).toBe("$30.00")
     expect(findLine(result, "This Week").value).toBe("$8.00")
-    expect(findLine(result, "This Month").value).toBe("$30.00")
+    expect(findLine(result, "OpenRouter").value).toBe("100% · Today $1.50 · 30d $30.00")
     expect(result.plan).toBe("Pay as you go")
   })
 

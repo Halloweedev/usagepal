@@ -98,6 +98,8 @@ const defaultProps = {
   onGlobalShortcutChange: vi.fn(),
   startOnLogin: false,
   onStartOnLoginChange: vi.fn(),
+  overviewSpendStripEnabled: true,
+  onOverviewSpendStripEnabledChange: vi.fn(),
   betaUpdatesEnabled: false,
   onBetaUpdatesEnabledChange: vi.fn(),
   onShowStats: vi.fn(),
@@ -536,6 +538,24 @@ describe("SettingsPage", () => {
   it("renders reset timers section heading", () => {
     render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("Reset Timers")).toBeInTheDocument()
+  })
+
+  it("renders quick spend overview toggle", () => {
+    render(<SettingsPage {...defaultProps} />)
+    expect(screen.getByText("Quick Usage Overview")).toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Quick Usage Overview" })).toBeChecked()
+  })
+
+  it("calls onOverviewSpendStripEnabledChange when toggled off", async () => {
+    const onOverviewSpendStripEnabledChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onOverviewSpendStripEnabledChange={onOverviewSpendStripEnabledChange}
+      />
+    )
+    await userEvent.click(screen.getByRole("checkbox", { name: "Quick Usage Overview" }))
+    expect(onOverviewSpendStripEnabledChange).toHaveBeenCalledWith(false)
   })
 
   it("renders time format section heading", () => {

@@ -82,6 +82,32 @@ const USAGE_LIMITS_RESPONSE = {
   ],
 }
 
+// Usage transaction costs are in micro-USD (same unit as balance).
+const USAGES_RESPONSE = {
+  items: [
+    {
+      id: "tx-1",
+      createdAt: "2026-07-04T10:00:00.000Z",
+      aiInferenceProviderName: "anthropic",
+      aiModelName: "claude-sonnet-4-6",
+      costUsd: 1_500_000,
+      totalTokens: 1_000_000,
+      promptTokens: 700_000,
+      completionTokens: 300_000,
+    },
+    {
+      id: "tx-2",
+      createdAt: "2026-07-03T10:00:00.000Z",
+      aiInferenceProviderName: "openai",
+      aiModelName: "gpt-5.4",
+      costUsd: 2_000_000,
+      totalTokens: 2_000_000,
+      promptTokens: 1_500_000,
+      completionTokens: 500_000,
+    },
+  ],
+}
+
 const NOW_ISO = "2026-07-04T12:00:00.000Z"
 
 const REFRESH_RESPONSE = {
@@ -95,6 +121,7 @@ const mockEndpoints = (ctx, {
   balance = BALANCE_RESPONSE,
   plan = PLAN_RESPONSE,
   usageLimits = USAGE_LIMITS_RESPONSE,
+  usages = USAGES_RESPONSE,
   refresh = REFRESH_RESPONSE,
 } = {}) => {
   ctx.host.http.request.mockImplementation((opts) => {
@@ -113,6 +140,11 @@ const mockEndpoints = (ctx, {
       return plan === null
         ? { status: 404, bodyText: "" }
         : { status: 200, bodyText: JSON.stringify(plan) }
+    }
+    if (opts.url.includes("/usages")) {
+      return usages === null
+        ? { status: 404, bodyText: "" }
+        : { status: 200, bodyText: JSON.stringify(usages) }
     }
     if (opts.url.includes("/api/v1/users/me")) {
       return { status: 200, bodyText: JSON.stringify(me) }
@@ -379,5 +411,94 @@ describe("cline-pass plugin", () => {
     expect(findLine(result, "Session").type).toBe("progress")
     expect(findLine(result, "Session").used).toBe(63)
     expect(result.plan).toBeNull()
+  })
+})
+
+describe("cline-pass share graph", () => {
+  beforeEach(() => {
+    delete globalThis.__openusage_plugin
+    if (vi.resetModules) vi.resetModules()
+  })
+
+  const makeCtxWithNow = () => {
+    const ctx = makeCtx()
+    ctx.nowIso = NOW_ISO
+    return ctx
+  }
+
+  it("appends Today/Yesterday/Last 30 Days and per-model lines from usages API", async () => {
+    const ctx = makeCtxWithNow()
+    mockConfigFile(ctx)
+    mockEndpoints(ctx)
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const labels = result.lines.map((line) => line.label)
+
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        "Today",
+        "Yesterday",
+        "Last 30 Days",
+        "Usage Trend",
+        "Claude Sonnet 4.6",
+        "Gpt 5.4",
+      ]),
+    )
+    expect(findLine(result, "Today").value).toContain("$1.50")
+    expect(findLine(result, "Yesterday").value).toContain("$2.00")
+  })
+
+  it("prettifies provider/model slugs for display", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.prettifyModelName("anthropic", "claude-sonnet-4-6")).toBe(
+      "Claude Sonnet 4.6",
+    )
+  })
+
+  it("aggregates usage transactions into daily buckets", async () => {
+    const plugin = await loadPlugin()
+    const ctx = makeCtxWithNow()
+    const rows = plugin.__test.normalizeUsageTransactions(ctx, USAGES_RESPONSE)
+    const daily = plugin.__test.aggregateDailyFromRows(rows, Date.parse(NOW_ISO))
+
+    expect(daily).toHaveLength(2)
+    expect(daily.find((d) => d.date === "2026-07-04").costUSD).toBeCloseTo(1.5)
+    expect(daily.find((d) => d.date === "2026-07-03").costUSD).toBeCloseTo(2)
+  })
+
+  it("omits share-graph lines when usages endpoint fails", async () => {
+    const ctx = makeCtxWithNow()
+    mockConfigFile(ctx)
+    mockEndpoints(ctx, { usages: null })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(findLine(result, "Today")).toBeUndefined()
+    expect(findLine(result, "Session")).toBeDefined()
+  })
+
+  it("converts usage transaction costUsd from micro-USD to dollars", async () => {
+    const ctx = makeCtxWithNow()
+    mockConfigFile(ctx)
+    // 51,822,951 micro-USD = $51.82 — without conversion this would display as $51,822,951.
+    const microUsdBugPayload = {
+      items: [
+        {
+          id: "tx-bug",
+          createdAt: "2026-07-04T10:00:00.000Z",
+          aiInferenceProviderName: "zai",
+          aiModelName: "glm-5.2",
+          costUsd: 51_822_951,
+          totalTokens: 5_000_000,
+        },
+      ],
+    }
+    mockEndpoints(ctx, { usages: microUsdBugPayload })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(findLine(result, "Today").value).toContain("$51.82")
+    expect(findLine(result, "Today").value).not.toContain("$51,822,951")
+    expect(findLine(result, "Glm 5.2").value).toContain("$51.82")
   })
 })

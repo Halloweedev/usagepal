@@ -95,7 +95,31 @@ describe("OverviewPage", () => {
       },
     ]
     render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
+    expect(screen.getByText("Quick Usage Overview")).toBeInTheDocument()
     expect(screen.getByTestId("models-today-strip-mock")).toBeInTheDocument()
+  })
+
+  it("hides the strip when overview spend strip is disabled", () => {
+    const plugins = [
+      {
+        meta: { id: "a", name: "Alpha", iconUrl: "icon", lines: [] },
+        data: { providerId: "a", displayName: "Alpha", lines: [], iconUrl: "icon" },
+        loading: false,
+        error: null,
+        lastManualRefreshAt: null,
+        lastUpdatedAt: null,
+      },
+    ]
+    render(
+      <OverviewPage
+        plugins={plugins}
+        displayMode="used"
+        resetTimerDisplayMode="relative"
+        overviewSpendStripEnabled={false}
+      />
+    )
+    expect(screen.queryByText("Quick Usage Overview")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("models-today-strip-mock")).not.toBeInTheDocument()
   })
 
   it("does not render the strip in the empty state", () => {
