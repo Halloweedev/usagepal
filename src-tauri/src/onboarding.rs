@@ -50,6 +50,10 @@ fn save_onboarding_completion(app_handle: &tauri::AppHandle) -> Result<(), Strin
 #[specta::specta]
 pub fn finish_onboarding(app_handle: tauri::AppHandle, open_settings: bool) -> Result<(), String> {
     save_onboarding_completion(&app_handle)?;
+    crate::whats_new::save_last_seen_version(
+        &app_handle,
+        &app_handle.package_info().version.to_string(),
+    )?;
 
     // The onboarding window saved the provider selection just before this
     // call; tell the running panel to reload plugin settings from the store.
@@ -74,6 +78,7 @@ pub fn reset_onboarding(app_handle: tauri::AppHandle) -> Result<(), String> {
         .map_err(|error| format!("failed to open settings store: {error}"))?;
     store.delete(ONBOARDING_COMPLETED_KEY);
     store.delete(ONBOARDING_COMPLETED_AT_KEY);
+    store.delete(crate::whats_new::LAST_SEEN_VERSION_KEY);
     store
         .save()
         .map_err(|error| format!("failed to save onboarding reset: {error}"))

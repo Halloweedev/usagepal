@@ -5,6 +5,8 @@
 
 use serde::Serialize;
 use specta::Type;
+use tauri::AppHandle;
+use tauri_plugin_store::StoreExt;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 pub struct ReleaseNotesSection {
@@ -138,6 +140,96 @@ pub fn parse_release_notes(
     }
 
     selected
+}
+
+pub(crate) fn save_last_seen_version(app_handle: &AppHandle, version: &str) -> Result<(), String> {
+    let store = app_handle
+        .store(crate::onboarding::SETTINGS_STORE)
+        .map_err(|error| format!("failed to open settings store: {error}"))?;
+    store.set(LAST_SEEN_VERSION_KEY, serde_json::json!(version));
+    store
+        .save()
+        .map_err(|error| format!("failed to save lastSeenVersion: {error}"))
+}
+
+/// On startup, show the what's-new window if the user has onboarded and the
+/// persisted `lastSeenVersion` differs from the running version. If onboarding
+/// is done but `lastSeenVersion` is absent (existing user upgrading to the
+/// feature-introducing version), set it silently and skip the popup.
+pub fn show_whats_new_window_if_needed(app_handle: &AppHandle) -> tauri::Result<()> {
+    let onboarding_done = crate::onboarding::is_onboarding_completed(app_handle);
+    let last_seen = app_handle
+        .store(crate::onboarding::SETTINGS_STORE)
+        .ok()
+        .and_then(|store| store.get(LAST_SEEN_VERSION_KEY))
+        .and_then(|value| value.as_str().map(|s| s.to_string()));
+    let current = app_handle.package_info().version.to_string();
+
+    if !should_show_whats_new(onboarding_done, last_seen.as_deref(), &current) {
+        // Existing user upgrading to the feature-introducing version: record
+        // the current version silently so the popup starts from the *next* update.
+        if onboarding_done && last_seen.is_none() {
+            if let Err(error) = save_last_seen_version(app_handle, &current) {
+                log::error!("failed to seed lastSeenVersion: {error}");
+            }
+        }
+        return Ok(());
+    }
+
+    // Verify there are notes to show before opening the window.
+    let notes = parse_release_notes(
+        include_str!("../../CHANGELOG.md"),
+        last_seen.as_deref(),
+        &current,
+    );
+    if notes.is_empty() {
+        log::warn!(
+            "no release notes found for v{} (since {:?}) — skipping what's-new window",
+            current,
+            last_seen
+        );
+        if let Err(error) = save_last_seen_version(app_handle, &current) {
+            log::error!("failed to save lastSeenVersion after empty notes: {error}");
+        }
+        return Ok(());
+    }
+
+    crate::panel::create_chromeless_window(
+        app_handle,
+        "whats-new",
+        "index.html#/whats-new",
+        "What's New in UsagePal",
+    )?;
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_release_notes(app_handle: AppHandle) -> Result<Vec<ReleaseNotes>, String> {
+    let last_seen = app_handle
+        .store(crate::onboarding::SETTINGS_STORE)
+        .ok()
+        .and_then(|store| store.get(LAST_SEEN_VERSION_KEY))
+        .and_then(|value| value.as_str().map(|s| s.to_string()));
+    let current = app_handle.package_info().version.to_string();
+
+    Ok(parse_release_notes(
+        include_str!("../../CHANGELOG.md"),
+        last_seen.as_deref(),
+        &current,
+    ))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn dismiss_whats_new(app_handle: AppHandle) -> Result<(), String> {
+    let current = app_handle.package_info().version.to_string();
+    save_last_seen_version(&app_handle, &current)?;
+
+    crate::panel::close_window_and_show_panel(&app_handle, "whats-new", "home")?;
+
+    Ok(())
 }
 
 /// Pure decision function for whether the what's-new window should open.
