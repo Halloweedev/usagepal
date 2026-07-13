@@ -5,6 +5,7 @@
   var WORKOS_TOKEN_URL = "https://api.workos.com/user_management/token"
   var WORKOS_CLIENT_ID = "client_01K3A541FN8TA3EPPHTD2325AR"
   var ONE_DAY_MS = 24 * 60 * 60 * 1000
+  var PROVIDER_NAME = "ClinePass"
   // Refresh tokens 5 minutes before expiry to avoid racing the server.
   var REFRESH_BUFFER_MS = 5 * 60 * 1000
   // The Cline API returns cost values in micro-USD (1/1,000,000 of a dollar).
@@ -229,6 +230,46 @@
     return typeof value === "number" && Number.isFinite(value) ? value : null
   }
 
+  function parseNumeric(value) {
+    var n = num(value)
+    if (n !== null) return n
+    if (typeof value !== "string") return null
+    var trimmed = value.trim()
+    if (!trimmed) return null
+    var cleaned = trimmed.replace(/^\$/, "").replace(/,/g, "")
+    n = Number(cleaned)
+    return Number.isFinite(n) ? n : null
+  }
+
+  // Cline stores usage money in micro-USD (same as balance/creditsUsed in the Cline app).
+  function microToUsd(micro) {
+    if (micro === null || micro < 0) return null
+    if (micro === 0) return 0
+    return micro / MICRO_USD
+  }
+
+  // Extract per-transaction spend in USD from Cline usage API shapes.
+  function transactionCostUsd(tx) {
+    if (!tx || typeof tx !== "object") return null
+
+    var directFields = ["costUsd", "costUSD", "cost_usd", "creditsUsed"]
+    for (var i = 0; i < directFields.length; i += 1) {
+      var raw = parseNumeric(tx[directFields[i]])
+      if (raw !== null) return microToUsd(raw)
+    }
+
+    var cost = tx.cost
+    if (cost && typeof cost === "object") {
+      var nestedFields = ["usd", "amount", "value", "microUsd", "micro_usd"]
+      for (var j = 0; j < nestedFields.length; j += 1) {
+        var nestedRaw = parseNumeric(cost[nestedFields[j]])
+        if (nestedRaw !== null) return microToUsd(nestedRaw)
+      }
+    }
+
+    return null
+  }
+
   function formatDollars(amount) {
     return "$" + (Math.round(amount * 100) / 100).toFixed(2)
   }
@@ -312,9 +353,403 @@
     }
   }
 
-  // Convert micro-USD to dollars.
-  function microToUsd(micro) {
-    return micro / MICRO_USD
+  // Fetch usage transactions for share-graph spend history.
+  function fetchUsages(ctx, userId, token) {
+    try {
+      return apiGet(ctx, "/api/v1/users/" + encodeURIComponent(userId) + "/usages", token)
+    } catch (e) {
+      ctx.host.log.warn("cline-pass usages fetch failed: " + String(e))
+      return null
+    }
+  }
+
+  function readNowMs(ctx) {
+    return ctx.util.parseDateMs(ctx.nowIso) || Date.now()
+  }
+
+  function dayKeyFromMs(ms) {
+    if (!Number.isFinite(ms)) return null
+    return new Date(ms).toISOString().slice(0, 10)
+  }
+
+  function recentUtcDayKeys(nowMs, count) {
+    var keys = []
+    for (var i = 0; i < count; i += 1) {
+      keys.push(new Date(nowMs - i * ONE_DAY_MS).toISOString().slice(0, 10))
+    }
+    return keys
+  }
+
+  function percentLabel(value) {
+    if (value > 0 && value < 0.1) return "<0.1%"
+    var rounded = Math.round(value * 10) / 10
+    return (rounded % 1 === 0 ? String(Math.round(rounded)) : String(rounded)) + "%"
+  }
+
+  function fmtModelCost(amount) {
+    if (amount < 1000) return "$" + amount.toFixed(2)
+    return "$" + Math.round(amount).toLocaleString("en-US")
+  }
+
+  function fmtTokens(n) {
+    var abs = Math.abs(n)
+    var sign = n < 0 ? "-" : ""
+    var units = [
+      { threshold: 1e9, divisor: 1e9, suffix: "B" },
+      { threshold: 1e6, divisor: 1e6, suffix: "M" },
+      { threshold: 1e3, divisor: 1e3, suffix: "K" },
+    ]
+    for (var i = 0; i < units.length; i += 1) {
+      var unit = units[i]
+      if (abs >= unit.threshold) {
+        var scaled = abs / unit.divisor
+        var formatted =
+          scaled >= 10
+            ? Math.round(scaled).toString()
+            : scaled.toFixed(1).replace(/\.0$/, "")
+        return sign + formatted + unit.suffix
+      }
+    }
+    return sign + Math.round(abs).toString()
+  }
+
+  function costAndTokensLabel(data, opts) {
+    var includeZeroTokens = !!(opts && opts.includeZeroTokens)
+    var parts = []
+    if (data.costUSD != null) parts.push("$" + data.costUSD.toFixed(2))
+    if (data.tokens > 0 || (includeZeroTokens && data.tokens === 0)) {
+      parts.push(fmtTokens(data.tokens))
+    }
+    return parts.join(" · ")
+  }
+
+  function usageCostUsd(day) {
+    if (!day || typeof day !== "object") return null
+    if (day.costUSD != null) {
+      var costUSD = Number(day.costUSD)
+      if (Number.isFinite(costUSD)) return costUSD
+    }
+    return null
+  }
+
+  function prettifyModelName(providerName, modelName) {
+    var provider = String(providerName || "").trim()
+    var model = String(modelName || "").trim()
+    if (!model) return ""
+    var raw = model
+    if (provider && model.indexOf("/") < 0) {
+      raw = provider + "/" + model
+    }
+    var slug = raw.split("/").pop() || raw
+    var parts = slug.split("-")
+    var out = []
+    for (var i = 0; i < parts.length; i += 1) {
+      var part = parts[i]
+      if (/^\d+$/.test(part) && i + 1 < parts.length && /^\d+$/.test(parts[i + 1])) {
+        out.push(part + "." + parts[i + 1])
+        i += 1
+        continue
+      }
+      if (/^\d/.test(part)) {
+        out.push(part)
+        continue
+      }
+      if (part.toLowerCase() === "glm") {
+        out.push("GLM")
+        continue
+      }
+      if (part.toLowerCase() === "gpt") {
+        out.push("GPT")
+        continue
+      }
+      out.push(part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    }
+    return out.join(" ")
+  }
+
+  function modelKeyFromTransaction(tx) {
+    if (!tx || typeof tx !== "object") return PROVIDER_NAME
+    var provider = typeof tx.aiInferenceProviderName === "string" ? tx.aiInferenceProviderName.trim() : ""
+    var model = typeof tx.aiModelName === "string" ? tx.aiModelName.trim() : ""
+    if (!model) return PROVIDER_NAME
+    return provider ? provider + "/" + model : model
+  }
+
+  function normalizeUsageTransactions(ctx, raw) {
+    if (!raw || typeof raw !== "object") return []
+    var items = Array.isArray(raw.items) ? raw.items : Array.isArray(raw) ? raw : []
+    var rows = []
+    for (var i = 0; i < items.length; i += 1) {
+      var tx = items[i]
+      if (!tx || typeof tx !== "object") continue
+      var createdMs = ctx.util.parseDateMs(tx.createdAt)
+      if (createdMs === null || createdMs <= 0) continue
+      var cost = transactionCostUsd(tx)
+      if (cost === null || cost < 0) continue
+      var tokens = num(tx.totalTokens)
+      if (tokens === null || tokens < 0) tokens = 0
+      if (cost <= 0 && tokens <= 0) continue
+      rows.push({
+        createdMs: createdMs,
+        cost: cost,
+        modelKey: modelKeyFromTransaction(tx),
+        providerName: typeof tx.aiInferenceProviderName === "string" ? tx.aiInferenceProviderName.trim() : "",
+        modelName: typeof tx.aiModelName === "string" ? tx.aiModelName.trim() : "",
+        tokens: Math.round(tokens),
+      })
+    }
+    return rows
+  }
+
+  function aggregateDailyFromRows(rows, nowMs) {
+    var cutoffMs = nowMs - 31 * ONE_DAY_MS
+    var byDay = {}
+    for (var i = 0; i < rows.length; i += 1) {
+      var row = rows[i]
+      if (row.createdMs < cutoffMs) continue
+      var key = dayKeyFromMs(row.createdMs)
+      if (!key) continue
+      if (!byDay[key]) byDay[key] = { date: key, costUSD: 0, totalTokens: 0 }
+      byDay[key].costUSD += row.cost
+      byDay[key].totalTokens += row.tokens || 0
+    }
+    return Object.keys(byDay)
+      .sort()
+      .map(function (k) {
+        return byDay[k]
+      })
+  }
+
+  function aggregateModelUsageFromRows(rows, nowMs) {
+    var todayKey = new Date(nowMs).toISOString().slice(0, 10)
+    var yesterdayKey = new Date(nowMs - ONE_DAY_MS).toISOString().slice(0, 10)
+    var recentKeys = recentUtcDayKeys(nowMs, 7)
+    var recentSet = {}
+    for (var i = 0; i < recentKeys.length; i += 1) recentSet[recentKeys[i]] = true
+
+    var cutoffMs = nowMs - 31 * ONE_DAY_MS
+    var hasModelIds = rows.some(function (row) {
+      return typeof row.modelKey === "string" && row.modelKey.trim().length > 0 && row.modelKey !== PROVIDER_NAME
+    })
+
+    var byModel = {}
+    for (var r = 0; r < rows.length; r += 1) {
+      var row = rows[r]
+      if (row.createdMs < cutoffMs) continue
+      var dayKey = dayKeyFromMs(row.createdMs)
+      if (!dayKey) continue
+
+      var name = hasModelIds ? row.modelKey : PROVIDER_NAME
+      if (!name) continue
+
+      var cost = row.cost
+      var tokenCount = row.tokens > 0 ? row.tokens : 0
+
+      if (!byModel[name]) {
+        byModel[name] = {
+          name: name,
+          providerName: row.providerName,
+          modelName: row.modelName,
+          tokens: { Today: 0, Yesterday: 0, "7d": 0, "30d": 0 },
+          costUSD: { Today: 0, Yesterday: 0, "7d": 0, "30d": 0 },
+        }
+      }
+      var bucket = byModel[name]
+      bucket.tokens["30d"] += tokenCount
+      bucket.costUSD["30d"] += cost
+      if (recentSet[dayKey]) {
+        bucket.tokens["7d"] += tokenCount
+        bucket.costUSD["7d"] += cost
+      }
+      if (dayKey === todayKey) {
+        bucket.tokens.Today += tokenCount
+        bucket.costUSD.Today += cost
+      } else if (dayKey === yesterdayKey) {
+        bucket.tokens.Yesterday += tokenCount
+        bucket.costUSD.Yesterday += cost
+      }
+    }
+
+    var models = Object.keys(byModel).map(function (k) {
+      return byModel[k]
+    })
+    var totalTokens30d = 0
+    for (var m = 0; m < models.length; m += 1) {
+      totalTokens30d += models[m].tokens["30d"]
+    }
+    for (var n = 0; n < models.length; n += 1) {
+      models[n].percent =
+        totalTokens30d > 0
+          ? (models[n].tokens["30d"] / totalTokens30d) * 100
+          : hasModelIds
+            ? 0
+            : 100
+    }
+    models.sort(function (a, b) {
+      return b.tokens["30d"] - a.tokens["30d"] || a.name.localeCompare(b.name)
+    })
+    return { models: models, totalTokens30d: totalTokens30d, hasModelIds: hasModelIds }
+  }
+
+  function usageDayLabel(rawDate) {
+    var key =
+      typeof rawDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+        ? rawDate
+        : dayKeyFromMs(rawDate)
+    if (!key) return String(rawDate || "").slice(0, 10) || "Usage"
+    var month = Number(key.slice(5, 7))
+    var day = Number(key.slice(8, 10))
+    return month + "/" + day
+  }
+
+  function collectUsageChartPoints(daily) {
+    var points = []
+    for (var i = 0; i < daily.length; i += 1) {
+      var day = daily[i]
+      var tokens = Number(day && day.totalTokens)
+      if (!Number.isFinite(tokens) || tokens <= 0) continue
+      var key = day.date
+      if (!key) continue
+      points.push({
+        key: key,
+        label: usageDayLabel(day.date),
+        value: tokens,
+        valueLabel: fmtTokens(tokens),
+      })
+    }
+    return points
+      .sort(function (a, b) {
+        return a.key.localeCompare(b.key)
+      })
+      .slice(-31)
+      .map(function (point) {
+        return {
+          label: point.label,
+          value: point.value,
+          valueLabel: point.valueLabel,
+        }
+      })
+  }
+
+  function pushUsageChartLine(lines, ctx, daily) {
+    var points = collectUsageChartPoints(daily)
+    if (points.length === 0) return
+    lines.push(
+      ctx.line.barChart({
+        label: "Usage Trend",
+        points: points,
+        note: "From Cline usage history.",
+        color: "#000000",
+      }),
+    )
+  }
+
+  function pushDayUsageLine(lines, ctx, label, dayEntry) {
+    var tokens = Number(dayEntry && dayEntry.totalTokens) || 0
+    var cost = usageCostUsd(dayEntry)
+    if (tokens > 0) {
+      lines.push(
+        ctx.line.text({
+          label: label,
+          value: costAndTokensLabel({ tokens: tokens, costUSD: cost }),
+        }),
+      )
+      return
+    }
+    lines.push(
+      ctx.line.text({
+        label: label,
+        value: costAndTokensLabel(
+          { tokens: 0, costUSD: cost != null ? cost : 0 },
+          { includeZeroTokens: true },
+        ),
+      }),
+    )
+  }
+
+  function pushModelUsageLines(lines, ctx, modelUsage) {
+    var models = modelUsage.models
+    for (var i = 0; i < models.length; i += 1) {
+      var model = models[i]
+      var value = percentLabel(model.percent)
+      var segments = []
+      if (model.costUSD.Today > 0) {
+        segments.push("Today " + fmtModelCost(model.costUSD.Today))
+      }
+      if (model.costUSD.Yesterday > 0) {
+        segments.push("Yesterday " + fmtModelCost(model.costUSD.Yesterday))
+      }
+      if (model.costUSD["7d"] > 0) {
+        segments.push("7d " + fmtModelCost(model.costUSD["7d"]))
+      }
+      if (model.costUSD["30d"] > 0) {
+        segments.push("30d " + fmtModelCost(model.costUSD["30d"]))
+      }
+      if (segments.length > 0) value += " · " + segments.join(" · ")
+      var label = modelUsage.hasModelIds
+        ? prettifyModelName(model.providerName, model.modelName)
+        : model.name
+      lines.push(
+        ctx.line.text({
+          label: label,
+          value: value,
+        }),
+      )
+    }
+  }
+
+  function appendSpendHistory(ctx, lines, rows, nowMs) {
+    if (!Array.isArray(rows) || rows.length === 0) return
+
+    var daily = aggregateDailyFromRows(rows, nowMs)
+    if (daily.length === 0) return
+
+    var todayKey = new Date(nowMs).toISOString().slice(0, 10)
+    var yesterdayKey = new Date(nowMs - ONE_DAY_MS).toISOString().slice(0, 10)
+
+    var todayEntry = null
+    var yesterdayEntry = null
+    for (var i = 0; i < daily.length; i += 1) {
+      var k = daily[i].date
+      if (k === todayKey) todayEntry = daily[i]
+      else if (k === yesterdayKey) yesterdayEntry = daily[i]
+    }
+    pushDayUsageLine(lines, ctx, "Today", todayEntry)
+    pushDayUsageLine(lines, ctx, "Yesterday", yesterdayEntry)
+
+    var totalTokens = 0
+    var totalCostNanos = 0
+    var hasCost = false
+    for (var j = 0; j < daily.length; j += 1) {
+      var day = daily[j]
+      var t = Number(day.totalTokens)
+      if (Number.isFinite(t)) totalTokens += t
+      var c = usageCostUsd(day)
+      if (c != null) {
+        totalCostNanos += Math.round(c * 1e9)
+        hasCost = true
+      }
+    }
+    if (totalTokens > 0 || hasCost) {
+      lines.push(
+        ctx.line.text({
+          label: "Last 30 Days",
+          value: costAndTokensLabel({
+            tokens: totalTokens,
+            costUSD: hasCost ? totalCostNanos / 1e9 : null,
+          }),
+        }),
+      )
+    }
+
+    if (totalTokens > 0) {
+      pushUsageChartLine(lines, ctx, daily)
+    }
+
+    var modelUsage = aggregateModelUsageFromRows(rows, nowMs)
+    if (modelUsage.models.length > 0) {
+      pushModelUsageLines(lines, ctx, modelUsage)
+    }
   }
 
   function derivePlanLabel(plan) {
@@ -423,6 +858,18 @@
       }))
     }
 
+    // Share-graph spend history from usage transactions (best-effort).
+    try {
+      var usages = fetchUsages(ctx, userId, token)
+      if (usages) {
+        var nowMs = readNowMs(ctx)
+        var usageRows = normalizeUsageTransactions(ctx, usages)
+        appendSpendHistory(ctx, lines, usageRows, nowMs)
+      }
+    } catch (e) {
+      ctx.host.log.warn("cline-pass share-graph history failed: " + String(e))
+    }
+
     if (lines.length === 0) {
       lines.push(ctx.line.badge({ label: "Balance", text: "No usage data", color: "#a3a3a3" }))
     }
@@ -430,5 +877,18 @@
     return { plan: planLabel, lines: lines }
   }
 
-  globalThis.__openusage_plugin = { id: "cline-pass", probe: probe }
+  globalThis.__openusage_plugin = {
+    id: "cline-pass",
+    probe: probe,
+    __test: {
+      normalizeUsageTransactions,
+      aggregateDailyFromRows,
+      aggregateModelUsageFromRows,
+      appendSpendHistory,
+      prettifyModelName,
+      modelKeyFromTransaction,
+      transactionCostUsd,
+      microToUsd,
+    },
+  }
 })()

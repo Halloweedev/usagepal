@@ -59,6 +59,20 @@ export type SharePreset = "summary" | "detailed" | "models";
 
 export type ShareTheme = "dark" | "light";
 
+export type ShareGraphStyle = "bar" | "donut";
+
+/** Cross-provider graph grouping: one slice per provider, or per model. */
+export type ShareGraphGroupBy = "provider" | "model";
+
+/** What the share graph visualizes in bar/donut mode. */
+export type ShareGraphMetric = "usage" | "price" | "pricePerM";
+
+/** Overview strip chart shape. */
+export type OverviewGraphStyle = "bar" | "donut";
+
+/** Overview strip slice grouping. */
+export type OverviewGraphGroupBy = "model" | "provider";
+
 export type ShareModelDisplay = {
   showPercent: boolean;
   showToday: boolean;
@@ -73,9 +87,15 @@ export type ShareSettings = {
   preset: SharePreset | null;
   checkedLabels: string[];
   theme: ShareTheme;
-  showWatermark: boolean;
   showPlan: boolean;
   modelDisplay: ShareModelDisplay;
+  /** Options for the cross-provider usage graph (Share "All" tab). */
+  graphStyle: ShareGraphStyle;
+  graphGroupBy: ShareGraphGroupBy;
+  graphMetric: ShareGraphMetric;
+  graphShowBreakdown: boolean;
+  graphShowTotal: boolean;
+  graphShowDate: boolean;
 };
 
 export const DEFAULT_SHARE_SETTINGS: ShareSettings = {
@@ -83,7 +103,6 @@ export const DEFAULT_SHARE_SETTINGS: ShareSettings = {
   preset: "summary",
   checkedLabels: [],
   theme: "dark",
-  showWatermark: true,
   showPlan: true,
   modelDisplay: {
     showPercent: true,
@@ -91,6 +110,12 @@ export const DEFAULT_SHARE_SETTINGS: ShareSettings = {
     showSevenDay: true,
     showThirtyDay: true,
   },
+  graphStyle: "bar",
+  graphGroupBy: "provider",
+  graphMetric: "price",
+  graphShowBreakdown: true,
+  graphShowTotal: true,
+  graphShowDate: true,
 };
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -113,6 +138,9 @@ const ONBOARDING_COMPLETED_KEY = "onboardingCompleted";
 const ONBOARDING_COMPLETED_AT_KEY = "onboardingCompletedAt";
 const PACE_NOTIFICATIONS_KEY = "paceNotifications";
 const SHARE_SETTINGS_KEY = "shareSettings";
+const OVERVIEW_GRAPH_STYLE_KEY = "overviewGraphStyle";
+const OVERVIEW_GRAPH_GROUP_BY_KEY = "overviewGraphGroupBy";
+const OVERVIEW_SPEND_STRIP_ENABLED_KEY = "overviewSpendStripEnabled";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_BETA_UPDATES_ENABLED = false;
@@ -126,6 +154,9 @@ export const DEFAULT_MULTI_TRAY_DISPLAY_MODE: MultiTrayDisplayMode = "percent";
 export const DEFAULT_MENUBAR_METRIC: MenubarMetric = "default";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
+export const DEFAULT_OVERVIEW_GRAPH_STYLE: OverviewGraphStyle = "donut";
+export const DEFAULT_OVERVIEW_GRAPH_GROUP_BY: OverviewGraphGroupBy = "provider";
+export const DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED = true;
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -497,8 +528,12 @@ export async function savePaceNotificationSettings(
 
 const SHARE_PRESETS: SharePreset[] = ["summary", "detailed", "models"];
 const SHARE_THEMES: ShareTheme[] = ["dark", "light"];
+const SHARE_GRAPH_STYLES: ShareGraphStyle[] = ["bar", "donut"];
+const SHARE_GRAPH_METRICS: ShareGraphMetric[] = ["usage", "price", "pricePerM"];
+const OVERVIEW_GRAPH_STYLES: OverviewGraphStyle[] = ["bar", "donut"];
+const OVERVIEW_GRAPH_GROUP_BY: OverviewGraphGroupBy[] = ["model", "provider"];
 
-function normalizeShareSettings(value: unknown): ShareSettings {
+export function normalizeShareSettings(value: unknown): ShareSettings {
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
   const selectedId = typeof record.selectedId === "string" ? record.selectedId : DEFAULT_SHARE_SETTINGS.selectedId;
@@ -518,8 +553,27 @@ function normalizeShareSettings(value: unknown): ShareSettings {
     ? (record.theme as ShareTheme)
     : DEFAULT_SHARE_SETTINGS.theme;
 
-  const readBool = (key: "showWatermark" | "showPlan") =>
+  const readBool = (key: "showPlan" | "graphShowBreakdown" | "graphShowTotal" | "graphShowDate") =>
     typeof record[key] === "boolean" ? (record[key] as boolean) : DEFAULT_SHARE_SETTINGS[key];
+
+  const hasLegacyGraphShowPrices = typeof record.graphShowPrices === "boolean";
+  const hasNewGraphPriceFields =
+    typeof record.graphShowLinePrices === "boolean" || typeof record.graphShowTotal === "boolean";
+
+  const deriveGraphMetric = (): ShareGraphMetric => {
+    if (SHARE_GRAPH_METRICS.includes(record.graphMetric as ShareGraphMetric)) {
+      return record.graphMetric as ShareGraphMetric;
+    }
+    if (record.graphShowLinePricePerM === true) return "pricePerM";
+    if (record.graphShowLineTokens === true) return "usage";
+    if (record.graphShowLinePrices === true) return "price";
+    if (hasLegacyGraphShowPrices && !hasNewGraphPriceFields) return "price";
+    return DEFAULT_SHARE_SETTINGS.graphMetric;
+  };
+
+  const graphShowTotal = hasLegacyGraphShowPrices && !hasNewGraphPriceFields
+    ? true
+    : readBool("graphShowTotal");
 
   const md = record.modelDisplay && typeof record.modelDisplay === "object"
     ? (record.modelDisplay as Record<string, unknown>)
@@ -532,7 +586,6 @@ function normalizeShareSettings(value: unknown): ShareSettings {
     preset,
     checkedLabels,
     theme,
-    showWatermark: readBool("showWatermark"),
     showPlan: readBool("showPlan"),
     modelDisplay: {
       showPercent: readMd("showPercent"),
@@ -540,6 +593,17 @@ function normalizeShareSettings(value: unknown): ShareSettings {
       showSevenDay: readMd("showSevenDay"),
       showThirtyDay: readMd("showThirtyDay"),
     },
+    graphStyle: SHARE_GRAPH_STYLES.includes(record.graphStyle as ShareGraphStyle)
+      ? (record.graphStyle as ShareGraphStyle)
+      : DEFAULT_SHARE_SETTINGS.graphStyle,
+    graphGroupBy:
+      record.graphGroupBy === "provider" || record.graphGroupBy === "model"
+        ? (record.graphGroupBy as ShareGraphGroupBy)
+        : DEFAULT_SHARE_SETTINGS.graphGroupBy,
+    graphMetric: deriveGraphMetric(),
+    graphShowBreakdown: readBool("graphShowBreakdown"),
+    graphShowTotal,
+    graphShowDate: readBool("graphShowDate"),
   };
 }
 
@@ -550,6 +614,59 @@ export async function loadShareSettings(): Promise<ShareSettings> {
 
 export async function saveShareSettings(settings: ShareSettings): Promise<void> {
   await store.set(SHARE_SETTINGS_KEY, settings);
+  await store.save();
+}
+
+function isOverviewGraphStyle(value: unknown): value is OverviewGraphStyle {
+  if (typeof value !== "string") return false;
+  if (OVERVIEW_GRAPH_STYLES.includes(value as OverviewGraphStyle)) return true;
+  // Migrate the retired compact/detailed values.
+  return value === "compact" || value === "detailed";
+}
+
+function normalizeOverviewGraphStyle(value: unknown): OverviewGraphStyle {
+  if (value === "compact" || value === "bar") return "bar";
+  if (value === "detailed" || value === "donut") return "donut";
+  return DEFAULT_OVERVIEW_GRAPH_STYLE;
+}
+
+function isOverviewGraphGroupBy(value: unknown): value is OverviewGraphGroupBy {
+  return (
+    typeof value === "string" &&
+    OVERVIEW_GRAPH_GROUP_BY.includes(value as OverviewGraphGroupBy)
+  );
+}
+
+export async function loadOverviewGraphStyle(): Promise<OverviewGraphStyle> {
+  const stored = await store.get<unknown>(OVERVIEW_GRAPH_STYLE_KEY);
+  if (isOverviewGraphStyle(stored)) return normalizeOverviewGraphStyle(stored);
+  return DEFAULT_OVERVIEW_GRAPH_STYLE;
+}
+
+export async function saveOverviewGraphStyle(style: OverviewGraphStyle): Promise<void> {
+  await store.set(OVERVIEW_GRAPH_STYLE_KEY, style);
+  await store.save();
+}
+
+export async function loadOverviewGraphGroupBy(): Promise<OverviewGraphGroupBy> {
+  const stored = await store.get<unknown>(OVERVIEW_GRAPH_GROUP_BY_KEY);
+  if (isOverviewGraphGroupBy(stored)) return stored;
+  return DEFAULT_OVERVIEW_GRAPH_GROUP_BY;
+}
+
+export async function saveOverviewGraphGroupBy(groupBy: OverviewGraphGroupBy): Promise<void> {
+  await store.set(OVERVIEW_GRAPH_GROUP_BY_KEY, groupBy);
+  await store.save();
+}
+
+export async function loadOverviewSpendStripEnabled(): Promise<boolean> {
+  const stored = await store.get<unknown>(OVERVIEW_SPEND_STRIP_ENABLED_KEY);
+  if (typeof stored === "boolean") return stored;
+  return DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED;
+}
+
+export async function saveOverviewSpendStripEnabled(value: boolean): Promise<void> {
+  await store.set(OVERVIEW_SPEND_STRIP_ENABLED_KEY, value);
   await store.save();
 }
 

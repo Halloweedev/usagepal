@@ -1,6 +1,10 @@
 import { render, screen } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { OverviewPage } from "@/pages/overview"
+
+vi.mock("@/components/models-today-strip", () => ({
+  ModelsTodayStrip: () => <div data-testid="models-today-strip-mock" />,
+}))
 
 describe("OverviewPage", () => {
   it("renders empty state", () => {
@@ -77,5 +81,49 @@ describe("OverviewPage", () => {
 
     render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
     expect(screen.queryByRole("button", { name: /status/i })).toBeNull()
+  })
+
+  it("renders the models-today strip when providers are enabled", () => {
+    const plugins = [
+      {
+        meta: { id: "a", name: "Alpha", iconUrl: "icon", lines: [] },
+        data: { providerId: "a", displayName: "Alpha", lines: [], iconUrl: "icon" },
+        loading: false,
+        error: null,
+        lastManualRefreshAt: null,
+        lastUpdatedAt: null,
+      },
+    ]
+    render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
+    expect(screen.getByText("Quick Usage Overview")).toBeInTheDocument()
+    expect(screen.getByTestId("models-today-strip-mock")).toBeInTheDocument()
+  })
+
+  it("hides the strip when overview spend strip is disabled", () => {
+    const plugins = [
+      {
+        meta: { id: "a", name: "Alpha", iconUrl: "icon", lines: [] },
+        data: { providerId: "a", displayName: "Alpha", lines: [], iconUrl: "icon" },
+        loading: false,
+        error: null,
+        lastManualRefreshAt: null,
+        lastUpdatedAt: null,
+      },
+    ]
+    render(
+      <OverviewPage
+        plugins={plugins}
+        displayMode="used"
+        resetTimerDisplayMode="relative"
+        overviewSpendStripEnabled={false}
+      />
+    )
+    expect(screen.queryByText("Quick Usage Overview")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("models-today-strip-mock")).not.toBeInTheDocument()
+  })
+
+  it("does not render the strip in the empty state", () => {
+    render(<OverviewPage plugins={[]} displayMode="used" resetTimerDisplayMode="relative" />)
+    expect(screen.queryByTestId("models-today-strip-mock")).not.toBeInTheDocument()
   })
 })

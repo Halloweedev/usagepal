@@ -27,6 +27,16 @@
 
 **Team detection**: an account is treated as "team" when `planName` is `"Team"`, or `spendLimitUsage.limitType` is `"team"`, or `spendLimitUsage.pooledLimit` is greater than `0`. Team accounts display Total usage in dollars; individual accounts display it as a percentage.
 
+## Per-model breakdown
+
+Cursor's per-model lines come from the usage-events CSV — the same export that powers Today, Yesterday, and Last 30 Days (`GET /api/dashboard/export-usage-events-csv` on `cursor.com`).
+
+The CSV lists models and token counts only. UsagePal imputes dollar cost locally from embedded pricing tables synced with Cursor's published model rates.
+
+These model lines are generated at runtime (not declared in the plugin manifest). They appear in Overview's model breakdown and in Share's "All" graph when Cursor is enabled. Each line carries Today, Yesterday, 7d, and 30d cost segments so Share can switch between time windows.
+
+If a model is not in the pricing table yet, its tokens still count toward usage percentages but cost shows as $0 until the table is updated. Each unknown model is logged once per refresh.
+
 ## Endpoints
 
 ### POST /aiserver.v1.DashboardService/GetCurrentPeriodUsage

@@ -33,6 +33,15 @@ describe("parseModelBreakdownValue", () => {
     expect(parseModelBreakdownValue("")).toBeNull()
   })
 
+  it("parses yesterday segment", () => {
+    expect(parseModelBreakdownValue("60% · Yesterday $4.00 · Today $9.00 · 30d $36.00")).toEqual({
+      percent: "60%",
+      yesterday: "$4.00",
+      today: "$9.00",
+      thirtyDay: "$36.00",
+    })
+  })
+
   it("parses the below-threshold '<0.1%' label plugins emit for near-zero shares", () => {
     expect(parseModelBreakdownValue("<0.1% · Today $0.02 · 7d $0.10 · 30d $0.30")).toEqual({
       percent: "<0.1%",

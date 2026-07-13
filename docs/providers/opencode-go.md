@@ -14,7 +14,7 @@
 The plugin enables when either condition is true:
 
 - `~/.local/share/opencode/auth.json` contains an `opencode-go` entry with a non-empty `key`
-- local OpenCode history already contains `opencode-go` assistant messages with numeric `cost`
+- local OpenCode history already contains `opencode-go` assistant messages with numeric `cost` or token usage
 
 If neither signal exists, the plugin stays hidden.
 
@@ -25,15 +25,44 @@ UsagePal reads the local OpenCode SQLite database directly:
 ```sql
 SELECT
   CAST(COALESCE(json_extract(data, '$.time.created'), time_created) AS INTEGER) AS createdMs,
-  CAST(json_extract(data, '$.cost') AS REAL) AS cost
+  CAST(json_extract(data, '$.cost') AS REAL) AS cost,
+  COALESCE(
+    json_extract(data, '$.modelID'),
+    json_extract(data, '$.model'),
+    json_extract(data, '$.modelName')
+  ) AS modelID,
+  (
+    COALESCE(CAST(json_extract(data, '$.tokens.input') AS INTEGER), 0) +
+    COALESCE(CAST(json_extract(data, '$.tokens.output') AS INTEGER), 0) +
+    COALESCE(CAST(json_extract(data, '$.tokens.reasoning') AS INTEGER), 0) +
+    COALESCE(CAST(json_extract(data, '$.tokens.cacheRead') AS INTEGER), 0) +
+    COALESCE(CAST(json_extract(data, '$.tokens.cacheWrite') AS INTEGER), 0) +
+    COALESCE(CAST(json_extract(data, '$.tokens.cache_read') AS INTEGER), 0) +
+    COALESCE(CAST(json_extract(data, '$.tokens.cache_write') AS INTEGER), 0)
+  ) AS tokensTotal
 FROM message
 WHERE json_valid(data)
   AND json_extract(data, '$.providerID') = 'opencode-go'
   AND json_extract(data, '$.role') = 'assistant'
-  AND json_type(data, '$.cost') IN ('integer', 'real')
+  AND (
+    json_type(data, '$.cost') IN ('integer', 'real')
+    OR tokensTotal > 0
+  )
 ```
 
-Only assistant messages with numeric `cost` count. Missing remote or other-device usage is not estimated.
+Only assistant messages with numeric `cost` or token counts count. When `cost` is zero or missing but per-token fields are present, UsagePal estimates spend using the published OpenCode Go per-million rates (same table as the official docs). Stored non-zero `cost` values always win over estimates. Missing remote or other-device usage is not estimated.
+
+## Share Graph
+
+When local history is available, the plugin also emits share-graph lines:
+
+- **Today / Yesterday / Last 30 Days** — provider spend totals, plus token counts when message `tokens` are present
+- **Usage Trend** — daily token bar chart for the last 31 days (only when tokens exist)
+- **Per-model breakdown** — one text line per model with 30-day share and Today/Yesterday/7d/30d spend
+
+Model names come from `modelID` (with `model` / `modelName` fallbacks) and are prettified for display (for example `glm-5.1` → `GLM 5.1`). If no model ID is stored on any row, UsagePal shows a single aggregate line labeled **OpenCode Go** at 100%.
+
+Day buckets use UTC calendar dates, matching the Cursor share-graph behavior.
 
 ## Limits
 

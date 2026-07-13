@@ -40,6 +40,7 @@ export type AppContentActionProps = {
   onMultiMenubarClick: () => void
   onMultiTrayDisplayModeChange: (value: MultiTrayDisplayMode) => void
   onMenubarMetricChange: (value: MenubarMetric) => void
+  onOverviewSpendStripEnabledChange: (value: boolean) => void
   traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
@@ -65,6 +66,7 @@ export function AppContent({
   onMultiMenubarClick,
   onMultiTrayDisplayModeChange,
   onMenubarMetricChange,
+  onOverviewSpendStripEnabledChange,
   traySettingsPreview,
   onGlobalShortcutChange,
   onStartOnLoginChange,
@@ -91,6 +93,7 @@ export function AppContent({
     globalShortcut,
     themeMode,
     startOnLogin,
+    overviewSpendStripEnabled,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       displayMode: state.displayMode,
@@ -105,6 +108,7 @@ export function AppContent({
       globalShortcut: state.globalShortcut,
       themeMode: state.themeMode,
       startOnLogin: state.startOnLogin,
+      overviewSpendStripEnabled: state.overviewSpendStripEnabled,
     }))
   )
 
@@ -116,6 +120,7 @@ export function AppContent({
         displayMode={displayMode}
         resetTimerDisplayMode={resetTimerDisplayMode}
         timeFormatMode={timeFormatMode}
+        overviewSpendStripEnabled={overviewSpendStripEnabled}
         onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
       />
     )
@@ -150,6 +155,8 @@ export function AppContent({
         onGlobalShortcutChange={onGlobalShortcutChange}
         startOnLogin={startOnLogin}
         onStartOnLoginChange={onStartOnLoginChange}
+        overviewSpendStripEnabled={overviewSpendStripEnabled}
+        onOverviewSpendStripEnabledChange={onOverviewSpendStripEnabledChange}
         betaUpdatesEnabled={betaUpdatesEnabled}
         onBetaUpdatesEnabledChange={onBetaUpdatesEnabledChange}
         onShowStats={() => setActiveView("home")}

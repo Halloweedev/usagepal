@@ -31,9 +31,7 @@ function setHistoryQuery(ctx, rows, options = {}) {
         expect(String(sql)).toContain(
           "json_extract(data, '$.role') = 'assistant'",
         );
-        expect(String(sql)).toContain(
-          "json_type(data, '$.cost') IN ('integer', 'real')",
-        );
+        expect(String(sql)).toContain("$.tokens.input");
       }
       return JSON.stringify(list.length > 0 ? [{ present: 1 }] : []);
     }
@@ -45,12 +43,11 @@ function setHistoryQuery(ctx, rows, options = {}) {
       expect(String(sql)).toContain(
         "json_extract(data, '$.role') = 'assistant'",
       );
-      expect(String(sql)).toContain(
-        "json_type(data, '$.cost') IN ('integer', 'real')",
-      );
+      expect(String(sql)).toContain("$.tokens.input");
       expect(String(sql)).toContain(
         "COALESCE(json_extract(data, '$.time.created'), time_created)",
       );
+      expect(String(sql)).toContain("json_extract(data, '$.modelID')");
     }
 
     return JSON.stringify(list);
@@ -89,6 +86,10 @@ describe("opencode-go plugin", () => {
         scope: "detail",
         escalateAtPercent: 98,
       },
+      { type: "text", label: "Today", scope: "detail" },
+      { type: "text", label: "Yesterday", scope: "detail" },
+      { type: "text", label: "Last 30 Days", scope: "detail" },
+      { type: "barChart", label: "Usage Trend", scope: "detail" },
     ]);
   });
 
@@ -267,5 +268,241 @@ describe("opencode-go plugin", () => {
         },
       ],
     });
+  });
+});
+
+describe("opencode-go spend aggregation", () => {
+  beforeEach(() => {
+    delete globalThis.__openusage_plugin;
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("prettifies model IDs like glm-5.1", async () => {
+    const plugin = await loadPlugin();
+    expect(plugin.__test.prettifyModelName("glm-5.1")).toBe("GLM 5.1");
+    expect(plugin.__test.prettifyModelName("gpt-5.4")).toBe("GPT 5.4");
+  });
+
+  it("aggregates daily spend and tokens by UTC day", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
+
+    const plugin = await loadPlugin();
+    const nowMs = Date.now();
+    const rows = [
+      {
+        createdMs: Date.parse("2026-07-01T01:00:00.000Z"),
+        cost: 1.5,
+        modelID: "glm-5.1",
+        tokens: 1_000_000,
+      },
+      {
+        createdMs: Date.parse("2026-06-30T01:00:00.000Z"),
+        cost: 2.0,
+        modelID: "glm-5.1",
+        tokens: 2_000_000,
+      },
+    ];
+
+    const daily = plugin.__test.aggregateDailyFromRows(rows, nowMs);
+    expect(daily).toHaveLength(2);
+    expect(daily[0]).toMatchObject({ date: "2026-06-30", costUSD: 2, totalTokens: 2_000_000 });
+    expect(daily[1]).toMatchObject({ date: "2026-07-01", costUSD: 1.5, totalTokens: 1_000_000 });
+  });
+
+  it("aggregates per-model Today/Yesterday/7d/30d buckets", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
+
+    const plugin = await loadPlugin();
+    const nowMs = Date.now();
+    const rows = [
+      {
+        createdMs: Date.parse("2026-07-01T01:00:00.000Z"),
+        cost: 1.5,
+        modelID: "glm-5.1",
+        tokens: 1_000_000,
+      },
+      {
+        createdMs: Date.parse("2026-06-30T01:00:00.000Z"),
+        cost: 2.0,
+        modelID: "gpt-5.4",
+        tokens: 2_000_000,
+      },
+    ];
+
+    const result = plugin.__test.aggregateModelUsageFromRows(rows, nowMs);
+    expect(result.models).toHaveLength(2);
+    const glm = result.models.find((m) => m.name === "glm-5.1");
+    expect(glm.costUSD.Today).toBeCloseTo(1.5);
+    expect(glm.tokens.Today).toBe(1_000_000);
+    const gpt = result.models.find((m) => m.name === "gpt-5.4");
+    expect(gpt.costUSD.Yesterday).toBeCloseTo(2);
+    expect(gpt.tokens["30d"]).toBe(2_000_000);
+  });
+
+  it("emits a single OpenCode Go line at 100% when model IDs are absent", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
+
+    const plugin = await loadPlugin();
+    const nowMs = Date.now();
+    const rows = [
+      {
+        createdMs: Date.parse("2026-07-01T01:00:00.000Z"),
+        cost: 3,
+        modelID: null,
+        tokens: 500_000,
+      },
+    ];
+
+    const result = plugin.__test.aggregateModelUsageFromRows(rows, nowMs);
+    expect(result.models).toHaveLength(1);
+    expect(result.models[0].name).toBe("OpenCode Go");
+    expect(result.models[0].percent).toBe(100);
+  });
+
+  it("appendSpendHistory adds Today/Yesterday/Last 30 Days + Usage Trend", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
+
+    const ctx = makeCtx();
+    const plugin = await loadPlugin();
+    const lines = [];
+    plugin.__test.appendSpendHistory(
+      ctx,
+      lines,
+      [
+        {
+          createdMs: Date.parse("2026-07-01T01:00:00.000Z"),
+          cost: 1.5,
+          modelID: "glm-5.1",
+          tokens: 1_000_000,
+        },
+        {
+          createdMs: Date.parse("2026-06-30T01:00:00.000Z"),
+          cost: 2.0,
+          modelID: "glm-5.1",
+          tokens: 2_000_000,
+        },
+      ],
+      Date.now(),
+    );
+
+    const byLabel = Object.fromEntries(lines.map((l) => [l.label, l]));
+    expect(byLabel["Today"].type).toBe("text");
+    expect(byLabel["Today"].value).toContain("1M");
+    expect(byLabel["Yesterday"].value).toContain("2M");
+    expect(byLabel["Last 30 Days"].value).toContain("3M");
+    expect(byLabel["Usage Trend"].type).toBe("barChart");
+    expect(byLabel["Usage Trend"].points).toHaveLength(2);
+    expect(byLabel["GLM 5.1"].value).toContain("100%");
+  });
+
+  it("selects Today's bucket by UTC day, not local timezone", async () => {
+    vi.stubEnv("TZ", "America/New_York");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T02:00:00.000Z"));
+
+    try {
+      const ctx = makeCtx();
+      const plugin = await loadPlugin();
+      const lines = [];
+      plugin.__test.appendSpendHistory(
+        ctx,
+        lines,
+        [
+          {
+            createdMs: Date.parse("2026-07-01T02:00:00.000Z"),
+            cost: 1,
+            modelID: "glm-5.1",
+            tokens: 3_000_000,
+          },
+        ],
+        Date.now(),
+      );
+
+      const byLabel = Object.fromEntries(lines.map((l) => [l.label, l]));
+      expect(byLabel["Today"].value).toContain("3M");
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("appends share-graph lines to a successful probe", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
+
+    const ctx = makeCtx();
+    setHistoryQuery(ctx, [
+      {
+        createdMs: Date.parse("2026-07-01T01:00:00.000Z"),
+        cost: 1.5,
+        modelID: "glm-5.1",
+        tokensTotal: 1_000_000,
+      },
+      {
+        createdMs: Date.parse("2026-06-30T01:00:00.000Z"),
+        cost: 2.0,
+        modelID: "gpt-5.4",
+        tokensTotal: 2_000_000,
+      },
+    ]);
+
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    const labels = result.lines.map((line) => line.label);
+
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        "Today",
+        "Yesterday",
+        "Last 30 Days",
+        "Usage Trend",
+        "GLM 5.1",
+        "GPT 5.4",
+      ]),
+    );
+  });
+
+  it("estimates spend from tokens when stored cost is zero", async () => {
+    const plugin = await loadPlugin();
+    const ctx = { host: { log: { info: vi.fn(), warn: vi.fn() } } };
+    const row = {
+      cost: 0,
+      modelID: "glm-5.1",
+      tokensInput: 1_000_000,
+      tokensOutput: 500_000,
+      tokensReasoning: 0,
+      tokensCacheRead: 0,
+      tokensCacheWrite: 0,
+      tokensTotal: 1_500_000,
+    };
+    const estimated = plugin.__test.rowCostUsd(row, ctx);
+    // $1.40/M input + $4.40/M output
+    expect(estimated).toBeCloseTo(1.4 + 2.2);
+    expect(ctx.host.log.info).not.toHaveBeenCalled();
+  });
+
+  it("keeps stored cost when it is already positive", async () => {
+    const plugin = await loadPlugin();
+    const ctx = { host: { log: { info: vi.fn(), warn: vi.fn() } } };
+    const row = {
+      cost: 2.5,
+      modelID: "glm-5.1",
+      tokensInput: 1_000_000,
+      tokensOutput: 0,
+      tokensReasoning: 0,
+      tokensCacheRead: 0,
+      tokensCacheWrite: 0,
+      tokensTotal: 1_000_000,
+    };
+    expect(plugin.__test.rowCostUsd(row, ctx)).toBe(2.5);
   });
 });

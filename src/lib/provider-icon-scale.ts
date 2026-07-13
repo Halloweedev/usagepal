@@ -1,9 +1,14 @@
-const SMALLER_ICON_PLUGIN_IDS = new Set(["opencode-go", "cline-pass"])
+/** Per-provider logo scale relative to the shared base size. */
+const PROVIDER_ICON_SCALES: Record<string, number> = {
+  "opencode-go": 0.9,
+  "cline-pass": 0.9,
+  amp: 0.8,
+}
 
-/** Per-provider logo scale; OpenCode and Cline render 10% smaller. */
+/** Per-provider logo scale; OpenCode/Cline are 10% smaller, Amp is 20% smaller. */
 export function getProviderIconScale(pluginId: string | undefined): number {
   if (!pluginId) return 1
-  return SMALLER_ICON_PLUGIN_IDS.has(pluginId) ? 0.9 : 1
+  return PROVIDER_ICON_SCALES[pluginId] ?? 1
 }
 
 export function scaleProviderIconSize(baseSizePx: number, pluginId: string | undefined): number {

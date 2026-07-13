@@ -9,6 +9,9 @@ import {
   DEFAULT_MULTI_TRAY_DISPLAY_MODE,
   DEFAULT_MULTI_TRAY_PROVIDER_COUNT,
   DEFAULT_ONBOARDING_COMPLETED,
+  DEFAULT_OVERVIEW_GRAPH_GROUP_BY,
+  DEFAULT_OVERVIEW_GRAPH_STYLE,
+  DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED,
   DEFAULT_PACE_NOTIFICATION_SETTINGS,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
@@ -27,6 +30,9 @@ import {
   loadMultiTrayDisplayMode,
   loadMultiTrayProviderCount,
   loadOnboardingCompleted,
+  loadOverviewGraphGroupBy,
+  loadOverviewGraphStyle,
+  loadOverviewSpendStripEnabled,
   loadPaceNotificationSettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
@@ -50,6 +56,9 @@ import {
   saveMultiTrayDisplayMode,
   saveMultiTrayProviderCount,
   saveOnboardingCompleted,
+  saveOverviewGraphGroupBy,
+  saveOverviewSpendStripEnabled,
+  saveOverviewGraphStyle,
   savePaceNotificationSettings,
   savePluginSettings,
   saveResetTimerDisplayMode,
@@ -439,6 +448,66 @@ describe("settings", () => {
     await expect(loadMenubarMetric()).resolves.toBe(DEFAULT_MENUBAR_METRIC)
   })
 
+  it("loads default overview graph style when missing", async () => {
+    await expect(loadOverviewGraphStyle()).resolves.toBe(DEFAULT_OVERVIEW_GRAPH_STYLE);
+  });
+
+  it("loads stored overview graph style and migrates compact/detailed", async () => {
+    storeState.set("overviewGraphStyle", "detailed");
+    await expect(loadOverviewGraphStyle()).resolves.toBe("donut");
+
+    storeState.set("overviewGraphStyle", "compact");
+    await expect(loadOverviewGraphStyle()).resolves.toBe("bar");
+  });
+
+  it("saves overview graph style", async () => {
+    await saveOverviewGraphStyle("donut");
+    await expect(loadOverviewGraphStyle()).resolves.toBe("donut");
+  });
+
+  it("falls back to default for invalid overview graph style", async () => {
+    storeState.set("overviewGraphStyle", "pie");
+    await expect(loadOverviewGraphStyle()).resolves.toBe(DEFAULT_OVERVIEW_GRAPH_STYLE);
+  });
+
+  it("loads default overview graph group by when missing", async () => {
+    await expect(loadOverviewGraphGroupBy()).resolves.toBe(DEFAULT_OVERVIEW_GRAPH_GROUP_BY);
+  });
+
+  it("loads stored overview graph group by", async () => {
+    storeState.set("overviewGraphGroupBy", "provider");
+    await expect(loadOverviewGraphGroupBy()).resolves.toBe("provider");
+  });
+
+  it("saves overview graph group by", async () => {
+    await saveOverviewGraphGroupBy("provider");
+    await expect(loadOverviewGraphGroupBy()).resolves.toBe("provider");
+  });
+
+  it("falls back to default for invalid overview graph group by", async () => {
+    storeState.set("overviewGraphGroupBy", "team");
+    await expect(loadOverviewGraphGroupBy()).resolves.toBe(DEFAULT_OVERVIEW_GRAPH_GROUP_BY);
+  });
+
+  it("loads default overview spend strip enabled when missing", async () => {
+    await expect(loadOverviewSpendStripEnabled()).resolves.toBe(DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED);
+  });
+
+  it("loads stored overview spend strip enabled", async () => {
+    storeState.set("overviewSpendStripEnabled", false);
+    await expect(loadOverviewSpendStripEnabled()).resolves.toBe(false);
+  });
+
+  it("saves overview spend strip enabled", async () => {
+    await saveOverviewSpendStripEnabled(false);
+    await expect(loadOverviewSpendStripEnabled()).resolves.toBe(false);
+  });
+
+  it("falls back to default for invalid overview spend strip enabled", async () => {
+    storeState.set("overviewSpendStripEnabled", "invalid");
+    await expect(loadOverviewSpendStripEnabled()).resolves.toBe(DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED);
+  });
+
   it("loads default pace notification settings when missing", async () => {
     await expect(loadPaceNotificationSettings()).resolves.toEqual(DEFAULT_PACE_NOTIFICATION_SETTINGS)
   })
@@ -611,8 +680,13 @@ describe("settings", () => {
       preset: null, // "bogus" is not a valid preset
       checkedLabels: ["Session", "Sonnet"], // non-strings dropped
       theme: "light",
-      showWatermark: true, // invalid -> default
       showPlan: true, // missing -> default
+      graphStyle: "bar", // missing -> default
+      graphGroupBy: "provider", // missing -> default
+      graphShowBreakdown: true, // missing -> default
+      graphShowTotal: true, // missing -> default
+      graphShowDate: true, // missing -> default
+      graphMetric: "price", // missing -> default
       modelDisplay: {
         showPercent: false,
         showToday: true, // invalid -> default
@@ -628,8 +702,13 @@ describe("settings", () => {
       preset: "models" as const,
       checkedLabels: ["Session", "claude-sonnet-5"],
       theme: "dark" as const,
-      showWatermark: false,
       showPlan: false,
+      graphStyle: "bar" as const,
+      graphGroupBy: "provider" as const,
+      graphShowBreakdown: true,
+      graphShowTotal: true,
+      graphShowDate: true,
+      graphMetric: "price" as const,
       modelDisplay: { showPercent: true, showToday: false, showSevenDay: true, showThirtyDay: false },
     }
 
@@ -645,8 +724,13 @@ describe("settings", () => {
       preset: null,
       checkedLabels: ["Session", "claude-sonnet-5"],
       theme: "dark" as const,
-      showWatermark: false,
       showPlan: false,
+      graphStyle: "bar" as const,
+      graphGroupBy: "provider" as const,
+      graphShowBreakdown: true,
+      graphShowTotal: true,
+      graphShowDate: true,
+      graphMetric: "price" as const,
       modelDisplay: { showPercent: true, showToday: false, showSevenDay: true, showThirtyDay: false },
     }
 

@@ -141,13 +141,34 @@
     return lines
   }
 
+  function appendSpend(ctx, lines, label, value) {
+    const amount = num(value)
+    if (amount === null) return
+    lines.push(ctx.line.text({ label: label, value: formatDollars(Math.max(0, amount)) }))
+  }
+
+  function appendShareGraphLines(ctx, lines, data) {
+    const today = num(data.usage_daily)
+    const yesterday = 0
+    const thirtyDay = num(data.usage_monthly)
+
+    appendSpend(ctx, lines, "Today", today)
+    appendSpend(ctx, lines, "Yesterday", yesterday)
+    appendSpend(ctx, lines, "Last 30 Days", thirtyDay)
+
+    const segments = []
+    if (today !== null && today > 0) segments.push("Today " + formatDollars(today))
+    if (thirtyDay !== null && thirtyDay > 0) segments.push("30d " + formatDollars(thirtyDay))
+    let value = "100%"
+    if (segments.length > 0) value += " · " + segments.join(" · ")
+    lines.push(ctx.line.text({ label: "OpenRouter", value: value }))
+  }
+
   function keyMetrics(ctx, data) {
     const lines = []
 
-    // Period spend straight from the API (not a local log scan), so a real zero is a measured zero.
-    appendSpend(ctx, lines, "Today", data.usage_daily)
     appendSpend(ctx, lines, "This Week", data.usage_weekly)
-    appendSpend(ctx, lines, "This Month", data.usage_monthly)
+    appendShareGraphLines(ctx, lines, data)
 
     // Per-key spend cap, when this key is configured with one.
     const limit = num(data.limit)
@@ -165,12 +186,6 @@
       ? (data.is_free_tier ? "Free tier" : "Pay as you go")
       : null
     return { plan, lines }
-  }
-
-  function appendSpend(ctx, lines, label, value) {
-    const amount = num(value)
-    if (amount === null) return
-    lines.push(ctx.line.text({ label: label, value: formatDollars(Math.max(0, amount)) }))
   }
 
   function probe(ctx) {
@@ -198,5 +213,12 @@
     return { plan, lines }
   }
 
-  globalThis.__openusage_plugin = { id: "openrouter", probe }
+  globalThis.__openusage_plugin = {
+    id: "openrouter",
+    probe,
+    __test: {
+      appendShareGraphLines,
+      formatDollars,
+    },
+  }
 })()

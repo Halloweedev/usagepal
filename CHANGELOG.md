@@ -1,5 +1,98 @@
 # Changelog
 
+## v0.7.34
+
+Stable release for the cross-provider models graph, Overview models strip, expanded share-graph providers, and polish from the 0.7.34 betas.
+
+### New Features
+- Cross-provider models graph on Share — bar and donut styles, All tab, OKLCH brand-derived colors, and a refreshed watermark by @Halloweedev
+- Models-today strip on Overview with hover details and a share shortcut by @Halloweedev
+- Period toggle (today, yesterday, and more) with shared proportional donut math across Overview and Share by @Halloweedev
+- Provider-grouped view — switch between per-model and per-provider breakdown in Overview and Share by @Halloweedev
+- Share and Overview settings persist graph style, price visibility, and grouping preference by @Halloweedev
+- Share graph model/spend support for Cursor, OpenCode Go, Grok, OpenRouter, and ClinePass — Today / Yesterday / Last 30 Days, usage trends, and per-model breakdowns by @Halloweedev
+- Share graph metric modes — Usage, Price, and Price/M — with toggles for breakdown, total, and date by @Halloweedev
+- Cross-provider model name grouping so the same model from different providers merges into one slice by @Halloweedev
+- OpenCode Go estimates spend from token × published rates when stored cost is missing or zero by @Halloweedev
+- Grok SuperGrok / SuperGrok Heavy / X Premium+ docs and share-graph pricing from local CLI logs by @Halloweedev
+
+### Bug Fixes
+- Codex rate-limit resets now fetch expiry from the real `rate-limit-reset-credits` API instead of estimating from local `grants.json` by @Halloweedev
+- Per-model hover breakdown for percent-only providers on Overview by @Halloweedev
+- ClinePass spend now converts micro-USD correctly (same unit as the Cline app) by @Halloweedev
+- Grok unknown models still count tokens toward usage while cost stays $0 by @Halloweedev
+- Amp Free daily-% usage format + displayText redaction ([#12](https://github.com/Halloweedev/usagepal/pull/12)) by @divaltor
+- GLM and GPT model names keep their acronyms (GLM 5.2, GPT 5.4) instead of title-casing to Glm / Gpt by @Halloweedev
+- Merged model hover lists every provider that used the model (e.g. OpenCode Go · ClinePass) by @Halloweedev
+
+### Improvements
+- Round donut segment caps for a softer, modern look by @Halloweedev
+- Period-aware model usage with Codex cost helpers by @Halloweedev
+- Donut min-slice floor with proportional scaling so tiny slices stay visible without drowning large ones by @Halloweedev
+- Share provider layout — full-width overview, max 6 providers per row, and menubar-matched spacing by @Halloweedev
+- Richer model-slice colors (hue/lightness spread) while provider slices stay on-brand by @Halloweedev
+- Provider colors: Cursor stays pure black (alone), Claude and Codex keep exact brand colors, and other black-logo providers get distinct hues by @Halloweedev
+- Tighter donut segment gaps on Overview and Share by @Halloweedev
+- Amp logo renders 20% smaller across the app and tray by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.33...v0.7.34](https://github.com/Halloweedev/usagepal/compare/v0.7.33...v0.7.34)
+
+## v0.7.34-beta.2
+
+Beta follow-up: more providers in the share graph, spend/token metrics, donut readability, and Share layout polish.
+
+### New Features
+- Share graph model/spend support for Cursor, OpenCode Go, Grok, OpenRouter, and ClinePass — Today / Yesterday / Last 30 Days, usage trends, and per-model breakdowns by @Halloweedev
+- Share graph metric modes — Usage, Price, and Price/M — with toggles for breakdown, total, and date by @Halloweedev
+- Cross-provider model name grouping so the same model from different providers merges into one slice by @Halloweedev
+- OpenCode Go estimates spend from token × published rates when stored cost is missing or zero by @Halloweedev
+- Grok SuperGrok / SuperGrok Heavy / X Premium+ docs and share-graph pricing from local CLI logs by @Halloweedev
+
+### Bug Fixes
+- ClinePass spend now converts micro-USD correctly (same unit as the Cline app) by @Halloweedev
+- Grok unknown models still count tokens toward usage while cost stays $0 by @Halloweedev
+- Amp Free daily-% usage format + displayText redaction ([#12](https://github.com/Halloweedev/usagepal/pull/12)) by @divaltor
+
+### Improvements
+- Donut min-slice floor with proportional scaling so tiny slices stay visible without drowning large ones by @Halloweedev
+- Share provider layout — full-width overview, max 6 providers per row, and menubar-matched spacing by @Halloweedev
+- Richer model-slice colors (hue/lightness spread) while provider slices stay on-brand by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.34-beta.1...v0.7.34-beta.2](https://github.com/Halloweedev/usagepal/compare/v0.7.34-beta.1...v0.7.34-beta.2)
+
+## v0.7.34-beta.1
+
+Beta release for the cross-provider models graph, Overview models strip, and Codex rate-limit reset fix.
+
+### New Features
+- Cross-provider models graph on Share — bar and donut styles, All tab, OKLCH brand-derived colors, and a refreshed watermark by @Halloweedev
+- Models-today strip on Overview with hover details and a share shortcut by @Halloweedev
+- Period toggle (today, yesterday, and more) with shared proportional donut math across Overview and Share by @Halloweedev
+- Provider-grouped view — switch between per-model and per-provider breakdown in Overview and Share by @Halloweedev
+- Share and Overview settings persist graph style, price visibility, and grouping preference by @Halloweedev
+
+### Bug Fixes
+- Codex rate-limit resets now fetch expiry from the real `rate-limit-reset-credits` API instead of estimating from local `grants.json` by @Halloweedev
+- Per-model hover breakdown for percent-only providers on Overview by @Halloweedev
+
+### Improvements
+- Round donut segment caps for a softer, modern look by @Halloweedev
+- Period-aware model usage with Codex cost helpers by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.33...v0.7.34-beta.1](https://github.com/Halloweedev/usagepal/compare/v0.7.33...v0.7.34-beta.1)
+
 ## v0.7.33
 
 ### New Features

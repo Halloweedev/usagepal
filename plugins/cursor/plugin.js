@@ -232,6 +232,16 @@
     return dayKeyFromDate(new Date(ms))
   }
 
+  function recentDayKeys(now, count) {
+    var keys = []
+    for (var i = 0; i < count; i++) {
+      var d = new Date(now.getTime())
+      d.setDate(d.getDate() - i)
+      keys.push(dayKeyFromDate(d))
+    }
+    return keys
+  }
+
   function imputeRowCostUsd(row, rates, isRequestBasedPlan) {
     if (!rates) return 0
     var cwRate = rates.cache_write == null ? rates.input : rates.cache_write
@@ -274,6 +284,125 @@
       .map(function (k) {
         return byDay[k]
       })
+  }
+
+  function aggregateModelUsageFromCsvRows(ctx, rows, nowMs, isRequestBasedPlan) {
+    var todayKey = new Date(nowMs).toISOString().slice(0, 10)
+    var yesterdayKey = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    var recentKeys = recentDayKeys(new Date(nowMs), 7)
+    var recentSet = {}
+    for (var i = 0; i < recentKeys.length; i++) recentSet[recentKeys[i]] = true
+
+    var byModel = {}
+    var cutoffMs = nowMs - 31 * 24 * 60 * 60 * 1000
+
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r]
+      var ms = Date.parse(row.date)
+      if (!Number.isFinite(ms) || ms < cutoffMs) continue
+      var dayKey = dayKeyFromUsageDate(row.date)
+      if (!dayKey) continue
+      var name = String(row.model || "").trim()
+      if (!name) continue
+
+      var rates = resolveModelRates(row.model)
+      var cost = imputeRowCostUsd(row, rates, isRequestBasedPlan)
+      var tokens = Number(row.totalTokens)
+      if (!Number.isFinite(tokens)) tokens = 0
+
+      if (!byModel[name]) {
+        byModel[name] = {
+          name: name,
+          tokens: { Today: 0, Yesterday: 0, "7d": 0, "30d": 0 },
+          costUSD: { Today: 0, Yesterday: 0, "7d": 0, "30d": 0 },
+        }
+      }
+      var bucket = byModel[name]
+      bucket.tokens["30d"] += tokens
+      bucket.costUSD["30d"] += cost
+      if (recentSet[dayKey]) {
+        bucket.tokens["7d"] += tokens
+        bucket.costUSD["7d"] += cost
+      }
+      if (dayKey === todayKey) {
+        bucket.tokens.Today += tokens
+        bucket.costUSD.Today += cost
+      } else if (dayKey === yesterdayKey) {
+        bucket.tokens.Yesterday += tokens
+        bucket.costUSD.Yesterday += cost
+      }
+    }
+
+    var models = Object.keys(byModel).map(function (k) {
+      return byModel[k]
+    })
+    var totalTokens30d = 0
+    for (var m = 0; m < models.length; m++) totalTokens30d += models[m].tokens["30d"]
+    for (var n = 0; n < models.length; n++) {
+      models[n].percent =
+        totalTokens30d > 0 ? (models[n].tokens["30d"] / totalTokens30d) * 100 : 0
+    }
+    models.sort(function (a, b) {
+      return b.tokens["30d"] - a.tokens["30d"]
+    })
+    return { models: models, totalTokens30d: totalTokens30d }
+  }
+
+  function percentLabel(value) {
+    if (value > 0 && value < 0.1) return "<0.1%"
+    var rounded = Math.round(value * 10) / 10
+    return (rounded % 1 === 0 ? String(Math.round(rounded)) : String(rounded)) + "%"
+  }
+
+  function fmtModelCost(amount) {
+    if (amount < 1000) return "$" + amount.toFixed(2)
+    return "$" + Math.round(amount).toLocaleString("en-US")
+  }
+
+  function resolveCanonicalModelId(slug) {
+    var s = String(slug || "").trim().toLowerCase()
+    if (!s) return s
+    for (var i = 0; i < CURSOR_PRICING.alias_rules.length; i++) {
+      var rule = CURSOR_PRICING.alias_rules[i]
+      try {
+        if (new RegExp(rule.pattern).test(s)) return rule.canonical
+      } catch (e) {
+        continue
+      }
+    }
+    return s
+  }
+
+  function prettifyCursorModelName(rawId) {
+    var canonical = resolveCanonicalModelId(rawId)
+    var parts = canonical.split("-")
+    return parts
+      .map(function (part) {
+        if (part === "gpt") return "GPT"
+        if (/^\d/.test(part)) return part
+        return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+      })
+      .join(" ")
+  }
+
+  function pushCursorModelUsageLines(lines, ctx, modelUsage) {
+    var models = modelUsage.models
+    for (var i = 0; i < models.length; i++) {
+      var model = models[i]
+      var value = percentLabel(model.percent)
+      var segments = []
+      if (model.costUSD.Today > 0) segments.push("Today " + fmtModelCost(model.costUSD.Today))
+      if (model.costUSD.Yesterday > 0) segments.push("Yesterday " + fmtModelCost(model.costUSD.Yesterday))
+      if (model.costUSD["7d"] > 0) segments.push("7d " + fmtModelCost(model.costUSD["7d"]))
+      if (model.costUSD["30d"] > 0) segments.push("30d " + fmtModelCost(model.costUSD["30d"]))
+      if (segments.length > 0) value += " · " + segments.join(" · ")
+      lines.push(
+        ctx.line.text({
+          label: prettifyCursorModelName(model.name),
+          value: value,
+        })
+      )
+    }
   }
 
   function fmtTokens(n) {
@@ -442,6 +571,11 @@
       )
     }
     pushUsageChartLine(lines, ctx, daily)
+
+    var modelUsage = aggregateModelUsageFromCsvRows(ctx, rows, nowMs, isRequestBasedPlan)
+    if (modelUsage.models.length > 0) {
+      pushCursorModelUsageLines(lines, ctx, modelUsage)
+    }
   }
 
   function readStateValue(ctx, key) {
@@ -1108,9 +1242,14 @@
       parseUsageEventsCsv,
       imputeRowCostUsd,
       aggregateDailyFromCsvRows,
+      aggregateModelUsageFromCsvRows,
       dayKeyFromDate,
       dayKeyFromUsageDate,
       appendSpendHistory,
+      percentLabel,
+      fmtModelCost,
+      prettifyCursorModelName,
+      pushCursorModelUsageLines,
     },
   }
 })()

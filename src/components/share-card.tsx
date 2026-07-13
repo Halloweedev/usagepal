@@ -3,8 +3,12 @@ import type { MetricLine } from "@/lib/plugin-types"
 import type { ModelBreakdownParsed, ModelDisplayOptions } from "@/lib/model-breakdown-format"
 import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
-import { Logo } from "@/components/logo"
+import { ShareWatermark } from "@/components/share-watermark"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
+import { THEME_STYLES } from "@/components/share-card-theme"
+import type { ShareCardTheme, ThemeStyle } from "@/components/share-card-theme"
+
+export type { ShareCardTheme }
 
 type ProgressMetricLine = Extract<MetricLine, { type: "progress" }> & { used: number; limit: number }
 type UsableBarChartPoint = Extract<MetricLine, { type: "barChart" }>["points"][number] & { value: number }
@@ -12,8 +16,6 @@ type UsableBarChartPoint = Extract<MetricLine, { type: "barChart" }>["points"][n
 function hasProgressValues(line: Extract<MetricLine, { type: "progress" }>): line is ProgressMetricLine {
   return line.used != null && line.limit != null
 }
-
-export type ShareCardTheme = "dark" | "light"
 
 export type ShareCardProps = {
   providerName: string
@@ -26,34 +28,6 @@ export type ShareCardProps = {
   showWatermark: boolean
   modelDisplay?: ModelDisplayOptions
   modelBreakdownLabels?: Set<string>
-}
-
-type ThemeStyle = {
-  frame: string
-  bg: string
-  text: string
-  subtext: string
-  track: string
-  border: string
-}
-
-const THEME_STYLES: Record<ShareCardTheme, ThemeStyle> = {
-  dark: {
-    frame: "bg-neutral-900",
-    bg: "bg-neutral-950",
-    text: "text-white",
-    subtext: "text-white/60",
-    track: "bg-white/10",
-    border: "border-white/10",
-  },
-  light: {
-    frame: "bg-neutral-100",
-    bg: "bg-white",
-    text: "text-neutral-900",
-    subtext: "text-neutral-500",
-    track: "bg-black/10",
-    border: "border-black/10",
-  },
 }
 
 function progressValueLabel(line: ProgressMetricLine, percent: number): string {
@@ -304,15 +278,7 @@ export function ShareCard({
         </div>
       )}
       </div>
-      {showWatermark && (
-        <div
-          data-testid="share-card-watermark"
-          className={cn("flex items-center justify-center gap-1.5 pb-1 pt-2.5 text-xs", styles.subtext)}
-        >
-          <Logo aria-hidden="true" className="size-3.5 shrink-0" />
-          Shared via UsagePal
-        </div>
-      )}
+      {showWatermark && <ShareWatermark subtextClassName={styles.subtext} />}
     </div>
   )
 }

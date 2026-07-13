@@ -18,8 +18,9 @@
     { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
     { "type": "text", "label": "Balance", "scope": "overview" },
     { "type": "text", "label": "Today", "scope": "detail" },
+    { "type": "text", "label": "Yesterday", "scope": "detail" },
+    { "type": "text", "label": "Last 30 Days", "scope": "detail" },
     { "type": "text", "label": "This Week", "scope": "detail" },
-    { "type": "text", "label": "This Month", "scope": "detail" },
     { "type": "progress", "label": "Key Limit", "scope": "detail" }
   ]
 }

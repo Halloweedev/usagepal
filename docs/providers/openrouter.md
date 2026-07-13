@@ -9,10 +9,20 @@ Tracks your [OpenRouter](https://openrouter.ai) credit balance and spend from yo
 | Credits | Lifetime spend against the credits you've purchased (a dollar meter) |
 | Balance | Prepaid credits remaining |
 | Today | Spend so far today |
+| Yesterday | Always `$0.00` (OpenRouter has no yesterday API) |
+| Last 30 Days | Monthly spend from the key API (`usage_monthly`) |
 | This Week | Spend so far this week |
-| This Month | Spend so far this month |
 | Key Limit | Spend against this key's cap — shown only when the key has one configured |
 | Plan | "Pay as you go" or "Free tier" |
+
+## Share Graph
+
+OpenRouter exposes account-level spend only (no per-model API). For the Share graph, UsagePal maps:
+
+- **Today** ← `usage_daily`
+- **Yesterday** ← `$0.00` (no API field)
+- **Last 30 Days** ← `usage_monthly`
+- **OpenRouter** — single aggregate model line at 100% with Today/30d dollars
 
 ## Where credentials come from
 
