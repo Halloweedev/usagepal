@@ -51,10 +51,11 @@ describe("WhatsNewApp", () => {
 
     expect(await screen.findByRole("heading", { name: "v0.7.35" })).toBeInTheDocument()
     expect(screen.getByText("Stable release for feature X.")).toBeInTheDocument()
-    expect(screen.getAllByRole("heading", { name: "New Features" })).toHaveLength(2)
+    // Category badges (spans, not headings) — one "New Features" per version.
+    expect(screen.getAllByText("New Features")).toHaveLength(2)
     expect(screen.getByText("Feature X by @author")).toBeInTheDocument()
     expect(screen.getByText("Feature Y by @author")).toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: "Bug Fixes" })).toBeInTheDocument()
+    expect(screen.getByText("Bug Fixes")).toBeInTheDocument()
     // Second version is also rendered.
     expect(screen.getByRole("heading", { name: "v0.7.34" })).toBeInTheDocument()
     expect(screen.getByText("Stable release for the models graph.")).toBeInTheDocument()
