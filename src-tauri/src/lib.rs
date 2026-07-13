@@ -10,6 +10,7 @@ mod panel;
 mod keylight;
 mod plugin_engine;
 mod tray;
+mod whats_new;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -816,6 +817,8 @@ pub fn run() {
             send_pace_notification,
             onboarding::finish_onboarding,
             onboarding::reset_onboarding,
+            whats_new::get_release_notes,
+            whats_new::dismiss_whats_new,
             beta_updater::check_beta_update,
             beta_updater::download_beta_update,
             beta_updater::install_beta_update,
@@ -946,6 +949,8 @@ pub fn run() {
 
             onboarding::show_setup_window_if_needed(app.handle())?;
 
+            whats_new::show_whats_new_window_if_needed(app.handle())?;
+
             // Register global shortcut from stored settings
             #[cfg(desktop)]
             {
@@ -1015,6 +1020,8 @@ fn export_bindings() {
             send_pace_notification,
             onboarding::finish_onboarding,
             onboarding::reset_onboarding,
+            whats_new::get_release_notes,
+            whats_new::dismiss_whats_new,
             beta_updater::check_beta_update,
             beta_updater::download_beta_update,
             beta_updater::install_beta_update,

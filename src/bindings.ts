@@ -42,6 +42,8 @@ export const commands = {
 	sendPaceNotification: (title: string, body: string) => typedError<null, string>(__TAURI_INVOKE("send_pace_notification", { title, body })),
 	finishOnboarding: (openSettings: boolean) => typedError<null, string>(__TAURI_INVOKE("finish_onboarding", { openSettings })),
 	resetOnboarding: () => typedError<null, string>(__TAURI_INVOKE("reset_onboarding")),
+	getReleaseNotes: () => typedError<ReleaseNotes[], string>(__TAURI_INVOKE("get_release_notes")),
+	dismissWhatsNew: () => typedError<null, string>(__TAURI_INVOKE("dismiss_whats_new")),
 	checkBetaUpdate: () => typedError<{
 	version: string,
 } | null, string>(__TAURI_INVOKE("check_beta_update")),
@@ -166,6 +168,17 @@ export type ProbeResult = {
 };
 
 export type ProgressFormat = { kind: "percent" } | { kind: "dollars" } | { kind: "count"; suffix: string };
+
+export type ReleaseNotes = {
+	version: string,
+	summary: string,
+	sections: ReleaseNotesSection[],
+};
+
+export type ReleaseNotesSection = {
+	title: string,
+	items: string[],
+};
 
 export type TrayRectInput = {
 	x: number | null,
