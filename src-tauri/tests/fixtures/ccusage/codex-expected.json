@@ -1,0 +1,50 @@
+{
+  "daily": [
+    {
+      "cachedInputTokens": 30,
+      "costUSD": 0.0013352499999999998,
+      "date": "2026-07-10",
+      "inputTokens": 120,
+      "models": {
+        "gpt-5.3-codex": {
+          "cachedInputTokens": 30,
+          "inputTokens": 120,
+          "isFallback": false,
+          "outputTokens": 80,
+          "reasoningOutputTokens": 8,
+          "totalTokens": 268
+        }
+      },
+      "outputTokens": 80,
+      "reasoningOutputTokens": 8,
+      "totalTokens": 268
+    },
+    {
+      "cachedInputTokens": 0,
+      "costUSD": 0.00015000000000000001,
+      "date": "2026-07-11",
+      "inputTokens": 40,
+      "models": {
+        "gpt-5": {
+          "cachedInputTokens": 0,
+          "inputTokens": 40,
+          "isFallback": true,
+          "outputTokens": 10,
+          "reasoningOutputTokens": 0,
+          "totalTokens": 50
+        }
+      },
+      "outputTokens": 10,
+      "reasoningOutputTokens": 0,
+      "totalTokens": 50
+    }
+  ],
+  "totals": {
+    "cachedInputTokens": 30,
+    "costUSD": 0.0014852499999999998,
+    "inputTokens": 160,
+    "outputTokens": 90,
+    "reasoningOutputTokens": 8,
+    "totalTokens": 318
+  }
+}
