@@ -6549,7 +6549,6 @@ dependencies = [
  "ccusage-vendor",
  "dirs 6.0.0",
  "keylight",
- "libc",
  "log",
  "mac-notification-sys",
  "objc2",

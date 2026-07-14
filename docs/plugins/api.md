@@ -562,9 +562,17 @@ handling.
 - **In-process**: The ccusage v20.0.2 core is vendored into the app and runs inside the host. **No Node or Bun process is spawned**, nothing is downloaded from a package registry, and the app works with no package manager installed. (Before v0.7.x this shelled out to `bunx ccusage@20.0.2`, falling back through `pnpm dlx`/`yarn dlx`/`npm exec`/`npx`.)
 - **Provider-aware**: Resolves provider from `opts.provider` or plugin id (`claude`/`codex`)
 - **Focused queries**: Loads only the requested provider's data; it never aggregates across all detected agents
-- **No provider API calls, and no network at all**: Usage is computed from local JSONL session files, and pricing comes from tables embedded in the app
+- **No provider API calls, and no network at all**: Usage is computed from local JSONL session files, and pricing comes from a table embedded in the app. See the trade-off below.
 - **One query per provider at a time**: A second concurrent query for the same provider returns `runner_failed` rather than queuing
-- **Pricing**: ccusage's LiteLLM pricing data, embedded at build time
+- **Time-bounded**: A query is capped at 15 seconds (less, if the plugin's probe budget is shorter). A load that exceeds it returns `runner_failed`.
+
+### Pricing freshness
+
+Pricing comes from a LiteLLM snapshot embedded in the app at build time. Nothing is fetched at runtime, so costs are deterministic and work offline — but they are only as fresh as that snapshot.
+
+The consequence, for Codex specifically: Codex session files carry no cost, so cost is always computed from the pricing table. **A model released after the embedded snapshot is not in the table, and its usage is priced at $0** — the day still reports its tokens, but contributes nothing to spend. There is no error and no log line; the number is simply low.
+
+Claude session files usually carry a pre-baked cost, which is preferred when present, so Claude is much less exposed to this.
 
 ### DailyUsage
 

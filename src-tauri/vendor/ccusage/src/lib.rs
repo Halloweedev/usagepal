@@ -53,12 +53,7 @@ mod terminal_stub;
 mod types;
 mod utils;
 
-use std::{
-    ffi::OsString,
-    fmt,
-    path::Path,
-    sync::{Mutex, MutexGuard},
-};
+use std::{cell::RefCell, env::VarError, ffi::OsString, fmt, path::Path};
 
 use serde_json::json;
 
@@ -153,43 +148,78 @@ pub use cli::{CostMode, SharedArgs, SortOrder};
 /// A cached/refreshable pricing source is Task 4's job, not a flag flip here.
 const OFFLINE_PRICING: bool = true;
 
-/// Serializes the wrappers below. They must mutate process-wide environment
-/// variables (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`) because that is the only
-/// channel the vendored path resolvers accept a home override through
-/// (`claude_loader::claude_paths`, `codex_loader::codex_home_paths`) — the
-/// subprocess set the same two variables, just on the child. `setenv` races
-/// concurrent `getenv` in the same process, so all env mutation and all
-/// reads of it happen under this one lock.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+// ---------------------------------------------------------------------------
+// Home override channel
+//
+// The vendored path resolvers take a home directory override from an
+// environment variable — `claude_loader::claude_paths` reads
+// `CLAUDE_CONFIG_DIR`, `codex_loader::codex_home_paths` reads `CODEX_HOME`.
+// That was fine for the `bunx ccusage` subprocess this crate replaces: it set
+// those variables on the *child*.
+//
+// In-process it is not. `setenv`/`getenv` are not thread-safe, this is a
+// Tauri/Cocoa/WebKit process where non-Rust threads call `getenv` with no
+// synchronization we could participate in, and `usagepal` itself reads the
+// environment concurrently (`host_api::read_env_from_process` backs a
+// whitelisted JS API whose whitelist literally includes `CODEX_HOME` and
+// `CLAUDE_CONFIG_DIR`). A Rust-side mutex cannot make that sound — which is
+// exactly why `std::env::set_var` became `unsafe` in edition 2024. So this
+// crate never mutates the process environment.
+//
+// Instead the two resolvers call `crate::env_var` instead of `std::env::var`
+// (a one-token edit each; recorded in VENDORING.md under "Local
+// modifications"), and `env_var` consults this thread-local first. The
+// override is set by the wrapper, on the thread that runs the load, and is
+// cleared when the wrapper returns. Both resolvers are called synchronously on
+// that same thread — `claude_paths()` at the top of
+// `load_daily_summaries_inner`, `codex_usage_paths()` at the top of
+// `adapter::codex::load_groups`, both before any `thread::scope` — so the
+// override is always visible where it is read, and is invisible to every other
+// thread in the process.
+// ---------------------------------------------------------------------------
 
-fn env_lock() -> MutexGuard<'static, ()> {
-    ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner())
+thread_local! {
+    static HOME_OVERRIDE: RefCell<Option<(&'static str, OsString)>> = const { RefCell::new(None) };
 }
 
-/// Sets an environment variable for the lifetime of the guard, restoring the
-/// previous value (or unsetting it) on drop. Only constructed while `ENV_LOCK`
-/// is held.
-struct EnvVarGuard {
-    key: &'static str,
-    previous: Option<OsString>,
-}
-
-impl EnvVarGuard {
-    fn set(key: &'static str, value: Option<&Path>) -> Option<Self> {
-        let value = value?;
-        let previous = std::env::var_os(key);
-        // Safe here (this crate is edition 2021) and race-free (ENV_LOCK held).
-        std::env::set_var(key, value);
-        Some(Self { key, previous })
+/// Drop-in for `std::env::var`, called by the vendored path resolvers in place
+/// of it. Returns the thread-local home override when one is set for `key`,
+/// and otherwise defers to the real environment (so a user's own
+/// `CLAUDE_CONFIG_DIR` still works when no override is in effect, exactly as
+/// the bare CLI would).
+///
+/// Non-UTF-8 overrides surface as `VarError::NotUnicode`, the same error
+/// `std::env::var` would give for a non-UTF-8 environment value — the
+/// resolvers' `if let Ok(..)` then falls through to the default home
+/// directory, unchanged.
+pub(crate) fn env_var(key: &str) -> std::result::Result<String, VarError> {
+    let overridden = HOME_OVERRIDE.with(|slot| match &*slot.borrow() {
+        Some((override_key, value)) if *override_key == key => Some(value.clone()),
+        _ => None,
+    });
+    match overridden {
+        Some(value) => value.into_string().map_err(VarError::NotUnicode),
+        None => std::env::var(key),
     }
 }
 
-impl Drop for EnvVarGuard {
+/// Sets the calling thread's home override for the lifetime of the guard.
+struct HomeOverrideGuard;
+
+impl HomeOverrideGuard {
+    fn set(key: &'static str, value: Option<&Path>) -> Self {
+        HOME_OVERRIDE.with(|slot| {
+            *slot.borrow_mut() = value.map(|path| (key, path.as_os_str().to_os_string()));
+        });
+        Self
+    }
+}
+
+impl Drop for HomeOverrideGuard {
     fn drop(&mut self) {
-        match self.previous.take() {
-            Some(previous) => std::env::set_var(self.key, previous),
-            None => std::env::remove_var(self.key),
-        }
+        HOME_OVERRIDE.with(|slot| {
+            *slot.borrow_mut() = None;
+        });
     }
 }
 
@@ -221,16 +251,15 @@ fn daily_shared_args(since: Option<&str>, until: Option<&str>) -> SharedArgs {
 /// `commands/mod.rs:31-57`) for the non-`--instances` case: load, then
 /// `filter_and_sort_summaries`, then `{daily, totals}`.
 ///
-/// `home` overrides `CLAUDE_CONFIG_DIR` (the loader's own override channel);
-/// `None` means "resolve the user's real Claude directories", exactly as the
-/// bare CLI would.
+/// `home` overrides `CLAUDE_CONFIG_DIR` for this thread only (see "Home
+/// override channel" above); `None` means "resolve the user's real Claude
+/// directories", exactly as the bare CLI would.
 pub fn claude_daily_json(
     home: Option<&Path>,
     since: Option<&str>,
     until: Option<&str>,
 ) -> std::result::Result<serde_json::Value, String> {
-    let _lock = env_lock();
-    let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", home);
+    let _home = HomeOverrideGuard::set("CLAUDE_CONFIG_DIR", home);
 
     let shared = daily_shared_args(since, until);
     let mut rows =
@@ -257,15 +286,14 @@ pub fn claude_daily_json(
 /// (`insert_event_key`) does not. Feeding it would double-count events
 /// duplicated across session files. See VENDORING.md, "Local modifications".
 ///
-/// `home` overrides `CODEX_HOME`; `None` resolves the user's real Codex
-/// directory.
+/// `home` overrides `CODEX_HOME` for this thread only (see "Home override
+/// channel" above); `None` resolves the user's real Codex directory.
 pub fn codex_daily_json(
     home: Option<&Path>,
     since: Option<&str>,
     until: Option<&str>,
 ) -> std::result::Result<serde_json::Value, String> {
-    let _lock = env_lock();
-    let _home = EnvVarGuard::set("CODEX_HOME", home);
+    let _home = HomeOverrideGuard::set("CODEX_HOME", home);
 
     let shared = daily_shared_args(since, until);
     let pricing = PricingMap::load(shared.offline, log_level() != Some(0));

@@ -869,7 +869,7 @@ fn consume_ascii_digits(bytes: &[u8], index: &mut usize) -> bool {
 pub(crate) fn claude_paths() -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     let mut seen = FxHashSet::default();
-    if let Ok(env_paths) = env::var("CLAUDE_CONFIG_DIR") {
+    if let Ok(env_paths) = crate::env_var("CLAUDE_CONFIG_DIR") {
         for raw in env_paths
             .split(',')
             .map(str::trim)

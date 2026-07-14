@@ -20,7 +20,18 @@ compact_str = "0.9"
 phf = { version = "0.13", features = ["macros"] }
 rustc-hash = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# THE ONE DEVIATION FROM UPSTREAM'S DEPENDENCY LIST (upstream declares plain
+# `serde_json = "1"`). See VENDORING.md, "Local modifications" item 4.
+#
+# `usagepal` enables `float_roundtrip` (src-tauri/Cargo.toml). Cargo unifies
+# features across the graph, so building this crate as part of the app turns
+# `float_roundtrip` on inside it whether or not it is declared here — meaning
+# the vendored loader in production parses JSONL floats with a *different*
+# parser than upstream's own `cargo test` would. Declaring it here is what
+# makes `cargo test -p ccusage-vendor` (which does not unify) exercise the
+# same parser production does. Without it, this crate's 40 upstream tests —
+# including the `insta` snapshot — silently test a configuration nobody ships.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 smallvec = "1"
 ureq = { version = "3.3.0", default-features = false, features = ["rustls"] }
 

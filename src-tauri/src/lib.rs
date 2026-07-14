@@ -8,8 +8,11 @@ mod onboarding;
 mod openrouter_key;
 mod panel;
 mod keylight;
-// `pub` so the `ccusage_differential` integration test (an external crate) can
-// reach `plugin_engine::ccusage::query_daily`, the vendored loader's entrypoint.
+// `pub` only so the `ccusage_differential` integration test (an external crate)
+// can reach `plugin_engine::ccusage::query_daily`, the vendored loader's
+// entrypoint. `#[doc(hidden)]` says what that `pub` means: this is not public
+// API, it is a test seam. Nothing outside this crate and that test should use it.
+#[doc(hidden)]
 pub mod plugin_engine;
 mod tray;
 mod whats_new;

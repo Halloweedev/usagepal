@@ -97,7 +97,7 @@ fn detect_codex_fast_service_tier() -> bool {
 }
 
 fn codex_home_paths() -> Vec<PathBuf> {
-    if let Ok(paths) = env::var("CODEX_HOME") {
+    if let Ok(paths) = crate::env_var("CODEX_HOME") {
         return paths
             .split(',')
             .map(str::trim)

@@ -112,7 +112,7 @@ pub(crate) fn codex_usage_paths() -> Result<Vec<PathBuf>> {
 }
 
 fn codex_home_paths() -> Result<Vec<PathBuf>> {
-    if let Ok(env_paths) = env::var("CODEX_HOME") {
+    if let Ok(env_paths) = crate::env_var("CODEX_HOME") {
         return Ok(env_paths
             .split(',')
             .map(str::trim)

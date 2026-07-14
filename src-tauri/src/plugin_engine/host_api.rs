@@ -37,6 +37,11 @@ const WHITELISTED_ENV_VARS: [&str; 19] = [
     "CLINE_API_KEY",
 ];
 const MIN_BLOCKING_TIMEOUT: Duration = Duration::from_millis(1);
+/// Ceiling on a single ccusage load, clamped further by the probe deadline.
+/// Same 15s the `bunx ccusage` subprocess allowed each attempt before killing
+/// its process group — ccusage is the longest host call in a probe, and a huge
+/// or network-mounted `~/.claude` must not pin a probe worker indefinitely.
+const CCUSAGE_TIMEOUT: Duration = Duration::from_secs(15);
 
 // Redaction patterns are compiled once and reused. They previously recompiled
 // on every call — `redact_body` alone built ~6 fixed regexes plus one per
@@ -1763,25 +1768,22 @@ fn resolve_ccusage_provider(opts: &CcusageQueryOpts, plugin_id: &str) -> Ccusage
         .unwrap_or(CcusageProvider::Claude)
 }
 
+/// Trims and discards blank strings — the shape every `CcusageQueryOpts` field
+/// is normalized with before it reaches the loader.
+fn non_blank(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
 fn ccusage_home_override<'a>(
     opts: &'a CcusageQueryOpts,
     provider: CcusageProvider,
 ) -> Option<&'a str> {
-    if let Some(home_path) = opts
-        .home_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(home_path) = non_blank(opts.home_path.as_deref()) {
         return Some(home_path);
     }
 
     match provider {
-        CcusageProvider::Claude => opts
-            .claude_path
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty()),
+        CcusageProvider::Claude => non_blank(opts.claude_path.as_deref()),
         CcusageProvider::Codex => None,
     }
 }
@@ -1835,44 +1837,69 @@ fn run_ccusage_query(opts_json: &str, plugin_id: &str, deadline: ProbeDeadline) 
     };
     let provider = resolve_ccusage_provider(&opts, plugin_id);
 
-    if deadline.has_elapsed() {
+    // Bounds the load, and doubles as the "probe budget already spent" check:
+    // `clamp_duration` yields `None` once the deadline has elapsed.
+    let Some(timeout) = deadline.clamp_duration(CCUSAGE_TIMEOUT) else {
         log_probe_deadline_skip(plugin_id, "ccusage");
         return runner_failed();
-    }
+    };
 
-    // Still needed without a subprocess: the vendored loaders take their home
-    // directory through a process-wide env var, so two concurrent queries for
-    // the same provider would race each other's override.
-    let Some(_active_query) = CcusageQueryGuard::acquire(provider) else {
+    // Bounds concurrency to one in-flight load per provider. That is what makes
+    // abandoning a timed-out load safe: without it, every probe cycle would
+    // start *another* full scan of the same slow directory and the threads
+    // would pile up. It also keeps the pre-existing contract that a second
+    // concurrent same-provider query returns `runner_failed` rather than
+    // queueing. The guard is moved into the worker below, so a load that
+    // outlives its timeout still holds it until it actually finishes.
+    let Some(active_query) = CcusageQueryGuard::acquire(provider) else {
         log::warn!("[plugin:{}] ccusage query already running", plugin_id);
         return runner_failed();
     };
 
     let home = ccusage_home_override(&opts, provider).map(expand_path);
-    let trimmed = |value: Option<&'_ str>| -> Option<String> {
-        value
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-    };
-    let since = trimmed(opts.since.as_deref());
-    let until = trimmed(opts.until.as_deref());
+    let since = non_blank(opts.since.as_deref()).map(str::to_string);
+    let until = non_blank(opts.until.as_deref()).map(str::to_string);
 
     log::info!("[plugin:{}] ccusage query via vendored loader", plugin_id);
 
-    match ccusage::query_daily(
-        provider.into(),
-        home.as_deref().map(Path::new),
-        since.as_deref(),
-        until.as_deref(),
-    ) {
-        Ok(data) => serde_json::json!({ "status": "ok", "data": data }).to_string(),
-        Err(e) => {
+    // The load runs on its own thread so the probe worker can stop waiting on
+    // it. An in-process loader cannot be killed the way the old subprocess's
+    // process group could, so a load that blows the deadline is abandoned, not
+    // cancelled: it keeps running, and drops `active_query` when it finishes.
+    // The vendored home override is a thread-local set inside `query_daily`, so
+    // it lands on this worker thread — not the caller's.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _active_query = active_query;
+        let result = ccusage::query_daily(
+            provider.into(),
+            home.as_deref().map(Path::new),
+            since.as_deref(),
+            until.as_deref(),
+        );
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(data)) => serde_json::json!({ "status": "ok", "data": data }).to_string(),
+        Ok(Err(e)) => {
             log::warn!(
                 "[plugin:{}] ccusage query failed: {}",
                 plugin_id,
                 redact_log_message(&e)
             );
+            runner_failed()
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            log::warn!(
+                "[plugin:{}] ccusage query timed out after {:?}; abandoning the load",
+                plugin_id,
+                timeout
+            );
+            runner_failed()
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            log::warn!("[plugin:{}] ccusage loader panicked", plugin_id);
             runner_failed()
         }
     }
@@ -3344,6 +3371,16 @@ mod tests {
             CcusageQueryGuard::acquire(CcusageProvider::Codex).is_some(),
             "guard should release on drop"
         );
+    }
+
+    /// The load is bounded, and the bound is the probe's, not just the 15s
+    /// ceiling: an already-spent budget must refuse the query outright rather
+    /// than start an unbounded, uninterruptible scan on a probe worker.
+    #[test]
+    fn ccusage_query_refuses_to_start_once_the_probe_deadline_is_spent() {
+        let response = run_ccusage_query("{}", "claude", ProbeDeadline::at(Instant::now()));
+
+        assert_eq!(response, r#"{"status":"runner_failed"}"#);
     }
 
     #[test]

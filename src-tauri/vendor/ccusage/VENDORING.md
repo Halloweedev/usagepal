@@ -207,13 +207,15 @@ nothing calls them directly yet") — none of that changed.
 
 ## Local modifications
 
-Four categories, per the brief's own permitted-edit rule ("deleting a `mod
+Six categories, per the brief's own permitted-edit rule ("deleting a `mod
 x;` line... must be recorded here") plus the honest accounting of
-everything this exercise's discovered cut-line problems required:
+everything this exercise's discovered cut-line problems required.
 
-0. **Visibility widening in a vendored file** (Task 3). `src/adapter/codex.rs`
-   — the **only** edit to any file under "Files taken", and the only one Task 3
-   needed. Two functions changed from private `fn` to `pub(crate) fn`:
+**Every edit to a file under "Files taken" is in item 0 or item 0b. There are
+five such edits, across three files, and all five are single tokens.**
+
+0. **Visibility widening in a vendored file** (Task 3). `src/adapter/codex.rs`.
+   Two functions changed from private `fn` to `pub(crate) fn`:
 
    - `report_from_groups` (upstream line 61)
    - `load_groups` (upstream line 121) — its signature also reflows onto three
@@ -246,9 +248,60 @@ everything this exercise's discovered cut-line problems required:
 
    The CLI's key omits `session_id`, so it collapses an event duplicated across
    two session files; the test helper's key keeps both. On real user data that
-   is a silent over-report. The differential corpus happens not to contain a
-   cross-session duplicate, so **the gate cannot catch this** — it is a
-   reachability/semantics argument, not a test result. Take the CLI's path.
+   is a silent over-report. Take the CLI's path.
+
+   **This is now pinned by a test** (Task 3 review fix). It used to be only a
+   reachability argument: the differential corpus contained no cross-session
+   duplicate, so both paths produced identical output on it and a refactor back
+   to `report_json` would have stayed green. `tests/fixtures/ccusage/codex/
+   sessions/session-c.jsonl` is a byte-for-byte copy of `session-b.jsonl` — the
+   same event in a second session file — and `codex-expected.json` (re-captured
+   from the real `ccusage@20.0.2` binary with the new corpus in place, and
+   byte-identical to what it was, because the real binary collapses the
+   duplicate) therefore only matches the CLI's dedupe key. Verified by switching
+   `codex_daily_json` to the `report_json` path: the gate fails, doubling that
+   day's cost.
+
+0b. **Home override channel: `env::var` → `crate::env_var`** (Task 3 review
+   fix). Three call sites, one token each, in three vendored files:
+
+   | file | line (upstream) | edit |
+   |---|---|---|
+   | `src/claude_loader.rs` | 872, in `claude_paths` | `env::var("CLAUDE_CONFIG_DIR")` → `crate::env_var("CLAUDE_CONFIG_DIR")` |
+   | `src/codex_loader.rs` | 115, in `codex_home_paths` | `env::var("CODEX_HOME")` → `crate::env_var("CODEX_HOME")` |
+   | `src/adapter/codex.rs` | 100, in its own private `codex_home_paths` | `env::var("CODEX_HOME")` → `crate::env_var("CODEX_HOME")` |
+
+   Nothing else changed — not the comma-splitting, not the normalization, not
+   the error messages, not the fall-through to the default home directory.
+   `crate::env_var` (in `lib.rs`, not vendored) is a drop-in for
+   `std::env::var`: it returns a thread-local override when one is set for that
+   key and otherwise defers to the real environment, so with no override in
+   effect these three functions behave exactly as upstream.
+
+   **Why:** these three are the only channel the vendored code accepts a home
+   directory override through. The `bunx ccusage` subprocess we replaced set
+   `CLAUDE_CONFIG_DIR`/`CODEX_HOME` on the *child*, which was free. In-process,
+   the first cut of Task 3 set them on *this* process under a mutex. That is
+   unsound and was reverted: a Rust mutex cannot exclude `getenv` calls from the
+   Cocoa/WebKit threads in a Tauri process, nor from `usagepal`'s own
+   `host_api::read_env_from_process` (which backs a JS API whose whitelist
+   includes both of these variables) — which is precisely why `std::env::set_var`
+   became `unsafe` in edition 2024. The crate now never writes the process
+   environment. See `lib.rs`, "Home override channel", for the threading
+   argument (both resolvers run on the calling thread, before any
+   `thread::scope`, so the thread-local is always visible where it is read).
+
+   **`adapter/codex.rs`'s copy is easy to miss and expensive to miss.** It is a
+   *third*, private `codex_home_paths` — distinct from `codex_loader.rs`'s — and
+   it feeds `detect_codex_fast_service_tier()`, which reads
+   `<CODEX_HOME>/config.toml` to decide whether to apply Codex's **2× fast-tier
+   cost multiplier**. Routing only the two loaders and not this one leaves it
+   reading the *real* `~/.codex/config.toml` while the loaders read the override
+   — so a machine whose real config sets `service_tier = "fast"` doubles every
+   Codex dollar figure, with correct token counts. The differential gate caught
+   exactly that during the review fix. If a future upstream bump adds another
+   `env::var("CODEX_HOME")` / `env::var("CLAUDE_CONFIG_DIR")` reader, it must be
+   routed here too; `grep -rn 'env::var' src/` is the check.
 
 1. **Pruned `mod` lines**: `src/adapter/mod.rs`. Upstream declares 15
    `pub(crate) mod` provider lines (`all`, `amp`, `codebuff`, `codex`,
@@ -344,12 +397,40 @@ everything this exercise's discovered cut-line problems required:
    - `Cargo.toml`, `rustfmt.toml` — this crate's own manifest/format config,
      naturally not upstream files.
 
-**Exactly one file under "Files taken" has been edited, and only its
-visibility:** `adapter/codex.rs`, two `fn` → `pub(crate) fn` tokens (item 0
-above). `git diff` against a fresh `v20.0.2` checkout of every *other* file
-under "Files taken" is empty, and for `adapter/codex.rs` the diff contains
-those two tokens plus the one signature reflow they force — no logic, no
-types, no tests.
+4. **`serde_json`'s `float_roundtrip` feature is enabled** (Task 3 review fix) —
+   the one deviation from upstream's dependency list, which declares plain
+   `serde_json = "1"`. This is a manifest edit, not a vendored-source edit, but
+   it changes vendored *behavior*, so it is recorded here.
+
+   `usagepal` enables `float_roundtrip` (`src-tauri/Cargo.toml`) because
+   serde_json's default float parser is not correctly rounded and can land 1 ULP
+   from the nearest double — which silently corrupts money values (it reads the
+   differential fixture's `0.00015000000000000001` back as `0.00015`, a
+   different double).
+
+   Cargo unifies features across the dependency graph, so building this crate as
+   part of the app turns `float_roundtrip` on **inside it** whether or not this
+   manifest asks for it. Declaring it here changes nothing about the app; what it
+   changes is `cargo test -p ccusage-vendor`, which does *not* unify features.
+   Without this line, this crate's 40 upstream tests — including the `insta`
+   snapshot — parse floats with a different parser than the one production ships,
+   i.e. they test a configuration nobody runs. With it, they test what ships.
+
+   The deviation is therefore deliberate and one-directional: it makes the
+   vendored loader's float parsing *more* accurate than upstream's default, in
+   the app and in the tests alike. Upstream's own test expectations still pass
+   (all 40, verified), so it is not a semantic change to any vendored logic — but
+   it is a real change, and a future upstream bump should re-confirm those 40
+   tests still pass with it on.
+
+**Three files under "Files taken" have been edited. Five tokens, total.**
+`adapter/codex.rs` (two `fn` → `pub(crate) fn`, item 0, plus one
+`env::var` → `crate::env_var`, item 0b), `claude_loader.rs` and
+`codex_loader.rs` (one `env::var` → `crate::env_var` each, item 0b). `git diff`
+against a fresh `v20.0.2` checkout of every *other* file under "Files taken" is
+empty; for these three it contains exactly those five tokens plus the one
+signature reflow the `pub(crate) ` on `load_groups` forces past rustfmt's
+100-column limit. No logic, no types, no tests, no error messages.
 
 ## Public API (consumed by `usagepal`'s `plugin_engine/ccusage.rs`)
 
@@ -401,18 +482,29 @@ Two things the wrappers own, which upstream got from its CLI/process context:
   same numbers without the network call, and it makes each query deterministic
   and offline-safe. A cached/refreshable pricing source is Task 4's job.
 
-`home` is passed by temporarily setting `CLAUDE_CONFIG_DIR` / `CODEX_HOME` —
-process-wide, because that is the only channel the vendored path resolvers
-(`claude_loader::claude_paths`, `codex_loader::codex_home_paths`) accept an
-override through. The subprocess set the same two variables, just on the child.
-`setenv` races a concurrent `getenv`, so a single crate-level `ENV_LOCK` mutex
-guards every wrapper call, and an `EnvVarGuard` restores the previous value on
-drop. (`std::env::set_var` is safe to call here: this crate is edition 2021.)
+- **`home`** is passed through a **thread-local override**, not the process
+  environment. The three vendored resolvers that accept a home override read it
+  via `crate::env_var` instead of `std::env::var` (Local modifications, item 0b);
+  `env_var` returns the calling thread's override when one is set and otherwise
+  defers to the real environment. The wrapper sets the override, runs the load,
+  and clears it on the way out.
+
+  **This crate never calls `std::env::set_var`.** An earlier cut of Task 3 did —
+  process-wide, under a mutex — and that was unsound: the mutex excluded other
+  ccusage queries and nothing else, while `usagepal` is a Tauri/Cocoa/WebKit
+  process whose non-Rust threads call `getenv` unsynchronized, and whose own
+  `host_api::read_env_from_process` (backing a whitelisted JS env API that
+  includes `CODEX_HOME` and `CLAUDE_CONFIG_DIR`) reads it concurrently on probe
+  workers. That is the hazard `set_var` became `unsafe` for in edition 2024;
+  being edition 2021 here changes what the compiler demands, not what is true.
+  Pinned by `tests/ccusage_differential.rs::
+  query_daily_never_exposes_the_home_override_in_the_process_environment`.
 
 ## Dependencies added (`vendor/ccusage/Cargo.toml`)
 
 Versions copied exactly from upstream's
-`rust/crates/ccusage/Cargo.toml` at the pinned commit (not upgraded):
+`rust/crates/ccusage/Cargo.toml` at the pinned commit (not upgraded). Exactly one
+line deviates, and it is marked:
 
 ```
 jiff = { version = "0.2.24", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
@@ -421,7 +513,7 @@ compact_str = "0.9"
 phf = { version = "0.13", features = ["macros"] }
 rustc-hash = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }   # DEVIATES: upstream is plain `serde_json = "1"`. See "Local modifications" item 4.
 smallvec = "1"
 ureq = { version = "3.3.0", default-features = false, features = ["rustls"] }
 ```
@@ -456,9 +548,18 @@ separate crate, not a module" — fixed there via `src-tauri/Cargo.toml`'s new
 1. Clone the new upstream tag.
 2. Diff its `rust/crates/ccusage/src/` against `src/` in this crate for each
    file listed under "Files taken" above (now including `adapter/codex.rs`)
-   — should be empty for the pinned commit, **except** `adapter/codex.rs`'s two
-   `fn` → `pub(crate) fn` visibility widenings (see "Local modifications" item
-   0). For a new tag, everything else in the diff is the real changelog to read.
+   — should be empty for the pinned commit, **except** the five tokens in
+   "Local modifications" items 0 and 0b: two `fn` → `pub(crate) fn` in
+   `adapter/codex.rs`, and one `env::var` → `crate::env_var` in each of
+   `adapter/codex.rs`, `claude_loader.rs`, `codex_loader.rs`. For a new tag,
+   everything else in the diff is the real changelog to read.
+
+   Then re-run `grep -rn 'env::var' src/` on the new tag. Every reader of
+   `CODEX_HOME` or `CLAUDE_CONFIG_DIR` must go through `crate::env_var`, or the
+   home override silently stops applying to it — which is not a crash but a wrong
+   number (see item 0b: the reader in `adapter/codex.rs` gates a 2× cost
+   multiplier). Readers of anything else (`HOME`, `XDG_CONFIG_HOME`, `LOG_LEVEL`)
+   are left alone deliberately: the subprocess never overrode those either.
 3. If `adapter/codex.rs`'s imports changed (new symbols, or existing ones
    moving between `report_json`/`aggregate_events`/etc. and `run`/
    `print_table`), redo the reachability check in "The cut line": anything
