@@ -7,6 +7,22 @@ edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+# Explicit workspace, root package included implicitly. Without this table,
+# Cargo treats `vendor/ccusage` (a path dependency) as an external crate for
+# `cargo test -p`/dev-dependency purposes, not a workspace member — even
+# though it lives inside this directory tree and is built as part of every
+# `cargo build`/`cargo test --lib` here. That distinction only bites once a
+# path dependency has its own `[dev-dependencies]` (added for
+# `ccusage-vendor`'s vendored `insta` snapshot test): `cargo test -p
+# ccusage-vendor` then fails with "cannot be tested because it requires
+# dev-dependencies and is not a member of the workspace". Declaring the
+# workspace explicitly (root package + `vendor/ccusage`) fixes that, with no
+# other observable effect — `vendor/ccusage/Cargo.lock` did not previously
+# exist as a separate lockfile; everything already resolved through this
+# crate's single `Cargo.lock`.
+[workspace]
+members = ["vendor/ccusage"]
+
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.

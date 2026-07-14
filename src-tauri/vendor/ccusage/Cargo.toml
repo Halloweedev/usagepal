@@ -23,3 +23,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 smallvec = "1"
 ureq = { version = "3.3.0", default-features = false, features = ["rustls"] }
+
+# Only needed by the `#[cfg(test)]` snapshot test that came in with vendored
+# `adapter/codex.rs` (`insta::assert_json_snapshot!`). Version pinned to
+# exactly what upstream `rust/crates/ccusage/Cargo.toml`'s `[dev-dependencies]`
+# declares for it, same rule as everything else in this file.
+[dev-dependencies]
+insta = { version = "1.47.2", features = ["json"] }

@@ -18,6 +18,14 @@
 //! `pub(crate)` declaration being contradicted), and it means Task 3 doesn't
 //! need to touch this file to construct/read a `SharedArgs` from the
 //! `usagepal` crate.
+//!
+//! Added for `adapter/codex.rs` (see VENDORING.md "The cut line" update):
+//! `AgentCommandArgs` (upstream `cli.rs` lines 117-124),
+//! `AgentReportKind` (lines 126-132), `CodexSpeed` (lines 147-153), and
+//! `WeekDay` (lines 188-197) — copied verbatim, same as the rest of this
+//! file, with only the same `pub(crate)` -> `pub` widening applied
+//! throughout. Do not simplify or reorder these: a changed field or
+//! default here would silently rewrite users' Codex numbers.
 
 use std::path::PathBuf;
 
@@ -67,4 +75,40 @@ pub enum SortOrder {
     Desc,
     #[default]
     Asc,
+}
+
+#[derive(Clone)]
+pub struct AgentCommandArgs {
+    pub shared: SharedArgs,
+    pub kind: AgentReportKind,
+    pub pi_path: Option<String>,
+    pub open_claw_path: Option<String>,
+    pub codex_speed: CodexSpeed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentReportKind {
+    Daily,
+    Weekly,
+    Monthly,
+    Session,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum CodexSpeed {
+    #[default]
+    Auto,
+    Standard,
+    Fast,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WeekDay {
+    Sunday,
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
 }

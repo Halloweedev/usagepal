@@ -38,13 +38,28 @@ via its own `#![allow(clippy::all, dead_code, unused)]` (see `src/lib.rs`)
 and its own `rustfmt.toml`.
 
 `src-tauri/Cargo.toml` depends on it as `ccusage-vendor = { path =
-"vendor/ccusage" }`. Because `usagepal`'s `Cargo.toml` has no `[workspace]`
-table, this path dependency makes Cargo treat `usagepal` as the root of an
-implicit workspace with `ccusage-vendor` as a member — this is normal Cargo
-behavior for path dependencies, not something we configured. `usagepal`'s
-`src/lib.rs` was **not** modified to add `mod vendor;` — there's no module
-to declare; `usagepal` code reaches this crate via `use ccusage_vendor::...`,
-which is Task 3's job (see "What Task 3 gets").
+"vendor/ccusage" }`. `usagepal`'s `src/lib.rs` was **not** modified to add
+`mod vendor;` — there's no module to declare; `usagepal` code reaches this
+crate via `use ccusage_vendor::...`, which is Task 3's job (see "What Task 3
+gets").
+
+**Correction (Task 2 review fix, when `adapter/codex.rs` was vendored):**
+this file originally claimed a path dependency alone makes Cargo treat
+`usagepal` as the root of an implicit workspace with `ccusage-vendor` as a
+full member. That's wrong — a path dependency without an explicit
+`[workspace]` table is built as part of every `cargo build`, but is *not* a
+workspace member for `cargo test -p`/dev-dependency purposes. That
+distinction was invisible while `ccusage-vendor` had zero `[dev-dependencies]`
+(so `cargo test -p ccusage-vendor` "happened" to work), and broke the moment
+one was added for the vendored `insta` snapshot test that came in with
+`adapter/codex.rs` — the error is literally "cannot be tested because it
+requires dev-dependencies and is not a member of the workspace". Fixed by
+adding a real `[workspace]` table to `src-tauri/Cargo.toml`:
+`members = ["vendor/ccusage"]` (the root package is an implicit member of
+its own workspace once `[workspace]` exists, so it doesn't need to be
+listed). No other observable effect — there was never a separate
+`vendor/ccusage/Cargo.lock`; everything already resolves through this
+crate's single root `Cargo.lock`.
 
 ## Files taken (byte-identical to upstream)
 
@@ -75,38 +90,51 @@ From `rust/crates/ccusage/src/` at the pinned commit, copied with no changes:
 - `litellm-pricing-fallback.json`, `fast-multiplier-overrides.json` — data
   files `pricing.rs` embeds via `include_str!`, placed alongside it exactly
   as upstream does.
+- `adapter/codex.rs` — Codex daily/weekly/monthly/session aggregation and
+  the exact daily-JSON shape upstream's `ccusage codex daily --json` prints
+  (`report_json`, `aggregate_events`, `calculate_group_cost`,
+  `filter_events_by_date`, `calculate_codex_model_cost`, plus the CLI-only
+  `run`/`print_table` halves — see "The cut line" below for why the whole
+  file is taken, CLI halves included). Vendored **2026-07-14 (review fix)**,
+  after initially being left out; added `src/adapter/mod.rs` (not
+  byte-identical — see "Local modifications") to declare it, plus its own
+  upstream unit tests, including one `insta` snapshot test (`src/adapter/
+  snapshots/`, renamed for this crate's name — see "Local modifications").
 
 `models-dev-pricing.json` does not exist at v20.0.2 (confirmed against the
 pinned commit); it is a HEAD-only file and out of scope here.
 
 ## What was deliberately NOT taken, and why
 
-- **`main.rs`, `cli.rs`, `config.rs`, `config_schema.rs`, `output.rs`,
-  `progress.rs`'s CLI callers, `blocks.rs`, `summary.rs`, `commands/`,
-  `bin/`** — argument parsing, config-file handling, and terminal
-  rendering, as instructed.
-- **The entire `adapter/` directory (all 15 providers, including `codex`)**
-  — see "The cut line" below. This is the one place this vendoring
-  deliberately diverges from the brief's stated expectation ("prune 14 of
-  15 `mod` lines, keep `codex`"), for reasons discovered only by tracing the
-  actual dependency graph.
+- **`main.rs`, `cli.rs` (mostly — see "The cut line" for the four types now
+  extracted from it), `config.rs`, `config_schema.rs`, `output.rs`,
+  `progress.rs`'s CLI callers, `blocks.rs`, `summary.rs` (mostly — see
+  below), `commands/`, `bin/`** — argument parsing, config-file handling,
+  and terminal rendering, as instructed.
+- **14 of the 15 providers in `adapter/`** (`all`, `amp`, `codebuff`,
+  `copilot`, `droid`, `gemini`, `goose`, `hermes`, `kilo`, `kimi`,
+  `openclaw`, `opencode`, `pi`, `qwen`) — only `codex` is needed by Task 3;
+  see "The cut line".
 - **`project_names.rs`** — not referenced (directly or transitively) by any
   file in "Files taken"; confirmed via `grep` across the whole set. Not
   vendored because nothing needs it.
 - **`cli-help.json`, `bin/generate_config_schema.rs`** — belong to `cli.rs`
   / `config_schema.rs`, not taken with them.
 
-## The cut line: why `adapter/codex.rs` is NOT vendored
+## The cut line: `adapter/codex.rs` IS vendored, byte-identical
+
+**This section originally concluded `adapter/codex.rs` could not be
+vendored at all. That conclusion was wrong, and this is the corrected
+version, written for the Task 2 review fix that vendored it.**
 
 The brief's framing was: `adapter/mod.rs` declares 15 `pub(crate) mod`
-provider lines; prune 14, keep `codex`. That undersold the actual coupling.
-`adapter/codex.rs` mixes two things in one file: pure data functions
-(`aggregate_events`, `load_groups`, `calculate_group_cost`,
+provider lines; prune 14, keep `codex`. The file mixes two things: pure
+data functions (`aggregate_events`, `load_groups`, `calculate_group_cost`,
 `calculate_codex_model_cost`, `filter_events_by_date`, and — importantly —
 `report_json`, which builds the exact daily-JSON shape upstream's
 `ccusage codex daily --json` prints) with CLI-only functions (`run`,
-`print_table`). Rust compiles whole files, so taking the pure functions
-means also compiling the CLI ones, whose imports are:
+`print_table`, from ~line 549). Rust compiles whole files, so taking the
+pure functions means also compiling the CLI ones, whose imports are:
 
 ```
 cli::{AgentCommandArgs, AgentReportKind, CodexSpeed, SharedArgs, WeekDay}
@@ -118,43 +146,96 @@ week_start                                  // summary.rs
 Align, Color, SimpleTable                   // ccusage_terminal (external workspace crate)
 ```
 
-`Align`/`Color`/`SimpleTable` are not defined anywhere in `rust/crates/
-ccusage/src` at all — they live in a *separate* workspace crate,
-`ccusage-terminal` (`main.rs`: `pub(crate) use ccusage_terminal::{Align,
-Color, SimpleTable};`), which is terminal table/color rendering, is not
-part of this repo, and is squarely "argument parsing and terminal
-rendering" — the exact category the brief says to exclude. Taking
-`adapter/codex.rs` byte-identical would require either vendoring that
-external crate too, or vendoring `output.rs` (banned) + `cli.rs` (banned,
-and itself requires `config.rs` → `config_schema.rs` → the `schemars`
-crate, i.e. the CLI's config-file system) + `summary.rs` (banned) — i.e.
-exactly the "transitively pulls in the whole CLI" scenario the brief warns
-about and says to stop and reconsider at.
+The original mistake was treating "Rust needs these symbols to exist" as
+equivalent to "we must vendor (or hand-port) their real behavior." It
+doesn't: `Align`/`Color`/`SimpleTable`, `color`/`print_box_title`,
+`print_json_or_jq`/`wants_json`, and `format_currency`/
+`format_models_multiline`/`format_number` are referenced **only** inside
+`run`/`print_table` — the CLI-rendering half — which is never called from
+this crate or from `codex.rs`'s own `#[cfg(test)] mod tests`. They only
+need to type-check, so they're supplied as **inert stubs living outside the
+vendored file**, each `unimplemented!()`, in two new non-vendored modules:
 
-Given that, `adapter/mod.rs` is not vendored at all (not even pruned down to
-zero lines) — no file in "Files taken" references `adapter::` anything, so
-there is nothing to satisfy by keeping an empty shell of it.
+- `src/terminal_stub.rs` — `Align`, `Color`, `SimpleTable`, `color`,
+  `print_box_title` (stands in for the external `ccusage-terminal`
+  workspace crate, which is not part of this repo).
+- `src/output_stub.rs` — `wants_json`, `print_json_or_jq`,
+  `format_currency`, `format_models_multiline`, `format_number` (stand in
+  for upstream `output.rs`, which is not vendored).
 
-**Consequence for Task 3**: there is no vendored, upstream-verbatim
-day-bucketing/report-JSON logic for Codex. Task 3 must build daily summaries
-for Codex from `load_codex_events`'s raw `CodexTokenUsageEvent` list itself,
-using `PricingMap`/`calculate_cost_for_usage` (both vendored) for costing.
-This is real, nontrivial porting work with correctness risk (it's exactly
-what `ccusage_differential.rs`'s Codex case exists to catch) — flagged
-prominently in the Task 2 report, not quietly absorbed here.
+Two more imports — `json_float` (from `output.rs`) and `week_start` (from
+`summary.rs`) — are **not** in that unreachable set: `json_float` is called
+by `group_json`/`totals_json`, both called from `report_from_groups`, which
+`report_json` calls directly; `week_start` is called directly by
+`aggregate_events` for `AgentReportKind::Weekly`. Both are on the
+pure-data path the review named explicitly, and both are exercised by
+`codex.rs`'s own snapshot test (which covers daily/weekly/monthly/session).
+Stubbing either would silently produce wrong week buckets or wrong dollar
+figures that still pass a differential gate blind to Weekly/Monthly/Session
+reports. So they are **not** stubs: `src/report_support.rs` reproduces both
+verbatim from upstream `output.rs`/`summary.rs` (unedited logic, just
+relocated, since taking either file whole is still out of scope). Their own
+dependencies (`parse_iso_date`, `format_naive_date`, `IsoDate::
+weekday_from_sunday`) were already vendored byte-identical in
+`date_utils.rs`, so nothing further needed porting.
+
+The `cli::{AgentCommandArgs, AgentReportKind, CodexSpeed, WeekDay}` types
+are handled differently again: they're real upstream `cli.rs` struct/enum
+declarations (not stub-able logic, not pure functions to port), so they were
+added to this crate's existing `src/cli.rs` shim, copied verbatim (see
+"Local modifications").
+
+Net result: `adapter/codex.rs` is vendored **byte-identical** — `diff`
+against the pinned upstream commit is empty. Its CLI-rendering half
+compiles but can never run in this crate (nothing calls `run`/`print_table`,
+and their stubbed dependencies would panic if it ever did); its pure-data
+half is 100% real, either vendored-with-the-file or ported verbatim
+alongside it. `report_json`, `aggregate_events`, `calculate_group_cost`,
+`filter_events_by_date`, and `calculate_codex_model_cost` are all correct by
+construction — none of them were hand-ported.
+
+`adapter/mod.rs` **is** vendored in the loose sense (it exists, and exists
+to declare `codex`), but is not byte-identical to upstream: upstream
+declares 15 `pub(crate) mod` provider lines, this declares 1
+(`pub(crate) mod codex;`). See "Local modifications".
+
+**Consequence for Task 3**: none, for aggregation logic — Task 3 gets real,
+vendored `report_json`/`aggregate_events`/etc. to build on, not a
+hand-port. Task 3 still has to write the `Provider`/`query_daily` glue and
+map errors to `usagepal`'s error types (per the brief, "Task 3 wraps them;
+nothing calls them directly yet") — none of that changed.
 
 ## Local modifications
 
-Two categories, per the brief's own permitted-edit rule ("deleting a `mod
+Three categories, per the brief's own permitted-edit rule ("deleting a `mod
 x;` line... must be recorded here") plus the honest accounting of
 everything this exercise's discovered cut-line problems required:
 
-1. **Pruned `mod` lines**: N/A as a literal edit to `adapter/mod.rs` — that
-   file was never vendored (see "The cut line"). If it had been taken and
-   pruned to zero lines, the effect is identical; it just isn't a file that
-   exists in this tree to point at.
+1. **Pruned `mod` lines**: `src/adapter/mod.rs`. Upstream declares 15
+   `pub(crate) mod` provider lines (`all`, `amp`, `codebuff`, `codex`,
+   `copilot`, `droid`, `gemini`, `goose`, `hermes`, `kilo`, `kimi`,
+   `openclaw`, `opencode`, `pi`, `qwen`); this crate declares one
+   (`pub(crate) mod codex;`), with the remaining line copied unedited. This
+   is the brief's explicitly permitted edit type, applied for real once
+   `adapter/codex.rs` was actually vendored (Task 2 review fix;
+   originally N/A because nothing in `adapter/` was taken at all — see "The
+   cut line").
 
-2. **Files in this crate that are NOT vendored** (i.e., not claimed to be
+2. **Renamed (not edited) test fixture**: `src/adapter/snapshots/
+   ccusage_vendor__adapter__codex__tests__snapshots_codex_reports_for_periods_sessions_costs_and_fallback_models.snap`.
+   Byte-identical in content to upstream's `adapter/snapshots/
+   ccusage__adapter__codex__tests__...snap`; only the filename's crate-name
+   prefix changed (`ccusage` → `ccusage_vendor`, i.e. this crate's
+   `CARGO_CRATE_NAME`), because `insta` derives the expected snapshot
+   filename from the crate name, and ours differs from upstream's. The
+   `source:` metadata line inside the file still reads
+   `crates/ccusage/src/adapter/codex.rs` (upstream's path) — left as-is;
+   `insta` doesn't validate that field against the actual path, it's purely
+   informational for human reviewers, so "correcting" it would be an
+   edit with no effect and would make the file harder to trace back to its
+   real upstream origin.
+
+3. **Files in this crate that are NOT vendored** (i.e., not claimed to be
    byte-identical to any upstream file — all local logic/glue, called out
    explicitly so a future `diff` against upstream isn't mistaken for a
    vendoring change):
@@ -163,13 +244,29 @@ everything this exercise's discovered cut-line problems required:
      provide to sibling modules (`Result`/`CliError`, crate-root
      re-exports) plus the `pub` surface Task 3 calls through (see below).
    - `src/cli.rs` — **not** upstream's `cli.rs`. It reproduces, verbatim,
-     only the struct/enum text of upstream `cli.rs` lines 42–186
+     only the struct/enum text of upstream `cli.rs` lines 42–197
      (`SharedArgs`, `impl SharedArgs::with_defaults`, `CostMode`,
-     `SortOrder`) — the minimum needed for `claude_loader.rs` /
-     `codex_loader.rs` / `cost.rs`'s unedited `use crate::cli::{...}` to
-     resolve, without the ~2300 remaining lines of argument parsing / help
-     text / `config.rs` integration. See "The cut line" reasoning above —
-     the same reasoning applies to why full `cli.rs` isn't taken.
+     `SortOrder`, and — added for the Task 2 review fix that vendored
+     `adapter/codex.rs` — `AgentCommandArgs`, `AgentReportKind`,
+     `CodexSpeed`, `WeekDay`) — the minimum needed for `claude_loader.rs` /
+     `codex_loader.rs` / `cost.rs` / `adapter/codex.rs`'s unedited
+     `use crate::cli::{...}` to resolve, without the ~2300 remaining lines
+     of argument parsing / help text / `config.rs` integration. Every
+     added type is copied verbatim (fields, derives, defaults unchanged —
+     `CodexSpeed::Auto` and `SortOrder::Asc`/`CostMode::Auto` remain the
+     `#[default]`s exactly as upstream declares them), with only the same
+     `pub(crate)` → `pub` visibility widening already applied to the rest
+     of this file. See "The cut line" for why full `cli.rs` isn't taken.
+   - `src/terminal_stub.rs`, `src/output_stub.rs` — new (Task 2 review fix).
+     Inert, `unimplemented!()` stand-ins for CLI-rendering symbols
+     `adapter/codex.rs` imports (see "The cut line" for exactly which
+     symbols and the reachability argument for why stubbing them is safe).
+   - `src/report_support.rs` — new (Task 2 review fix). `json_float`
+     (from upstream `output.rs`) and `week_start` (from upstream
+     `summary.rs`), reproduced verbatim, not stubbed — both are reachable
+     from `adapter/codex.rs`'s pure-data path (see "The cut line").
+   - `src/adapter/mod.rs` — new (Task 2 review fix), not byte-identical;
+     see item 1 above.
    - `build.rs` — upstream's `build.rs` also generates `cli-help.rs` (moot,
      we don't take `cli.rs`'s help text) and fetches live LiteLLM pricing
      over the network for `pricing.rs`'s `BUILD_TIME_PRICING_JSON`. Ours
@@ -187,7 +284,8 @@ everything this exercise's discovered cut-line problems required:
      naturally not upstream files.
 
 **No file under "Files taken" above was edited.** `git diff` against a
-fresh `v20.0.2` checkout of those specific files is empty.
+fresh `v20.0.2` checkout of those specific files (now including
+`adapter/codex.rs`) is empty.
 
 ## Public API for Task 3 (`plugin_engine/ccusage.rs`)
 
@@ -207,9 +305,13 @@ required no change to any vendored file):
   `calculate_usage_cost` for call-site readability — no new logic)
 
 This is visibility plumbing only. It does not implement `Provider`,
-`query_daily`, error mapping to `usagepal`'s error types, or Codex daily
-aggregation — that is Task 3's work, per the brief ("Task 3 wraps them;
-nothing calls them directly yet").
+`query_daily`, or error mapping to `usagepal`'s error types — that is Task
+3's work, per the brief ("Task 3 wraps them; nothing calls them directly
+yet"). `adapter::codex` (containing `report_json`, `aggregate_events`, etc.)
+is declared `pub(crate) mod codex;` in `src/adapter/mod.rs` but is not yet
+re-exported from `src/lib.rs` at all — deliberately: widening its
+visibility for Task 3 to call through is Task 3's own change to make, not
+bundled into this fix.
 
 ## Dependencies added (`vendor/ccusage/Cargo.toml`)
 
@@ -243,16 +345,32 @@ confirmed unreferenced by `grep` across the vendored set), `mimalloc`
 `[dependencies]` — each crate resolves its own dependency graph; Cargo
 unifies compatible versions in the shared `Cargo.lock` automatically.
 
+**Added for the Task 2 review fix** (vendoring `adapter/codex.rs`):
+`[dev-dependencies] insta = { version = "1.47.2", features = ["json"] }` —
+same version upstream's `[dev-dependencies]` pins, needed because
+`adapter/codex.rs`'s own `#[cfg(test)] mod tests` (vendored unedited, along
+with everything else in the file) calls `insta::assert_json_snapshot!`.
+This is the first `[dev-dependencies]` entry in this crate, which is what
+surfaced the workspace-membership issue described above under "Structure:
+separate crate, not a module" — fixed there via `src-tauri/Cargo.toml`'s new
+`[workspace]` table, not by avoiding the dependency.
+
 ## Merging upstream
 
 1. Clone the new upstream tag.
 2. Diff its `rust/crates/ccusage/src/` against `src/` in this crate for each
-   file listed under "Files taken" above — should be empty for the pinned
-   commit; for a new tag, this is the real changelog to read.
-3. Re-check "The cut line": if `adapter/codex.rs`'s dependency on
-   `ccusage-terminal`/`output.rs`/`cli.rs` has narrowed upstream, re-evaluate
-   whether Codex daily aggregation can be vendored directly instead of
-   ported by hand in the adapter layer.
+   file listed under "Files taken" above (now including `adapter/codex.rs`)
+   — should be empty for the pinned commit; for a new tag, this is the real
+   changelog to read.
+3. If `adapter/codex.rs`'s imports changed (new symbols, or existing ones
+   moving between `report_json`/`aggregate_events`/etc. and `run`/
+   `print_table`), redo the reachability check in "The cut line": anything
+   still reachable only from `run`/`print_table` stays a stub in
+   `terminal_stub.rs`/`output_stub.rs`; anything reachable from the
+   pure-data path must be ported verbatim into `report_support.rs` (or a
+   sibling module), never stubbed. If `cli.rs`'s `AgentCommandArgs`/
+   `AgentReportKind`/`CodexSpeed`/`WeekDay` change shape, re-copy them
+   verbatim into `src/cli.rs` — do not hand-adjust.
 4. Read the diff for behavior changes that move dollar figures — see the
    four listed in
    `docs/superpowers/specs/2026-07-13-pricing-and-native-scanners-design.md`.

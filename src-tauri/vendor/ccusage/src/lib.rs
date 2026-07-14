@@ -26,7 +26,16 @@
 //! that file's header) — its `SharedArgs`/`CostMode`/`SortOrder` are
 //! declared genuinely `pub` here at no cost, so at least those are already
 //! usable across the crate boundary.
+//!
+//! `adapter` (containing the vendored `adapter/codex.rs`) needs three
+//! additional non-vendored modules to satisfy its unedited `use crate::{...}`
+//! imports: `terminal_stub` and `output_stub` (inert, unreachable-from-the-
+//! pure-data-path stand-ins for CLI/terminal rendering symbols) and
+//! `report_support` (two small functions that ARE reachable from the
+//! pure-data path and are ported verbatim, not stubbed). See each module's
+//! header and `VENDORING.md` ("The cut line") for the full reasoning.
 
+mod adapter;
 mod cli;
 mod claude_loader;
 mod codex_loader;
@@ -35,8 +44,11 @@ mod date_utils;
 mod fast;
 mod home;
 mod logger;
+mod output_stub;
 mod pricing;
 mod progress;
+mod report_support;
+mod terminal_stub;
 mod types;
 mod utils;
 
@@ -84,7 +96,12 @@ pub(crate) use codex_loader::{codex_usage_paths, load_codex_events, visit_codex_
 pub(crate) use cost::{calculate_cost, calculate_cost_for_usage};
 pub(crate) use date_utils::*;
 pub(crate) use logger::{debug_log, log_level};
+pub(crate) use output_stub::{
+    format_currency, format_models_multiline, format_number, print_json_or_jq, wants_json,
+};
 pub(crate) use pricing::PricingMap;
+pub(crate) use report_support::{json_float, week_start};
+pub(crate) use terminal_stub::{color, print_box_title, Align, Color, SimpleTable};
 pub(crate) use types::*;
 pub(crate) use utils::{
     apply_total_token_fallback, json_value_u64, non_empty_json_string, total_usage_tokens,
