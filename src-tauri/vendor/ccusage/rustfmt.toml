@@ -1,0 +1,5 @@
+# This whole crate is vendored (or, for lib.rs/cli.rs/build.rs, hand-written
+# glue kept deliberately unformatted-by-us — see VENDORING.md). Never let
+# `cargo fmt` rewrite it; that would destroy the byte-identical diff against
+# upstream that makes future merges tractable.
+ignore = ["src", "build.rs"]

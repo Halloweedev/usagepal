@@ -1,0 +1,6 @@
+# The vendored ccusage core (src-tauri/vendor/ccusage) must stay
+# byte-identical to upstream so future merges are a readable diff. It is
+# its own crate (see vendor/ccusage/VENDORING.md, "Structure"), and carries
+# its own rustfmt.toml, but this entry keeps it excluded here too in case
+# `cargo fmt` / an editor ever formats relative to this file instead.
+ignore = ["vendor"]
