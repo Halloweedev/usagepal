@@ -37,7 +37,13 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `float_roundtrip`: serde_json's DEFAULT float parser is not correctly rounded
+# — it can land 1 ULP away from the nearest double. That silently corrupts money
+# values: the `ccusage_differential` fixture's `0.00015000000000000001` parses to
+# `0.00015` (a different double) without this feature, which made the gate report
+# a bogus diff against a loader whose output is in fact bit-identical to
+# ccusage@20.0.2's. Costs are f64 all the way to the UI, so we want exact parsing.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 time = { version = "0.3.47", features = ["formatting"] }
 dirs = "6"

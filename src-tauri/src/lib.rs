@@ -8,7 +8,9 @@ mod onboarding;
 mod openrouter_key;
 mod panel;
 mod keylight;
-mod plugin_engine;
+// `pub` so the `ccusage_differential` integration test (an external crate) can
+// reach `plugin_engine::ccusage::query_daily`, the vendored loader's entrypoint.
+pub mod plugin_engine;
 mod tray;
 mod whats_new;
 
