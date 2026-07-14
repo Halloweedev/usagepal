@@ -366,6 +366,24 @@ pub fn global() -> Option<&'static PricingCache> {
     GLOBAL.get()
 }
 
+/// Test-only seeder for [`GLOBAL`]: installs a cache **without** starting the
+/// refresh ticker, so nothing calling this can ever reach [`fetch`]. Unlike
+/// [`init`], which is the app's one entry point that fetches, this is the
+/// app's one entry point that deliberately never does — callers pass an
+/// unreachable `endpoint` and a [`test_fixtures::temp_dir`] guard so a lookup
+/// through `GLOBAL` is served purely from the embedded snapshot, the same
+/// guarantee direct `PricingCache` instances get from [`PricingCache::rates_for`]
+/// never touching the network.
+///
+/// `GLOBAL` is a process-wide `OnceLock` shared by the whole `--lib` test
+/// binary, so only the first caller across all tests actually installs
+/// anything; later calls are silent no-ops, matching [`init`]'s own
+/// already-initialized behavior.
+#[doc(hidden)]
+pub fn init_for_tests(dir: &Path, endpoint: &str) {
+    let _ = GLOBAL.set(PricingCache::with_endpoint(dir, endpoint));
+}
+
 /// Free-function wrapper around [`PricingCache::rates_for`] for callers (like
 /// `host_api::inject_pricing`) that only have the process-wide cache, not an
 /// instance. `None` both when the model is unknown and when [`init`] has not

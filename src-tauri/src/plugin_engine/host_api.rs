@@ -2848,16 +2848,23 @@ mod tests {
     #[test]
     fn pricing_lookup_returns_rates_for_known_model_and_null_for_unknown_model() {
         // `host.pricing.lookup` reads through `pricing_cache::global()`, which
-        // is `None` until `init` runs (only `lib.rs`'s Tauri setup calls it in
-        // production, before any plugin probe). Seed it here the same way, on a
-        // cold temp dir, so the lookup is served from the embedded snapshot —
-        // deterministic, no network dependency for this assertion.
-        pricing_cache::init(&std::env::temp_dir());
+        // is `None` until something seeds it (only `lib.rs`'s Tauri setup calls
+        // the real `init` in production, before any plugin probe). Seed it here
+        // with `init_for_tests` instead of `init`: it installs the global
+        // without starting the refresh ticker, so nothing this test does can
+        // ever reach `fetch`. A guarded, unique temp dir (not the shared
+        // `std::env::temp_dir()`) plus an unreachable endpoint means a cold
+        // cache is genuinely served from the embedded snapshot — deterministic,
+        // no network dependency, and no cross-test coupling through a leftover
+        // cache file.
+        let pricing_dir = pricing_cache::test_fixtures::temp_dir("host-api-pricing");
+        pricing_cache::init_for_tests(&pricing_dir, "http://127.0.0.1:1/");
 
         let rt = Runtime::new().expect("runtime");
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
-            let app_data = std::env::temp_dir();
+            let app_data_dir = pricing_cache::test_fixtures::temp_dir("host-api-pricing-app-data");
+            let app_data = app_data_dir.to_path_buf();
             inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
 
             let input_rate: f64 = ctx
@@ -3386,8 +3393,15 @@ mod tests {
     /// `host.pricing` carries only a model name in and USD-per-million rates
     /// out — confirmed here, rather than assumed, that neither is
     /// credential-shaped: none of the four output field names collide with
-    /// `SENSITIVE_JSON_KEYS`, and passing the pricing payload (and a model
-    /// name) through the existing redaction functions leaves them untouched.
+    /// `SENSITIVE_JSON_KEYS`, and a model name passes the existing log
+    /// redaction unchanged.
+    ///
+    /// No `redact_body` assertion here: `SENSITIVE_JSON_KEY_RES` only ever
+    /// matches quoted *string* values (`"key":\s*"([^"]+)"`), so a numeric
+    /// pricing payload passes `redact_body` untouched regardless of whether
+    /// any of these field names were ever added to `SENSITIVE_JSON_KEYS` —
+    /// that call could not fail for the reason it would appear to check, so
+    /// it is not included as a load-bearing assertion.
     #[test]
     fn pricing_lookup_fields_are_not_credential_shaped_and_are_never_redacted() {
         for field in ["input", "output", "cacheWrite", "cacheRead"] {
@@ -3402,14 +3416,6 @@ mod tests {
             redact_log_message(model),
             model,
             "a model name is not a secret and must pass through log redaction unchanged"
-        );
-
-        let response_json =
-            r#"{"input": 3.0, "output": 15.0, "cacheWrite": 3.75, "cacheRead": 0.3}"#;
-        assert_eq!(
-            redact_body(response_json),
-            response_json,
-            "a host.pricing.lookup response has nothing to redact"
         );
     }
 
