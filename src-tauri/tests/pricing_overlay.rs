@@ -15,39 +15,14 @@
 //! figure.
 
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 
-use usagepal_lib::plugin_engine::ccusage::{Provider, query_daily};
-
-/// Chosen so that neither direction of ccusage v20.0.2's bidirectional
-/// substring matcher (`model.contains(key) || key.contains(model)`) can pair it
-/// with any embedded key — if it prices at all, it priced from the overlay.
-const OVERLAY_ONLY_MODEL: &str = "zzz-future-model-20260101";
-
-const OVERLAY: &str = r#"{
-  "zzz-future-model-20260101": {
-    "input_cost_per_token": 0.000002,
-    "output_cost_per_token": 0.00001,
-    "cache_creation_input_token_cost": 0.0000025,
-    "cache_read_input_token_cost": 0.0000002
-  }
-}"#;
-
-fn temp_home(name: &str) -> PathBuf {
-    let suffix = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock before unix epoch")
-        .as_nanos();
-    let path = std::env::temp_dir().join(format!(
-        "usagepal-{}-{}-{}",
-        name,
-        std::process::id(),
-        suffix
-    ));
-    fs::create_dir_all(&path).expect("create temp home");
-    path
-}
+use usagepal_lib::plugin_engine::ccusage::{query_daily, Provider};
+// The model name, the overlay JSON and the self-cleaning temp dir are shared
+// with `pricing_cache`'s own unit tests, so the two suites cannot drift apart.
+use usagepal_lib::plugin_engine::pricing_cache::test_fixtures::{
+    temp_dir, TempDir, OVERLAY_JSON as OVERLAY, OVERLAY_ONLY_MODEL,
+};
 
 fn write(path: &Path, contents: &str) {
     fs::create_dir_all(path.parent().expect("parent")).expect("create dirs");
@@ -67,8 +42,8 @@ fn total_cost(report: &serde_json::Value) -> f64 {
 
 /// 100 uncached input + 20 cached input + 50 output, on a model no embedded
 /// snapshot prices.
-fn codex_home() -> PathBuf {
-    let home = temp_home("overlay-codex");
+fn codex_home() -> TempDir {
+    let home = temp_dir("overlay-codex");
     write(
         &home.join("sessions").join("session.jsonl"),
         &format!(
@@ -120,7 +95,7 @@ fn codex_prices_an_unknown_model_from_the_overlay() {
 
 #[test]
 fn claude_prices_an_unknown_model_from_the_overlay() {
-    let home = temp_home("overlay-claude");
+    let home = temp_dir("overlay-claude");
     // No `costUSD` on the entry, so `CostMode::Auto` must reach the pricing map.
     write(
         &home.join("projects").join("proj").join("session.jsonl"),
@@ -153,7 +128,7 @@ fn claude_prices_an_unknown_model_from_the_overlay() {
 
 #[test]
 fn an_unparseable_overlay_leaves_the_embedded_prices_intact() {
-    let home = temp_home("overlay-garbage");
+    let home = temp_dir("overlay-garbage");
     write(
         &home.join("sessions").join("session.jsonl"),
         r#"{"timestamp":"2026-07-10T10:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"model":"gpt-5.3-codex","last_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":150},"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":150}}}}

@@ -20,7 +20,7 @@
 //!   pre-baked cost, a model newer than the snapshot renders as **$0 with no
 //!   error** — the exact "silent $0" this work exists to kill.
 //!
-//! Two rules the rest of the app depends on:
+//! Three rules the rest of the app depends on:
 //!
 //! - **An unknown model is `None`, never `Some(zero)`.** A `$0` that means "we
 //!   don't know" must not look like a `$0` that means "free".
@@ -28,14 +28,22 @@
 //!   through cache → embedded. Users on a plane still get prices. This is the
 //!   degradation the design spec sanctions, not a silent fallback hiding a
 //!   problem: nothing is hidden, and no number is invented.
+//! - **Reading a price is a pure in-memory read.** [`PricingCache::rates_for`]
+//!   and [`PricingCache::overlay`] answer from the snapshot already in memory
+//!   and never touch the network or the disk. Refreshing is the job of the
+//!   ticker [`init`] starts, and *only* of that ticker.
 //!
-//! Refreshes never block a caller. `refresh_in_background` spawns; probes are
-//! served from whatever is already in memory (stale-then-refresh).
+//! That last rule is what keeps an app left open for a week current: the ticker
+//! runs on wall-clock time, whether or not anyone is querying, so a user with no
+//! Claude or Codex plugin enabled still gets fresh prices. Tying the refresh to
+//! the read instead would refresh only what happens to be read, and would put a
+//! live GitHub fetch behind every unit test that looks up a rate.
 
+use std::collections::HashMap;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock, PoisonError, RwLock};
 use std::time::{Duration, SystemTime};
 
 use ccusage_vendor::PricingTable;
@@ -45,11 +53,16 @@ const LITELLM_PRICING_URL: &str =
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 /// How long to wait before trying again after a failed fetch. Without this, an
-/// offline machine would re-attempt on every single lookup.
+/// offline machine would re-attempt every time the ticker comes round.
 const RETRY_AFTER_FAILURE: Duration = Duration::from_secs(30 * 60);
+/// How often the refresh ticker wakes up to ask whether a fetch is due. Fine
+/// enough to honor `RETRY_AFTER_FAILURE` promptly, coarse enough to be free.
+const REFRESH_TICK: Duration = Duration::from_secs(15 * 60);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
-/// LiteLLM's file is ~2 MB. This is a boundary guard, not a tight bound.
+/// LiteLLM's file is ~2 MB. This is a boundary guard, not a tight bound — but it
+/// is enforced against the bytes actually read, not against a `Content-Length`
+/// header that a chunked response simply does not send.
 const MAX_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
 const PER_MILLION: f64 = 1_000_000.0;
 
@@ -84,10 +97,43 @@ struct Inner {
     endpoint: String,
     snapshot: RwLock<Arc<Snapshot>>,
     /// Earliest time a fetch may be attempted: `fetched_at + CACHE_TTL` for a
-    /// cache we have, `now` for one we don't, `now + RETRY_AFTER_FAILURE` after
-    /// a failure.
+    /// cache we have, `now` for one we don't (or one that turned out to be
+    /// corrupt), `now + RETRY_AFTER_FAILURE` after a failure.
     next_attempt: RwLock<SystemTime>,
-    refreshing: AtomicBool,
+}
+
+// Both locks guard a plain value swap — no user code runs while either is held,
+// so neither can actually be poisoned. They are read through
+// `PoisonError::into_inner` anyway, because the alternative failure mode is
+// silent and permanent: an `.expect()` here would kill the refresh ticker on the
+// tick after a poisoning, and the app would then serve a frozen price table for
+// the rest of the process's life with nothing logged.
+impl Inner {
+    fn snapshot(&self) -> Arc<Snapshot> {
+        Arc::clone(&self.snapshot.read().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    fn install(&self, snapshot: Snapshot) {
+        *self
+            .snapshot
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = Arc::new(snapshot);
+    }
+
+    fn set_next_attempt(&self, at: SystemTime) {
+        *self
+            .next_attempt
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = at;
+    }
+
+    fn is_due(&self) -> bool {
+        let next_attempt = *self
+            .next_attempt
+            .read()
+            .unwrap_or_else(PoisonError::into_inner);
+        SystemTime::now() >= next_attempt
+    }
 }
 
 pub struct PricingCache {
@@ -105,9 +151,14 @@ impl PricingCache {
     pub fn with_endpoint(dir: &Path, endpoint: &str) -> Self {
         let cache_file = dir.join("pricing").join("litellm-pricing.json");
         let cached = read_cache(&cache_file);
+        let now = SystemTime::now();
         let next_attempt = match cached.as_ref() {
-            Some((_, fetched_at)) => *fetched_at + CACHE_TTL,
-            None => SystemTime::now(),
+            // Clamped, because the file's mtime is not a clock we control: a
+            // restored backup, a sync tool, or a machine whose clock ran fast
+            // can date it in the future, and an unclamped `mtime + TTL` would
+            // then suppress every refresh until wall-clock caught up.
+            Some((_, fetched_at)) => (*fetched_at + CACHE_TTL).min(now + CACHE_TTL),
+            None => now,
         };
         let overlay = cached.map(|(json, _)| Arc::from(json));
 
@@ -117,61 +168,68 @@ impl PricingCache {
                 endpoint: endpoint.to_string(),
                 snapshot: RwLock::new(Arc::new(Snapshot::new(overlay))),
                 next_attempt: RwLock::new(next_attempt),
-                refreshing: AtomicBool::new(false),
             }),
         }
     }
 
     /// Rates for `model`, or `None` if no price is known for it.
     ///
-    /// Answers from what is already in memory and revalidates behind the
-    /// answer — this is the stale-then-refresh read path, so an app left open
-    /// for a week keeps its prices current without any caller having to
-    /// schedule anything.
+    /// A **pure in-memory read**: it answers from the snapshot the ticker last
+    /// installed and performs no network or disk I/O. See the module header.
     pub fn rates_for(&self, model: &str) -> Option<ModelRates> {
-        self.refresh_in_background();
-        self.snapshot().table.lookup(model).map(|rates| ModelRates {
-            input: rates.input * PER_MILLION,
-            output: rates.output * PER_MILLION,
-            cache_write: rates.cache_write * PER_MILLION,
-            cache_read: rates.cache_read * PER_MILLION,
-        })
+        self.inner
+            .snapshot()
+            .table
+            .lookup(model)
+            .map(|rates| ModelRates {
+                input: rates.input * PER_MILLION,
+                output: rates.output * PER_MILLION,
+                cache_write: rates.cache_write * PER_MILLION,
+                cache_read: rates.cache_read * PER_MILLION,
+            })
     }
 
     /// The LiteLLM JSON to overlay onto the vendored loader's embedded pricing,
     /// or `None` when we have never successfully fetched (the loader then uses
-    /// the embedded snapshot alone, exactly as before). Revalidates like
-    /// [`Self::rates_for`].
+    /// the embedded snapshot alone, exactly as before). A pure in-memory read,
+    /// like [`Self::rates_for`].
     pub fn overlay(&self) -> Option<Arc<str>> {
-        self.refresh_in_background();
-        self.snapshot().overlay.clone()
+        self.inner.snapshot().overlay.clone()
     }
 
-    /// Refreshes on another thread if the cache is due, and returns immediately.
-    /// A probe is never made to wait on a network call — the worst a caller
-    /// ever gets is a price up to `RETRY_AFTER_FAILURE` stale.
-    pub fn refresh_in_background(&self) {
-        if !self.is_due() || self.inner.refreshing.swap(true, Ordering::AcqRel) {
-            return;
-        }
+    /// Refreshes the table on its own thread for the life of the process:
+    /// immediately if the cache is cold, stale or corrupt, and thereafter
+    /// whenever it falls due.
+    ///
+    /// This is the **only** thing in the module that fetches. Reads do not, so a
+    /// price a caller never asks for still gets refreshed (a user with no
+    /// Claude or Codex plugin enabled would otherwise go stale after 24h for as
+    /// long as the app stayed open — weeks, for a menubar app), and no test can
+    /// accidentally reach the network by looking up a rate.
+    fn spawn_refresh_ticker(&self) {
         let inner = Arc::clone(&self.inner);
-        std::thread::spawn(move || {
-            refresh(&inner);
-            inner.refreshing.store(false, Ordering::Release);
-        });
+        let spawned = std::thread::Builder::new()
+            .name("pricing-refresh".to_string())
+            .spawn(move || loop {
+                if inner.is_due() {
+                    refresh(&inner);
+                }
+                std::thread::sleep(REFRESH_TICK);
+            });
+        if let Err(err) = spawned {
+            log::warn!(
+                "could not start the pricing refresh ticker ({}); serving cached/embedded prices",
+                err
+            );
+        }
     }
 
-    fn snapshot(&self) -> Arc<Snapshot> {
-        Arc::clone(&self.inner.snapshot.read().expect("pricing snapshot lock"))
-    }
-
+    /// Only the ticker asks this in production (through `Inner`); the tests ask
+    /// it to pin *when* the next fetch is allowed, which is where the corrupt-
+    /// cache and clock-skew bugs live.
+    #[cfg(test)]
     fn is_due(&self) -> bool {
-        let next_attempt = *self
-            .inner
-            .next_attempt
-            .read()
-            .expect("pricing next-attempt lock");
-        SystemTime::now() >= next_attempt
+        self.inner.is_due()
     }
 }
 
@@ -186,28 +244,19 @@ fn refresh(inner: &Inner) -> bool {
                 "LiteLLM pricing fetch failed ({}); serving cached/embedded prices",
                 crate::plugin_engine::host_api::redact_log_message(&err)
             );
-            *inner
-                .next_attempt
-                .write()
-                .expect("pricing next-attempt lock") = SystemTime::now() + RETRY_AFTER_FAILURE;
+            inner.set_next_attempt(SystemTime::now() + RETRY_AFTER_FAILURE);
             return false;
         }
     };
 
     write_cache(&inner.cache_file, &json);
-    *inner.snapshot.write().expect("pricing snapshot lock") =
-        Arc::new(Snapshot::new(Some(Arc::from(json))));
-    *inner
-        .next_attempt
-        .write()
-        .expect("pricing next-attempt lock") = SystemTime::now() + CACHE_TTL;
+    inner.install(Snapshot::new(Some(Arc::from(json))));
+    inner.set_next_attempt(SystemTime::now() + CACHE_TTL);
     log::info!("refreshed model pricing from LiteLLM");
     true
 }
 
-/// The response body, validated as JSON. Everything past this point may assume
-/// the overlay parses — the vendored loader is handed only what got through
-/// here (or what a previous run of it wrote to disk).
+/// The response body, validated as a LiteLLM pricing document.
 fn fetch(endpoint: &str) -> Result<String, String> {
     let mut builder = reqwest::blocking::Client::builder()
         .connect_timeout(CONNECT_TIMEOUT)
@@ -221,26 +270,63 @@ fn fetch(endpoint: &str) -> Result<String, String> {
     if !response.status().is_success() {
         return Err(format!("HTTP {}", response.status().as_u16()));
     }
-    if response.content_length().unwrap_or(0) > MAX_RESPONSE_BYTES {
-        return Err("response too large".to_string());
+    // `Content-Length` is a hint, not a bound: a chunked response carries none at
+    // all, and a hostile one can lie. So the cap is enforced on the bytes we
+    // actually read — `Response::text()` would buffer whatever arrives.
+    let mut body = Vec::new();
+    response
+        .take(MAX_RESPONSE_BYTES + 1)
+        .read_to_end(&mut body)
+        .map_err(|err| err.to_string())?;
+    if body.len() as u64 > MAX_RESPONSE_BYTES {
+        return Err(format!("response exceeded {} bytes", MAX_RESPONSE_BYTES));
     }
-    let body = response.text().map_err(|err| err.to_string())?;
-    serde_json::from_str::<serde_json::Value>(&body)
-        .map_err(|err| format!("response was not valid JSON: {}", err))?;
+    let body = String::from_utf8(body).map_err(|_| "response was not UTF-8".to_string())?;
+    parse_pricing_json(&body)?;
     Ok(body)
+}
+
+/// Checks that `json` is what LiteLLM serves: a non-empty JSON object keyed by
+/// model name.
+///
+/// Deserializing the keys and discarding the values (`IgnoredAny`) validates the
+/// whole document — a truncated file fails at EOF, a tampered one fails at the
+/// bad token — without building and throwing away a ~2 MB `serde_json::Value`
+/// tree. The values are checked where they are actually used, by the vendored
+/// `PricingMap::load_json`.
+fn parse_pricing_json(json: &str) -> Result<(), String> {
+    let models: HashMap<String, serde::de::IgnoredAny> = serde_json::from_str(json)
+        .map_err(|err| format!("not a JSON object of models: {}", err))?;
+    if models.is_empty() {
+        return Err("no models in the pricing JSON".to_string());
+    }
+    Ok(())
 }
 
 /// The cached JSON and when it was written. The file's mtime *is* the fetch
 /// time — there is no sidecar and no wrapper envelope, so the file on disk is
 /// byte-for-byte what LiteLLM served.
+///
+/// The file is a boundary, not a value we can trust: `write_cache`'s
+/// temp-file-plus-rename does not `fsync`, so a power loss can land the rename
+/// without the bytes; a backup or sync tool can put anything there. A corrupt
+/// file that got *accepted* would be doubly bad — the vendored loader would
+/// silently drop it and price from the embedded snapshot alone, while its mtime
+/// held the next fetch a full day away, so nothing would ever repair it. Treat
+/// it as absent instead: warn, and let the caller refetch now.
 fn read_cache(cache_file: &Path) -> Option<(String, SystemTime)> {
     let fetched_at = fs::metadata(cache_file).ok()?.modified().ok()?;
     let json = fs::read_to_string(cache_file).ok()?;
+    if let Err(err) = parse_pricing_json(&json) {
+        log::warn!("discarding corrupt pricing cache ({}); refetching", err);
+        return None;
+    }
     Some((json, fetched_at))
 }
 
-/// Writes via a temp file + rename, so a crash or a full disk can never leave a
-/// truncated file that a later run would read back as pricing.
+/// Writes via a temp file + rename, so a crash or a full disk cannot leave a
+/// half-written file where the cache belongs. (It is not a `fsync`, so it is not
+/// a guarantee against power loss — which is why `read_cache` validates.)
 fn write_cache(cache_file: &Path, json: &str) {
     let Some(parent) = cache_file.parent() else {
         return;
@@ -262,11 +348,14 @@ fn write_cache(cache_file: &Path, json: &str) {
 
 static GLOBAL: OnceLock<PricingCache> = OnceLock::new();
 
-/// Called once at startup with the app data dir.
+/// Called once at startup with the app data dir. Installs the process-wide cache
+/// and starts the refresh ticker — the only entry point that fetches.
 pub fn init(app_data_dir: &Path) {
-    let _ = GLOBAL.set(PricingCache::new(app_data_dir));
+    if GLOBAL.set(PricingCache::new(app_data_dir)).is_err() {
+        return; // already initialized; its ticker is already running
+    }
     if let Some(cache) = global() {
-        cache.refresh_in_background();
+        cache.spawn_refresh_ticker();
     }
 }
 
@@ -277,16 +366,58 @@ pub fn global() -> Option<&'static PricingCache> {
     GLOBAL.get()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Fixtures shared by this module's unit tests and `tests/pricing_overlay.rs`.
+///
+/// Not `#[cfg(test)]`, and that is not an oversight: an integration test is a
+/// separate crate that links this library as a dependency, so it cannot see
+/// this crate's `#[cfg(test)]` items. The choice is a `#[doc(hidden)]` module of
+/// two consts and a temp-dir guard, or two copies of the same overlay JSON free
+/// to drift apart. Nothing in the app calls any of it.
+#[doc(hidden)]
+pub mod test_fixtures {
     use std::fs;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-    use std::path::PathBuf;
+    use std::ops::Deref;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn temp_dir(name: &str) -> PathBuf {
+    /// Chosen so that neither direction of ccusage v20.0.2's bidirectional
+    /// substring matcher (`model.contains(key) || key.contains(model)`) can pair
+    /// it with any embedded key — if it prices at all, it priced from the
+    /// overlay.
+    pub const OVERLAY_ONLY_MODEL: &str = "zzz-future-model-20260101";
+
+    /// LiteLLM-shaped pricing for [`OVERLAY_ONLY_MODEL`]: $2/M in, $10/M out,
+    /// $2.50/M cache write, $0.20/M cache read.
+    pub const OVERLAY_JSON: &str = r#"{
+  "zzz-future-model-20260101": {
+    "input_cost_per_token": 0.000002,
+    "output_cost_per_token": 0.00001,
+    "cache_creation_input_token_cost": 0.0000025,
+    "cache_read_input_token_cost": 0.0000002
+  }
+}"#;
+
+    /// A unique temp directory that deletes itself when the test drops it —
+    /// without one, every `cargo test` run left its directories behind in
+    /// `$TMPDIR`. Derefs to `Path`, so a `&TempDir` is a `&Path` at any call
+    /// site that wants one.
+    pub struct TempDir(PathBuf);
+
+    impl Deref for TempDir {
+        type Target = Path;
+
+        fn deref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    pub fn temp_dir(name: &str) -> TempDir {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock before unix epoch")
@@ -298,32 +429,17 @@ mod tests {
             suffix
         ));
         fs::create_dir_all(&path).expect("create temp dir");
-        path
+        TempDir(path)
     }
+}
 
-    /// A model no embedded-snapshot key can substring-match, so if it prices at
-    /// all, it priced from the overlay.
-    const OVERLAY_ONLY_MODEL: &str = "zzz-future-model-20260101";
-
-    fn overlay_json() -> String {
-        format!(
-            r#"{{"{}": {{"input_cost_per_token": 0.000002, "output_cost_per_token": 0.00001,
-                "cache_creation_input_token_cost": 0.0000025,
-                "cache_read_input_token_cost": 0.0000002}}}}"#,
-            OVERLAY_ONLY_MODEL
-        )
-    }
-
-    /// The rate currently being served, read *without* the revalidation
-    /// `rates_for` performs — so a test can pin what is on offer before a
-    /// refresh lands.
-    fn served_input_rate(cache: &PricingCache, model: &str) -> Option<f64> {
-        cache
-            .snapshot()
-            .table
-            .lookup(model)
-            .map(|rates| rates.input * PER_MILLION)
-    }
+#[cfg(test)]
+mod tests {
+    use super::test_fixtures::{temp_dir, TempDir, OVERLAY_JSON, OVERLAY_ONLY_MODEL};
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use std::net::TcpListener;
 
     fn assert_near(actual: f64, expected: f64) {
         assert!(
@@ -334,28 +450,55 @@ mod tests {
         );
     }
 
+    /// The rate currently being served, read straight off the snapshot, so a
+    /// test can pin what is on offer *before* it drives a refresh by hand.
+    fn served_input_rate(cache: &PricingCache, model: &str) -> Option<f64> {
+        cache
+            .inner
+            .snapshot()
+            .table
+            .lookup(model)
+            .map(|rates| rates.input * PER_MILLION)
+    }
+
+    fn cache_path(dir: &Path) -> PathBuf {
+        dir.join("pricing").join("litellm-pricing.json")
+    }
+
     fn write_cache_file(dir: &Path, json: &str) -> PathBuf {
-        let cache_file = dir.join("pricing").join("litellm-pricing.json");
+        let cache_file = cache_path(dir);
         fs::create_dir_all(cache_file.parent().expect("cache parent")).expect("create cache dir");
         fs::write(&cache_file, json).expect("write cache file");
         cache_file
     }
 
-    fn backdate(cache_file: &Path, age: Duration) {
-        let when = SystemTime::now() - age;
+    fn set_mtime(cache_file: &Path, when: SystemTime) {
         let file = fs::File::options()
             .write(true)
             .open(cache_file)
             .expect("open cache file");
         file.set_times(fs::FileTimes::new().set_modified(when))
-            .expect("backdate cache file");
+            .expect("set cache file mtime");
     }
 
-    /// A one-shot HTTP/1.1 responder on localhost. Keeps the "expired cache
-    /// refetches" test hermetic — no GitHub, no network beyond the loopback.
-    fn serve_once(body: String) -> String {
+    fn backdate(cache_file: &Path, age: Duration) {
+        set_mtime(cache_file, SystemTime::now() - age);
+    }
+
+    fn next_attempt(cache: &PricingCache) -> SystemTime {
+        *cache
+            .inner
+            .next_attempt
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// A one-shot HTTP/1.1 responder on localhost. Keeps the tests that *do*
+    /// exercise a fetch hermetic — no GitHub, no network beyond the loopback.
+    fn serve_once(body: &str) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
         let url = format!("http://{}/pricing.json", listener.local_addr().unwrap());
+        let body = body.to_string();
         std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept");
             let mut request = [0u8; 1024];
@@ -413,6 +556,33 @@ mod tests {
         assert!(cache.rates_for("claude-sonnet-4-5-20250929").is_some());
     }
 
+    /// The read path is pure, and the three tests above depend on it being so:
+    /// each calls `PricingCache::new`, which points at the **production**
+    /// LiteLLM URL, on a cold cache dir. If reading a rate could fetch, they
+    /// would race a live GitHub request under their own assertions — the cold
+    /// test would stop proving the embedded fallback it is named for, and the
+    /// unknown-model test would start depending on what LiteLLM published
+    /// today. Reads do not fetch. This pins that.
+    #[test]
+    fn reading_a_rate_never_fetches() {
+        let dir = temp_dir("pricing-pure-read");
+        let cache = PricingCache::new(&dir);
+        assert!(cache.is_due(), "a cold cache is due for a refresh");
+
+        assert!(cache.rates_for("claude-sonnet-4-5-20250929").is_some());
+        assert!(cache.rates_for(OVERLAY_ONLY_MODEL).is_none());
+        assert!(cache.overlay().is_none());
+
+        assert!(
+            cache.is_due(),
+            "a read must not fetch, and must not schedule or record one"
+        );
+        assert!(
+            !dir.join("pricing").exists(),
+            "a read must not write a cache file"
+        );
+    }
+
     #[test]
     fn a_failed_refresh_leaves_the_embedded_prices_serving() {
         let dir = temp_dir("pricing-offline-refresh");
@@ -422,17 +592,17 @@ mod tests {
         assert!(!refresh(&cache.inner), "the fetch cannot succeed");
 
         // Degraded, not broken: known models still price, nothing was cached,
-        // and the failure backs off instead of retrying on the next lookup.
+        // and the failure backs off instead of retrying on the next tick.
         assert!(cache.rates_for("claude-sonnet-4-5-20250929").is_some());
         assert!(cache.overlay().is_none());
-        assert!(!dir.join("pricing").join("litellm-pricing.json").exists());
+        assert!(!cache_path(&dir).exists());
         assert!(!cache.is_due(), "a failed fetch must back off");
     }
 
     #[test]
     fn a_warm_disk_cache_prices_models_the_embedded_snapshot_has_never_heard_of() {
         let dir = temp_dir("pricing-warm");
-        write_cache_file(&dir, &overlay_json());
+        write_cache_file(&dir, OVERLAY_JSON);
 
         // Endpoint is unreachable on purpose: this must be served from disk.
         let cache = PricingCache::with_endpoint(&dir, "http://127.0.0.1:1/nope.json");
@@ -464,18 +634,16 @@ mod tests {
         let cache_file = write_cache_file(&dir, &stale);
         backdate(&cache_file, Duration::from_secs(25 * 60 * 60));
 
-        let cache = PricingCache::with_endpoint(&dir, &serve_once(overlay_json()));
+        let cache = PricingCache::with_endpoint(&dir, &serve_once(OVERLAY_JSON));
 
-        // Read through `served_input_rate`, not `rates_for`: `rates_for` would
-        // kick the background refresh, which would then race this assertion for
-        // the test server's single connection. This drives the refresh by hand
-        // instead, so the before/after is exact.
         assert_near(
             served_input_rate(&cache, OVERLAY_ONLY_MODEL).expect("the stale cache prices it"),
             1.0,
         );
         assert!(cache.is_due(), "a cache older than the TTL is due");
 
+        // Driven by hand: the ticker only exists once `init` runs, and no test
+        // runs `init`.
         assert!(refresh(&cache.inner), "the refetch must succeed");
 
         assert_near(cache.rates_for(OVERLAY_ONLY_MODEL).unwrap().input, 2.0);
@@ -491,10 +659,91 @@ mod tests {
     #[test]
     fn the_overlay_handed_to_the_vendored_loader_is_the_cached_json() {
         let dir = temp_dir("pricing-overlay");
-        write_cache_file(&dir, &overlay_json());
+        write_cache_file(&dir, OVERLAY_JSON);
         let cache = PricingCache::with_endpoint(&dir, "http://127.0.0.1:1/nope.json");
 
         let overlay = cache.overlay().expect("a warm cache must yield an overlay");
         assert!(overlay.contains(OVERLAY_ONLY_MODEL));
+    }
+
+    /// A cache file that is fresh by its mtime but corrupt in its bytes — a
+    /// power loss between the `rename` and the data reaching the platter, a sync
+    /// tool half-writing it, a bad sector. Trusting it costs a **day**: the
+    /// vendored loader silently drops an unparseable overlay and prices from the
+    /// embedded snapshot alone, while `mtime + TTL` holds the next fetch 24h
+    /// out, so nothing ever repairs the file and nothing is logged. It must
+    /// count as absent and refetch now.
+    #[test]
+    fn a_corrupt_disk_cache_is_discarded_and_refetched_immediately() {
+        let dir = temp_dir("pricing-corrupt");
+        let truncated = &OVERLAY_JSON[..OVERLAY_JSON.len() / 2];
+        let cache_file = write_cache_file(&dir, truncated);
+
+        let cache = PricingCache::with_endpoint(&dir, &serve_once(OVERLAY_JSON));
+
+        assert!(
+            cache.overlay().is_none(),
+            "a corrupt cache must not be handed to the loader as an overlay"
+        );
+        assert!(
+            cache.rates_for("claude-sonnet-4-5-20250929").is_some(),
+            "the embedded snapshot still prices"
+        );
+        assert!(
+            cache.is_due(),
+            "a corrupt cache must refetch now, not in 24 hours"
+        );
+
+        // And the refetch repairs the file rather than leaving it broken.
+        assert!(refresh(&cache.inner), "the refetch must succeed");
+        assert_near(cache.rates_for(OVERLAY_ONLY_MODEL).unwrap().input, 2.0);
+        assert_eq!(
+            fs::read_to_string(&cache_file).unwrap(),
+            OVERLAY_JSON,
+            "the corrupt file must be overwritten by the fetched JSON"
+        );
+    }
+
+    /// A file that parses but carries no models (`{}`, a stray `null`, an array,
+    /// a bare number) is corrupt for our purposes too: it would load zero prices
+    /// and still hold the TTL for a day.
+    #[test]
+    fn an_empty_or_non_object_disk_cache_counts_as_corrupt() {
+        for body in ["{}", "null", "[]", "123"] {
+            let dir = temp_dir("pricing-empty");
+            write_cache_file(&dir, body);
+            let cache = PricingCache::with_endpoint(&dir, "http://127.0.0.1:1/nope.json");
+            assert!(cache.overlay().is_none(), "`{}` is not a pricing map", body);
+            assert!(cache.is_due(), "`{}` must refetch now", body);
+        }
+    }
+
+    /// A cache file dated in the future — a restored backup, a sync tool, a
+    /// clock that ran fast — must not suppress refreshes until wall-clock time
+    /// catches up. `mtime + TTL` is clamped to `now + TTL`.
+    #[test]
+    fn a_future_dated_cache_still_expires_within_the_ttl() {
+        let dir = temp_dir("pricing-future");
+        let cache_file = write_cache_file(&dir, OVERLAY_JSON);
+        let a_year = Duration::from_secs(365 * 24 * 60 * 60);
+        set_mtime(&cache_file, SystemTime::now() + a_year);
+
+        let cache = PricingCache::with_endpoint(&dir, "http://127.0.0.1:1/nope.json");
+
+        assert!(
+            next_attempt(&cache) <= SystemTime::now() + CACHE_TTL,
+            "a future mtime must not push the next fetch past one TTL from now"
+        );
+    }
+
+    /// The guard exists so `cargo test` stops leaving directories in `$TMPDIR`.
+    #[test]
+    fn the_temp_dir_guard_cleans_up_after_itself() {
+        let path: PathBuf = {
+            let dir: TempDir = temp_dir("pricing-cleanup");
+            assert!(dir.exists());
+            dir.to_path_buf()
+        };
+        assert!(!path.exists(), "the temp dir must be removed on drop");
     }
 }

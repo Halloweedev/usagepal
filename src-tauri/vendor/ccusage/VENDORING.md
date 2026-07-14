@@ -476,14 +476,43 @@ six such edits, across three files, and all six are single tokens.**
    it is a real change, and a future upstream bump should re-confirm those 40
    tests still pass with it on.
 
-**Three files under "Files taken" have been edited. Five tokens, total.**
+5. **`log` is declared as a dependency** (Task 4 review fix) — the second
+   deviation from upstream's dependency list, which declares no logging facade
+   at all. Like item 4 this is a manifest edit, not a vendored-source edit, and
+   **no vendored file uses it**: it is used by exactly one line, in the
+   non-vendored `src/lib.rs`.
+
+   That line is in `load_pricing_map` (item 0c). `PricingMap::load_json` returns
+   the number of models it loaded, and `0` means the overlay was unparseable or
+   carried nothing priceable — the only way it can report a failure. The first
+   cut of `load_pricing_map` **discarded that count**, on the stated premise that
+   `pricing_cache` "only ever hands over an overlay it has already parsed". That
+   premise was false: `pricing_cache` validated what it *fetched*, not what it
+   read back off *disk*, so a corrupt cache file reached this call site as a
+   zero-model overlay and was silently dropped. (The disk read now validates too
+   — but a swallowed count is a swallowed error either way, and upstream itself
+   warns at exactly this point: `pricing.rs::load`, `if loaded_count == 0`.)
+
+   Upstream warns with `eprintln!`. That is right for a CLI and useless here:
+   nothing captures a bundled Tauri app's stderr, so the warning would reach no
+   log file and no Sentry — a "loud" failure that is, in practice, silent. `log`
+   is the facade `usagepal` already routes to both, it is already in the
+   workspace's dependency graph (so it adds no build), and using it keeps the
+   project's "no silent fallbacks" rule (AGENTS.md) true at this boundary.
+
+   A future upstream bump can drop this line the moment `load_pricing_map` stops
+   existing; nothing vendored depends on it.
+
+**Three files under "Files taken" have been edited. Six tokens, total.**
 `adapter/codex.rs` (two `fn` → `pub(crate) fn`, item 0, plus one
-`env::var` → `crate::env_var`, item 0b), `claude_loader.rs` and
-`codex_loader.rs` (one `env::var` → `crate::env_var` each, item 0b). `git diff`
-against a fresh `v20.0.2` checkout of every *other* file under "Files taken" is
-empty; for these three it contains exactly those five tokens plus the one
-signature reflow the `pub(crate) ` on `load_groups` forces past rustfmt's
-100-column limit. No logic, no types, no tests, no error messages.
+`env::var` → `crate::env_var`, item 0b), `codex_loader.rs` (one
+`env::var` → `crate::env_var`, item 0b), and `claude_loader.rs` (one
+`env::var` → `crate::env_var`, item 0b, plus one `PricingMap::load` →
+`crate::load_pricing_map`, item 0c). `git diff` against a fresh `v20.0.2`
+checkout of every *other* file under "Files taken" is empty; for these three it
+contains exactly those six tokens plus the one signature reflow the
+`pub(crate) ` on `load_groups` forces past rustfmt's 100-column limit. No logic,
+no types, no tests, no error messages.
 
 ## Public API (consumed by `usagepal`'s `plugin_engine/ccusage.rs`)
 
@@ -556,10 +585,11 @@ Two things the wrappers own, which upstream got from its CLI/process context:
 ## Dependencies added (`vendor/ccusage/Cargo.toml`)
 
 Versions copied exactly from upstream's
-`rust/crates/ccusage/Cargo.toml` at the pinned commit (not upgraded). Exactly one
-line deviates, and it is marked:
+`rust/crates/ccusage/Cargo.toml` at the pinned commit (not upgraded). Two lines
+deviate, and both are marked:
 
 ```
+log = "0.4"                                                      # DEVIATES: upstream declares no logging facade. Used by one line in the NON-vendored src/lib.rs. See "Local modifications" item 5.
 jiff = { version = "0.2.24", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 memchr = "2"
 compact_str = "0.9"

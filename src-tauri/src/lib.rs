@@ -913,8 +913,12 @@ pub fn run() {
             );
 
             // One price source for every provider. Serves the disk cache (or the
-            // embedded snapshot) immediately and refreshes off-thread; nothing
-            // downstream ever waits on a LiteLLM fetch.
+            // embedded snapshot) immediately and starts the refresh ticker that
+            // keeps it current; reading a price never fetches, so nothing
+            // downstream ever waits on a LiteLLM fetch. The one synchronous cost
+            // here is parsing the cached price table — ~8ms on a warm 1.6MB
+            // LiteLLM file (measured, release), which is not worth trading for a
+            // startup window in which the app is up but has no prices to serve.
             plugin_engine::pricing_cache::init(&app_data_dir);
 
             let (_, plugins) = plugin_engine::initialize_plugins(&app_data_dir, &resource_dir);

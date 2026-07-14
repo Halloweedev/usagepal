@@ -182,14 +182,23 @@ const OFFLINE_PRICING: bool = true;
 /// each of the vendored loaders' pricing-map construction sites, so that both
 /// providers pick the overlay up from one place.
 ///
-/// An overlay that yields no models leaves the embedded snapshot untouched.
-/// It is not reported here — `pricing_cache` is the boundary that fetches and
-/// stores the JSON, and it only ever hands over an overlay it has already
-/// parsed, so there is nothing for this crate to warn about.
+/// An overlay that yields **no models** leaves the embedded snapshot untouched —
+/// and is reported, because that is a failure, not a no-op. `load_json` has no
+/// other way to say "I could not use this": it returns the number of models it
+/// loaded, and `0` means the JSON was unparseable or carried nothing priceable.
+/// Upstream warns at exactly this point (`pricing.rs::load`, on the JSON it
+/// fetched itself); so do we, on the JSON we were handed. Callers still get a
+/// working map — the embedded snapshot — but the degradation is on the record
+/// instead of being swallowed.
 pub(crate) fn load_pricing_map(shared: &SharedArgs, log: bool) -> PricingMap {
     let mut map = PricingMap::load(shared.offline, log);
     if let Some(overlay) = shared.pricing_overlay.as_deref() {
-        map.load_json(overlay);
+        if map.load_json(overlay) == 0 {
+            // `::log`, not `log` — this function's own `log: bool` parameter is
+            // in the value namespace and cannot shadow a crate path, but the
+            // absolute path says so at a glance.
+            ::log::warn!("LiteLLM pricing overlay loaded no models; using embedded pricing");
+        }
     }
     map
 }

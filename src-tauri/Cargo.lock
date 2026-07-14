@@ -703,6 +703,7 @@ dependencies = [
  "compact_str",
  "insta",
  "jiff",
+ "log",
  "memchr",
  "phf 0.13.1",
  "rustc-hash",
