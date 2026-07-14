@@ -7,6 +7,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use rquickjs::{function::Rest, Ctx, Exception, Function, Object};
 
 use super::ccusage;
+use super::pricing_cache;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
@@ -1862,6 +1863,15 @@ fn run_ccusage_query(opts_json: &str, plugin_id: &str, deadline: ProbeDeadline) 
 
     log::info!("[plugin:{}] ccusage query via vendored loader", plugin_id);
 
+    // Serve the prices we already have and refresh behind the query — the
+    // loader is pinned offline, so this overlay is the only path a price newer
+    // than its embedded snapshot has into a Claude or Codex cost.
+    let pricing_overlay = pricing_cache::global().map(|cache| {
+        cache.refresh_in_background();
+        cache.overlay()
+    });
+    let pricing_overlay = pricing_overlay.flatten();
+
     // The load runs on its own thread so the probe worker can stop waiting on
     // it. An in-process loader cannot be killed the way the old subprocess's
     // process group could, so a load that blows the deadline is abandoned, not
@@ -1876,6 +1886,7 @@ fn run_ccusage_query(opts_json: &str, plugin_id: &str, deadline: ProbeDeadline) 
             home.as_deref().map(Path::new),
             since.as_deref(),
             until.as_deref(),
+            pricing_overlay.as_deref(),
         );
         let _ = tx.send(result);
     });

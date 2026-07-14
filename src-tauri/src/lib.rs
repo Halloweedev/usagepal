@@ -912,6 +912,11 @@ pub fn run() {
                 redacted_app_data_dir
             );
 
+            // One price source for every provider. Serves the disk cache (or the
+            // embedded snapshot) immediately and refreshes off-thread; nothing
+            // downstream ever waits on a LiteLLM fetch.
+            plugin_engine::pricing_cache::init(&app_data_dir);
+
             let (_, plugins) = plugin_engine::initialize_plugins(&app_data_dir, &resource_dir);
             let known_plugin_ids: Vec<String> =
                 plugins.iter().map(|p| p.manifest.id.clone()).collect();

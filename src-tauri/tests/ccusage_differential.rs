@@ -40,6 +40,11 @@ fn vendored_claude_loader_matches_upstream_binary() {
         Some(&home),
         None,
         None,
+        // No pricing overlay: this gate compares against reference output from
+        // the real ccusage@20.0.2 binary and must stay hermetic — no network, no
+        // user cache dir, no dependence on what LiteLLM published today. The
+        // vendored loader prices from its embedded snapshot alone here.
+        None,
     )
     .expect("vendored loader ran");
 
@@ -63,6 +68,11 @@ fn vendored_codex_loader_matches_upstream_binary() {
         usagepal_lib::plugin_engine::ccusage::Provider::Codex,
         Some(&home),
         None,
+        None,
+        // No pricing overlay: this gate compares against reference output from
+        // the real ccusage@20.0.2 binary and must stay hermetic — no network, no
+        // user cache dir, no dependence on what LiteLLM published today. The
+        // vendored loader prices from its embedded snapshot alone here.
         None,
     )
     .expect("vendored loader ran");
@@ -118,6 +128,7 @@ fn query_daily_never_exposes_the_home_override_in_the_process_environment() {
                 Some(&home),
                 None,
                 None,
+                None,
             )
             .expect("vendored loader ran");
         }
@@ -165,6 +176,7 @@ fn concurrent_queries_do_not_share_a_home_override() {
                     let actual = usagepal_lib::plugin_engine::ccusage::query_daily(
                         usagepal_lib::plugin_engine::ccusage::Provider::Codex,
                         Some(home),
+                        None,
                         None,
                         None,
                     )

@@ -26,8 +26,16 @@
 //! file, with only the same `pub(crate)` -> `pub` widening applied
 //! throughout. Do not simplify or reorder these: a changed field or
 //! default here would silently rewrite users' Codex numbers.
+//!
+//! **`SharedArgs::pricing_overlay` is the one field that is NOT upstream**
+//! (Task 4). It exists because this crate keeps `offline = true` — the
+//! loader must never fetch — while `usagepal` still needs fresh LiteLLM
+//! prices to reach the cost path. It carries that JSON in, and
+//! `crate::load_pricing_map` overlays it onto the embedded snapshot. `None`
+//! (the `Default`) is upstream's exact behavior. See `lib.rs`, "Pricing
+//! overlay channel", and VENDORING.md, "Local modifications" item 0c.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 #[derive(Clone, Default)]
 pub struct SharedArgs {
@@ -48,6 +56,9 @@ pub struct SharedArgs {
     pub config: Option<PathBuf>,
     pub compact: bool,
     pub single_thread: bool,
+    /// Not upstream. LiteLLM pricing JSON to overlay onto the embedded
+    /// snapshot; see this file's header.
+    pub pricing_overlay: Option<Arc<str>>,
 }
 
 impl SharedArgs {

@@ -55,7 +55,7 @@ fn load_daily_summaries_inner(
     let pricing = if shared.mode == CostMode::Display {
         None
     } else {
-        Some(PricingMap::load(shared.offline, log_level() != Some(0)))
+        Some(crate::load_pricing_map(shared, log_level() != Some(0)))
     };
     let tz = parse_tz(shared.timezone.as_deref());
     let mode = shared.mode;

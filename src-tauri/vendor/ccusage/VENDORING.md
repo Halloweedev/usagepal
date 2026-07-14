@@ -211,8 +211,8 @@ Six categories, per the brief's own permitted-edit rule ("deleting a `mod
 x;` line... must be recorded here") plus the honest accounting of
 everything this exercise's discovered cut-line problems required.
 
-**Every edit to a file under "Files taken" is in item 0 or item 0b. There are
-five such edits, across three files, and all five are single tokens.**
+**Every edit to a file under "Files taken" is in item 0, 0b or 0c. There are
+six such edits, across three files, and all six are single tokens.**
 
 0. **Visibility widening in a vendored file** (Task 3). `src/adapter/codex.rs`.
    Two functions changed from private `fn` to `pub(crate) fn`:
@@ -303,6 +303,48 @@ five such edits, across three files, and all five are single tokens.**
    `env::var("CODEX_HOME")` / `env::var("CLAUDE_CONFIG_DIR")` reader, it must be
    routed here too; `grep -rn 'env::var' src/` is the check.
 
+0c. **Pricing overlay channel: `PricingMap::load` → `crate::load_pricing_map`**
+   (Task 4). One call site, one token, in one vendored file:
+
+   | file | line (upstream) | edit |
+   |---|---|---|
+   | `src/claude_loader.rs` | 58, in `load_daily_summaries_inner` | `PricingMap::load(shared.offline, log_level() != Some(0))` → `crate::load_pricing_map(shared, log_level() != Some(0))` |
+
+   `crate::load_pricing_map` (in `lib.rs`, not vendored) is a drop-in: it calls
+   `PricingMap::load(shared.offline, log)` and then, *only if the caller supplied
+   one*, overlays `shared.pricing_overlay` with `PricingMap::load_json` — which
+   is exactly what upstream's own `PricingMap::load(offline = false)` does
+   internally with the JSON it fetches. With no overlay (`None`, the `SharedArgs`
+   default, and what `tests/ccusage_differential.rs` passes) this function is
+   byte-for-byte `PricingMap::load`, so the vendored loader behaves exactly as
+   upstream.
+
+   `SharedArgs::pricing_overlay` is a **new field on a non-vendored file**
+   (`src/cli.rs`, see item 3) — the only field there that is not upstream's.
+
+   **Why:** `lib.rs` pins `OFFLINE_PRICING = true`, so the loader never fetches —
+   a probe worker must not block on GitHub. But embedded-only pricing has its own
+   failure mode: Codex token-usage events carry no pre-baked `costUSD`, so
+   `CostMode::Auto` falls through to `PricingMap::find`, and
+   `cost.rs::calculate_cost_from_tokens` returns **0.0** on a miss — no error, no
+   log. A model released after the embedded `litellm-pricing-fallback.json`
+   snapshot renders as zero spend, silently. (Claude has the same hole for any
+   entry whose `costUSD` is absent, which is what this call site is.) So the
+   fetch happens *outside* this crate, in `usagepal`'s
+   `plugin_engine::pricing_cache` (24h disk cache, background refresh, embedded
+   floor), and the resulting LiteLLM JSON is handed in as an overlay. The loader
+   still never touches the network.
+
+   **Two other `PricingMap::load` call sites are deliberately left unedited**:
+   `claude_loader.rs:145` (in `load_entries`) and `adapter/codex.rs:38` (in
+   `run`, the CLI entry point). Neither is reachable from this crate's `pub` API
+   — `claude_daily_json` calls `load_daily_summaries`, and `codex_daily_json`
+   reproduces `run`'s body rather than calling it (see item 0) — so editing them
+   would grow the vendored diff for no behavior. The codex path gets its overlay
+   in `lib.rs`, which is ours. If a future upstream bump makes either reachable,
+   route it through `crate::load_pricing_map` too; `grep -rn 'PricingMap::load(' src/`
+   is the check.
+
 1. **Pruned `mod` lines**: `src/adapter/mod.rs`. Upstream declares 15
    `pub(crate) mod` provider lines (`all`, `amp`, `codebuff`, `codex`,
    `copilot`, `droid`, `gemini`, `goose`, `hermes`, `kilo`, `kimi`,
@@ -335,6 +377,11 @@ five such edits, across three files, and all five are single tokens.**
      `[[bin]]` crate); this replaces the handful of things `main.rs` used to
      provide to sibling modules (`Result`/`CliError`, crate-root
      re-exports) plus the `pub` surface Task 3 calls through (see below).
+     Task 4 added `load_pricing_map` (item 0c) and `PricingTable`/`TokenRates`
+     — a thin `pub` wrapper letting `usagepal` do model→rate lookups through
+     the *same* `PricingMap::find` matcher the cost path uses, so the app has
+     one price source rather than two. Neither adds logic: both call into
+     vendored `pricing.rs`.
    - `src/cli.rs` — **not** upstream's `cli.rs`. It reproduces, verbatim,
      only the struct/enum text of upstream `cli.rs` lines 42–197
      (`SharedArgs`, `impl SharedArgs::with_defaults`, `CostMode`,
@@ -349,6 +396,12 @@ five such edits, across three files, and all five are single tokens.**
      `#[default]`s exactly as upstream declares them), with only the same
      `pub(crate)` → `pub` visibility widening already applied to the rest
      of this file. See "The cut line" for why full `cli.rs` isn't taken.
+
+     **One field is not upstream's**: `SharedArgs::pricing_overlay` (Task 4),
+     defaulting to `None`, which is upstream's exact behavior. It carries the
+     LiteLLM JSON that `usagepal`'s pricing cache fetched, so
+     `crate::load_pricing_map` can lay it over the embedded snapshot without the
+     loader ever going to the network. See item 0c.
    - `src/terminal_stub.rs`, `src/output_stub.rs` — new (Task 2 review fix).
      Inert, `unimplemented!()` stand-ins for CLI-rendering symbols
      `adapter/codex.rs` imports (see "The cut line" for exactly which

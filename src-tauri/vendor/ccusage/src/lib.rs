@@ -53,7 +53,7 @@ mod terminal_stub;
 mod types;
 mod utils;
 
-use std::{cell::RefCell, env::VarError, ffi::OsString, fmt, path::Path};
+use std::{cell::RefCell, env::VarError, ffi::OsString, fmt, path::Path, sync::Arc};
 
 use serde_json::json;
 
@@ -149,6 +149,92 @@ pub use cli::{CostMode, SharedArgs, SortOrder};
 const OFFLINE_PRICING: bool = true;
 
 // ---------------------------------------------------------------------------
+// Pricing overlay channel
+//
+// `OFFLINE_PRICING` above keeps the loader off the network — permanently, and
+// that is not negotiable: a probe worker must not block on GitHub. But
+// embedded-only pricing has a cost of its own. Codex token-usage events carry
+// no pre-baked `costUSD`, so `CostMode::Auto` falls through to
+// `PricingMap::find`, and `cost.rs::calculate_cost_from_tokens` returns **0.0**
+// on a miss — no error, no log. A model released after the embedded
+// `litellm-pricing-fallback.json` snapshot therefore shows zero spend,
+// silently. (Claude has the same hole for any entry whose `costUSD` is
+// absent.)
+//
+// So the fetch happens *outside* this crate — in `usagepal`'s
+// `plugin_engine::pricing_cache`, which owns the 24h disk cache and the
+// background refresh — and the resulting LiteLLM JSON is handed to the loader
+// as an overlay on `SharedArgs::pricing_overlay`. `load_pricing_map` below
+// applies it exactly the way upstream's own `PricingMap::load(offline=false)`
+// does: embedded snapshot first, then `load_json` over the top, so a fresher
+// LiteLLM entry wins and everything else keeps the snapshot's value.
+//
+// With no overlay (`None`, the `SharedArgs` default) this is byte-for-byte
+// today's embedded-only behavior — which is what `tests/ccusage_differential.rs`
+// runs, and why that gate stays hermetic.
+// ---------------------------------------------------------------------------
+
+/// Builds the `PricingMap` for a load: whatever `PricingMap::load` gives for
+/// `shared.offline` (embedded only, here), plus `shared.pricing_overlay` if the
+/// caller supplied one.
+///
+/// This stands in for the bare `PricingMap::load(shared.offline, log)` call at
+/// each of the vendored loaders' pricing-map construction sites, so that both
+/// providers pick the overlay up from one place.
+///
+/// An overlay that yields no models leaves the embedded snapshot untouched.
+/// It is not reported here — `pricing_cache` is the boundary that fetches and
+/// stores the JSON, and it only ever hands over an overlay it has already
+/// parsed, so there is nothing for this crate to warn about.
+pub(crate) fn load_pricing_map(shared: &SharedArgs, log: bool) -> PricingMap {
+    let mut map = PricingMap::load(shared.offline, log);
+    if let Some(overlay) = shared.pricing_overlay.as_deref() {
+        map.load_json(overlay);
+    }
+    map
+}
+
+/// USD **per token**, as LiteLLM stores them. The caller converts.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TokenRates {
+    pub input: f64,
+    pub output: f64,
+    pub cache_write: f64,
+    pub cache_read: f64,
+}
+
+/// A resolved price table: the embedded snapshot, optionally overlaid with
+/// fresher LiteLLM JSON. Wraps the vendored `PricingMap` (which is
+/// `pub(crate)`, as upstream declared it) so `usagepal` can do model→rate
+/// lookups through the same matcher the cost path uses.
+pub struct PricingTable {
+    map: PricingMap,
+}
+
+impl PricingTable {
+    /// `overlay` is LiteLLM's `model_prices_and_context_window.json`, or `None`
+    /// for the embedded snapshot alone. An unparseable overlay is ignored (the
+    /// snapshot still prices).
+    pub fn new(overlay: Option<&str>) -> Self {
+        let mut map = PricingMap::load_embedded();
+        if let Some(overlay) = overlay {
+            map.load_json(overlay);
+        }
+        Self { map }
+    }
+
+    /// `None` when the model has no known price — never a zeroed rate.
+    pub fn lookup(&self, model: &str) -> Option<TokenRates> {
+        self.map.find(model).map(|pricing| TokenRates {
+            input: pricing.input,
+            output: pricing.output,
+            cache_write: pricing.cache_create,
+            cache_read: pricing.cache_read,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Home override channel
 //
 // The vendored path resolvers take a home directory override from an
@@ -231,7 +317,14 @@ impl Drop for HomeOverrideGuard {
 /// recomputing), `timezone: None` (local time), `single_thread: false`,
 /// `debug: false`. `json: true` is what `--json` sets, and it also suppresses
 /// the progress spinner, which is what we want in a GUI process.
-fn daily_shared_args(since: Option<&str>, until: Option<&str>) -> SharedArgs {
+///
+/// `pricing_overlay` has no upstream counterpart; see "Pricing overlay
+/// channel" above.
+fn daily_shared_args(
+    since: Option<&str>,
+    until: Option<&str>,
+    pricing_overlay: Option<&str>,
+) -> SharedArgs {
     SharedArgs {
         since: since.map(str::to_string),
         until: until.map(str::to_string),
@@ -241,6 +334,7 @@ fn daily_shared_args(since: Option<&str>, until: Option<&str>) -> SharedArgs {
         order: SortOrder::Desc,
         breakdown: true,
         offline: OFFLINE_PRICING,
+        pricing_overlay: pricing_overlay.map(Arc::from),
         ..SharedArgs::default()
     }
 }
@@ -254,14 +348,18 @@ fn daily_shared_args(since: Option<&str>, until: Option<&str>) -> SharedArgs {
 /// `home` overrides `CLAUDE_CONFIG_DIR` for this thread only (see "Home
 /// override channel" above); `None` means "resolve the user's real Claude
 /// directories", exactly as the bare CLI would.
+///
+/// `pricing_overlay` is fresher LiteLLM JSON to lay over the embedded pricing
+/// snapshot (see "Pricing overlay channel"); `None` is embedded-only.
 pub fn claude_daily_json(
     home: Option<&Path>,
     since: Option<&str>,
     until: Option<&str>,
+    pricing_overlay: Option<&str>,
 ) -> std::result::Result<serde_json::Value, String> {
     let _home = HomeOverrideGuard::set("CLAUDE_CONFIG_DIR", home);
 
-    let shared = daily_shared_args(since, until);
+    let shared = daily_shared_args(since, until, pricing_overlay);
     let mut rows =
         claude_loader::load_daily_summaries(&shared, None, false).map_err(|err| err.to_string())?;
     claude_report::filter_and_sort_summaries(&mut rows, &shared, |row| {
@@ -288,15 +386,21 @@ pub fn claude_daily_json(
 ///
 /// `home` overrides `CODEX_HOME` for this thread only (see "Home override
 /// channel" above); `None` resolves the user's real Codex directory.
+///
+/// `pricing_overlay` is fresher LiteLLM JSON to lay over the embedded pricing
+/// snapshot (see "Pricing overlay channel"); `None` is embedded-only. This is
+/// the provider it matters most for: Codex events carry no pre-baked cost, so
+/// the pricing map is the *only* source of a Codex dollar figure.
 pub fn codex_daily_json(
     home: Option<&Path>,
     since: Option<&str>,
     until: Option<&str>,
+    pricing_overlay: Option<&str>,
 ) -> std::result::Result<serde_json::Value, String> {
     let _home = HomeOverrideGuard::set("CODEX_HOME", home);
 
-    let shared = daily_shared_args(since, until);
-    let pricing = PricingMap::load(shared.offline, log_level() != Some(0));
+    let shared = daily_shared_args(since, until, pricing_overlay);
+    let pricing = load_pricing_map(&shared, log_level() != Some(0));
     let groups = adapter::codex::load_groups(&shared, cli::AgentReportKind::Daily)
         .map_err(|err| err.to_string())?;
     let speed = adapter::codex::resolve_codex_speed(cli::CodexSpeed::Auto);
