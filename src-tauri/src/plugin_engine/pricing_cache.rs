@@ -366,6 +366,15 @@ pub fn global() -> Option<&'static PricingCache> {
     GLOBAL.get()
 }
 
+/// Free-function wrapper around [`PricingCache::rates_for`] for callers (like
+/// `host_api::inject_pricing`) that only have the process-wide cache, not an
+/// instance. `None` both when the model is unknown and when [`init`] has not
+/// run yet — `init` runs synchronously during Tauri setup, before any plugin
+/// probe, so the latter is not reachable in practice.
+pub fn rates_for(model: &str) -> Option<ModelRates> {
+    global()?.rates_for(model)
+}
+
 /// Fixtures shared by this module's unit tests and `tests/pricing_overlay.rs`.
 ///
 /// Not `#[cfg(test)]`, and that is not an oversight: an integration test is a

@@ -4,7 +4,7 @@ use aes_gcm::{
     aes::Aes256,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use rquickjs::{function::Rest, Ctx, Exception, Function, Object};
+use rquickjs::{function::Rest, Ctx, Exception, Function, Object, Value};
 
 use super::ccusage;
 use super::pricing_cache;
@@ -704,6 +704,7 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     let host = Object::new(ctx.clone())?;
     inject_log(ctx, &host, plugin_id)?;
     inject_fs(ctx, &host)?;
+    inject_pricing(ctx, &host)?;
     inject_crypto(ctx, &host)?;
     inject_env(ctx, &host, plugin_id)?;
     inject_http(ctx, &host, plugin_id, deadline)?;
@@ -812,6 +813,39 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
     )?;
 
     host.set("fs", fs_obj)?;
+    Ok(())
+}
+
+/// Backs `ctx.host.pricing.lookup(model)`. The one place JS plugins reach the
+/// app's one price source (`pricing_cache`) instead of carrying their own
+/// hand-written tables.
+fn inject_pricing<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+    let pricing_obj = Object::new(ctx.clone())?;
+
+    pricing_obj.set(
+        "lookup",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'js>, model: String| -> rquickjs::Result<Value<'js>> {
+                match crate::plugin_engine::pricing_cache::rates_for(&model) {
+                    Some(rates) => {
+                        let obj = Object::new(ctx_inner.clone())?;
+                        obj.set("input", rates.input)?;
+                        obj.set("output", rates.output)?;
+                        obj.set("cacheWrite", rates.cache_write)?;
+                        obj.set("cacheRead", rates.cache_read)?;
+                        Ok(obj.into_value())
+                    }
+                    // Unknown model is null, never zero. A $0 that means "we
+                    // don't know" is indistinguishable from a $0 that means
+                    // "free" — see the spec.
+                    None => Ok(Value::new_null(ctx_inner)),
+                }
+            },
+        )?,
+    )?;
+
+    host.set("pricing", pricing_obj)?;
     Ok(())
 }
 
@@ -2812,6 +2846,56 @@ mod tests {
     }
 
     #[test]
+    fn pricing_lookup_returns_rates_for_known_model_and_null_for_unknown_model() {
+        // `host.pricing.lookup` reads through `pricing_cache::global()`, which
+        // is `None` until `init` runs (only `lib.rs`'s Tauri setup calls it in
+        // production, before any plugin probe). Seed it here the same way, on a
+        // cold temp dir, so the lookup is served from the embedded snapshot —
+        // deterministic, no network dependency for this assertion.
+        pricing_cache::init(&std::env::temp_dir());
+
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+
+            let input_rate: f64 = ctx
+                .eval(r#"__openusage_ctx.host.pricing.lookup("claude-sonnet-4-5-20250929").input"#)
+                .expect("js pricing lookup for known model");
+            assert!(
+                input_rate > 0.0,
+                "known model must price with a positive per-million input rate, got {}",
+                input_rate
+            );
+
+            // The entire point of this API: an unknown model must come back as
+            // `null`, never `0` and never an object of zeroes. A `$0` that means
+            // "we don't know" is indistinguishable from a `$0` that means "free".
+            let is_null: bool = ctx
+                .eval(r#"__openusage_ctx.host.pricing.lookup("nope-9000") === null"#)
+                .expect("js pricing lookup for unknown model");
+            assert!(
+                is_null,
+                "unknown model must resolve to null, not 0 or a zeroed object"
+            );
+
+            // Guard against a test that would pass for `0`: assert the raw
+            // value's JS typeof is "object" (which `typeof null === "object"`
+            // satisfies) and that it is falsy, then separately pin strict
+            // equality with `null` above. This line exists so a future change
+            // that returns `0` instead of `null` fails loudly here too.
+            let typeof_result: String = ctx
+                .eval(r#"typeof __openusage_ctx.host.pricing.lookup("nope-9000")"#)
+                .expect("js typeof unknown model result");
+            assert_eq!(
+                typeof_result, "object",
+                "unknown model result must be null (typeof \"object\"), not a number"
+            );
+        });
+    }
+
+    #[test]
     fn current_macos_keychain_account_prefers_explicit_user_value() {
         assert_eq!(
             current_macos_keychain_account_from_user_env(Some("usagepal-test-user".to_string())),
@@ -3296,6 +3380,37 @@ mod tests {
             redacted
         );
         assert!(redacted.contains("\"displayText\": \"Sign...oday\""));
+    }
+
+    /// AGENTS.md requires a redaction-list audit on every plugin-API change.
+    /// `host.pricing` carries only a model name in and USD-per-million rates
+    /// out — confirmed here, rather than assumed, that neither is
+    /// credential-shaped: none of the four output field names collide with
+    /// `SENSITIVE_JSON_KEYS`, and passing the pricing payload (and a model
+    /// name) through the existing redaction functions leaves them untouched.
+    #[test]
+    fn pricing_lookup_fields_are_not_credential_shaped_and_are_never_redacted() {
+        for field in ["input", "output", "cacheWrite", "cacheRead"] {
+            assert!(
+                !SENSITIVE_JSON_KEYS.contains(&field),
+                "host.pricing output field `{field}` must not appear in the redaction list"
+            );
+        }
+
+        let model = "claude-sonnet-4-5-20250929";
+        assert_eq!(
+            redact_log_message(model),
+            model,
+            "a model name is not a secret and must pass through log redaction unchanged"
+        );
+
+        let response_json =
+            r#"{"input": 3.0, "output": 15.0, "cacheWrite": 3.75, "cacheRead": 0.3}"#;
+        assert_eq!(
+            redact_body(response_json),
+            response_json,
+            "a host.pricing.lookup response has nothing to redact"
+        );
     }
 
     #[test]
