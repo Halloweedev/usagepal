@@ -123,7 +123,13 @@ impl PricingCache {
     }
 
     /// Rates for `model`, or `None` if no price is known for it.
+    ///
+    /// Answers from what is already in memory and revalidates behind the
+    /// answer — this is the stale-then-refresh read path, so an app left open
+    /// for a week keeps its prices current without any caller having to
+    /// schedule anything.
     pub fn rates_for(&self, model: &str) -> Option<ModelRates> {
+        self.refresh_in_background();
         self.snapshot().table.lookup(model).map(|rates| ModelRates {
             input: rates.input * PER_MILLION,
             output: rates.output * PER_MILLION,
@@ -134,13 +140,16 @@ impl PricingCache {
 
     /// The LiteLLM JSON to overlay onto the vendored loader's embedded pricing,
     /// or `None` when we have never successfully fetched (the loader then uses
-    /// the embedded snapshot alone, exactly as before).
+    /// the embedded snapshot alone, exactly as before). Revalidates like
+    /// [`Self::rates_for`].
     pub fn overlay(&self) -> Option<Arc<str>> {
+        self.refresh_in_background();
         self.snapshot().overlay.clone()
     }
 
     /// Refreshes on another thread if the cache is due, and returns immediately.
-    /// A probe is never made to wait on a network call.
+    /// A probe is never made to wait on a network call — the worst a caller
+    /// ever gets is a price up to `RETRY_AFTER_FAILURE` stale.
     pub fn refresh_in_background(&self) {
         if !self.is_due() || self.inner.refreshing.swap(true, Ordering::AcqRel) {
             return;
@@ -305,6 +314,17 @@ mod tests {
         )
     }
 
+    /// The rate currently being served, read *without* the revalidation
+    /// `rates_for` performs — so a test can pin what is on offer before a
+    /// refresh lands.
+    fn served_input_rate(cache: &PricingCache, model: &str) -> Option<f64> {
+        cache
+            .snapshot()
+            .table
+            .lookup(model)
+            .map(|rates| rates.input * PER_MILLION)
+    }
+
     fn assert_near(actual: f64, expected: f64) {
         assert!(
             (actual - expected).abs() < 1e-9,
@@ -445,16 +465,20 @@ mod tests {
         backdate(&cache_file, Duration::from_secs(25 * 60 * 60));
 
         let cache = PricingCache::with_endpoint(&dir, &serve_once(overlay_json()));
-        assert_eq!(
-            cache.rates_for(OVERLAY_ONLY_MODEL).unwrap().input,
+
+        // Read through `served_input_rate`, not `rates_for`: `rates_for` would
+        // kick the background refresh, which would then race this assertion for
+        // the test server's single connection. This drives the refresh by hand
+        // instead, so the before/after is exact.
+        assert_near(
+            served_input_rate(&cache, OVERLAY_ONLY_MODEL).expect("the stale cache prices it"),
             1.0,
-            "the stale cache is served until the refresh lands"
         );
         assert!(cache.is_due(), "a cache older than the TTL is due");
 
         assert!(refresh(&cache.inner), "the refetch must succeed");
 
-        assert_eq!(cache.rates_for(OVERLAY_ONLY_MODEL).unwrap().input, 2.0);
+        assert_near(cache.rates_for(OVERLAY_ONLY_MODEL).unwrap().input, 2.0);
         assert!(!cache.is_due(), "a fresh fetch resets the TTL");
         assert!(
             fs::read_to_string(&cache_file)

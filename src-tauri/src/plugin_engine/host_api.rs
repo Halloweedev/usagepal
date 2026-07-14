@@ -1863,14 +1863,11 @@ fn run_ccusage_query(opts_json: &str, plugin_id: &str, deadline: ProbeDeadline) 
 
     log::info!("[plugin:{}] ccusage query via vendored loader", plugin_id);
 
-    // Serve the prices we already have and refresh behind the query — the
-    // loader is pinned offline, so this overlay is the only path a price newer
-    // than its embedded snapshot has into a Claude or Codex cost.
-    let pricing_overlay = pricing_cache::global().map(|cache| {
-        cache.refresh_in_background();
-        cache.overlay()
-    });
-    let pricing_overlay = pricing_overlay.flatten();
+    // Serve the prices we already have (and revalidate behind the query — see
+    // `PricingCache::overlay`). The loader is pinned offline, so this overlay is
+    // the only path a price newer than its embedded snapshot has into a Claude
+    // or Codex cost. `None` before startup wiring, which is embedded-only.
+    let pricing_overlay = pricing_cache::global().and_then(|cache| cache.overlay());
 
     // The load runs on its own thread so the probe worker can stop waiting on
     // it. An in-process loader cannot be killed the way the old subprocess's
