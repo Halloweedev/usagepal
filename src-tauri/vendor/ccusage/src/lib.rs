@@ -36,8 +36,9 @@
 //! header and `VENDORING.md` ("The cut line") for the full reasoning.
 
 mod adapter;
-mod cli;
 mod claude_loader;
+mod claude_report;
+mod cli;
 mod codex_loader;
 mod cost;
 mod date_utils;
@@ -52,7 +53,14 @@ mod terminal_stub;
 mod types;
 mod utils;
 
-use std::fmt;
+use std::{
+    ffi::OsString,
+    fmt,
+    path::Path,
+    sync::{Mutex, MutexGuard},
+};
+
+use serde_json::json;
 
 /// Mirrors upstream `main.rs`'s `Result<T>` / `CliError`, which the vendored
 /// modules rely on via `use crate::{Result, ...}`.
@@ -110,3 +118,165 @@ pub(crate) use utils::{
 // `cli.rs` is ours (not vendored), so its items are declared genuinely
 // `pub` there — no widening-visibility problem, so a real `pub use` works.
 pub use cli::{CostMode, SharedArgs, SortOrder};
+
+// ---------------------------------------------------------------------------
+// Public API (the only `pub fn`s this crate exposes; called by
+// `usagepal`'s `plugin_engine::ccusage` adapter)
+//
+// These wrappers exist because everything the adapter needs is `pub(crate)`
+// (that is how upstream declared it, and vendored files are not edited to
+// widen it). A `pub fn` here CAN call a `pub(crate) fn`, and by returning
+// `serde_json::Value` it never names a `pub(crate)` type in its signature —
+// so `UsageSummary`, `PricingMap`, `CodexGroup` etc. stay exactly as
+// upstream declared them.
+//
+// Each wrapper reproduces the body of the corresponding upstream CLI command,
+// minus the printing. No aggregation, cost, dedup or formatting logic is
+// written here — it is all called into.
+// ---------------------------------------------------------------------------
+
+/// Whether `PricingMap::load` may refresh pricing from LiteLLM over the
+/// network on every query.
+///
+/// Upstream's `--offline` flag defaults to `false`, so the `bunx ccusage`
+/// subprocess this crate replaces did a live LiteLLM fetch on *every* refresh.
+/// In-process we pin it to `true` (embedded pricing only):
+///
+/// - It is **output-identical** on the differential corpus — the vendored
+///   embedded pricing tables and live LiteLLM agree to the last float bit for
+///   the fixture's models, so this is not a semantic change, it is the same
+///   numbers without the network call.
+/// - It makes every query deterministic and offline-safe. With `false`, a
+///   LiteLLM outage, a captive portal, or an upstream pricing edit would move
+///   users' spend figures (or hang a UI refresh) with no local change.
+///
+/// A cached/refreshable pricing source is Task 4's job, not a flag flip here.
+const OFFLINE_PRICING: bool = true;
+
+/// Serializes the wrappers below. They must mutate process-wide environment
+/// variables (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`) because that is the only
+/// channel the vendored path resolvers accept a home override through
+/// (`claude_loader::claude_paths`, `codex_loader::codex_home_paths`) — the
+/// subprocess set the same two variables, just on the child. `setenv` races
+/// concurrent `getenv` in the same process, so all env mutation and all
+/// reads of it happen under this one lock.
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+fn env_lock() -> MutexGuard<'static, ()> {
+    ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner())
+}
+
+/// Sets an environment variable for the lifetime of the guard, restoring the
+/// previous value (or unsetting it) on drop. Only constructed while `ENV_LOCK`
+/// is held.
+struct EnvVarGuard {
+    key: &'static str,
+    previous: Option<OsString>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: Option<&Path>) -> Option<Self> {
+        let value = value?;
+        let previous = std::env::var_os(key);
+        // Safe here (this crate is edition 2021) and race-free (ENV_LOCK held).
+        std::env::set_var(key, value);
+        Some(Self { key, previous })
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        match self.previous.take() {
+            Some(previous) => std::env::set_var(self.key, previous),
+            None => std::env::remove_var(self.key),
+        }
+    }
+}
+
+/// The `SharedArgs` the replaced subprocess produced, field for field.
+///
+/// It invoked `ccusage <provider> daily --json --breakdown --order desc
+/// [--since X] [--until Y]` and nothing else, so every other field keeps the
+/// upstream default: `mode: Auto` (prefer a pre-baked `costUSD` over
+/// recomputing), `timezone: None` (local time), `single_thread: false`,
+/// `debug: false`. `json: true` is what `--json` sets, and it also suppresses
+/// the progress spinner, which is what we want in a GUI process.
+fn daily_shared_args(since: Option<&str>, until: Option<&str>) -> SharedArgs {
+    SharedArgs {
+        since: since.map(str::to_string),
+        until: until.map(str::to_string),
+        json: true,
+        mode: CostMode::Auto,
+        debug_samples: 5,
+        order: SortOrder::Desc,
+        breakdown: true,
+        offline: OFFLINE_PRICING,
+        ..SharedArgs::default()
+    }
+}
+
+/// The JSON `ccusage claude daily --json --breakdown --order desc` prints.
+///
+/// Reproduces upstream `commands::run_daily`'s `--json` path (v20.0.2,
+/// `commands/mod.rs:31-57`) for the non-`--instances` case: load, then
+/// `filter_and_sort_summaries`, then `{daily, totals}`.
+///
+/// `home` overrides `CLAUDE_CONFIG_DIR` (the loader's own override channel);
+/// `None` means "resolve the user's real Claude directories", exactly as the
+/// bare CLI would.
+pub fn claude_daily_json(
+    home: Option<&Path>,
+    since: Option<&str>,
+    until: Option<&str>,
+) -> std::result::Result<serde_json::Value, String> {
+    let _lock = env_lock();
+    let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", home);
+
+    let shared = daily_shared_args(since, until);
+    let mut rows =
+        claude_loader::load_daily_summaries(&shared, None, false).map_err(|err| err.to_string())?;
+    claude_report::filter_and_sort_summaries(&mut rows, &shared, |row| {
+        row.date.as_deref().unwrap_or_default()
+    });
+
+    Ok(json!({
+        "daily": rows.iter().map(claude_report::summary_json).collect::<Vec<_>>(),
+        "totals": claude_report::totals_json(&rows),
+    }))
+}
+
+/// The JSON `ccusage codex daily --json --breakdown --order desc` prints.
+///
+/// Reproduces upstream `adapter::codex::run`'s `--json` path (v20.0.2,
+/// `adapter/codex.rs:36-46`) — the same `load_groups` + `report_from_groups`
+/// pair the CLI uses, so the Codex dedup key is the CLI's.
+///
+/// Note this deliberately does NOT go through `adapter::codex::report_json`
+/// (`#[cfg(test)]` upstream): that is a test-only helper driven by
+/// `load_codex_events`, whose dedup key includes `session_id` while the CLI's
+/// (`insert_event_key`) does not. Feeding it would double-count events
+/// duplicated across session files. See VENDORING.md, "Local modifications".
+///
+/// `home` overrides `CODEX_HOME`; `None` resolves the user's real Codex
+/// directory.
+pub fn codex_daily_json(
+    home: Option<&Path>,
+    since: Option<&str>,
+    until: Option<&str>,
+) -> std::result::Result<serde_json::Value, String> {
+    let _lock = env_lock();
+    let _home = EnvVarGuard::set("CODEX_HOME", home);
+
+    let shared = daily_shared_args(since, until);
+    let pricing = PricingMap::load(shared.offline, log_level() != Some(0));
+    let groups = adapter::codex::load_groups(&shared, cli::AgentReportKind::Daily)
+        .map_err(|err| err.to_string())?;
+    let speed = adapter::codex::resolve_codex_speed(cli::CodexSpeed::Auto);
+
+    Ok(adapter::codex::report_from_groups(
+        &groups,
+        cli::AgentReportKind::Daily,
+        &pricing,
+        speed,
+    ))
+}

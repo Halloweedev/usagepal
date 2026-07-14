@@ -58,7 +58,7 @@ pub(crate) fn report_json(
     Ok(report_from_groups(&groups, kind, pricing, speed))
 }
 
-fn report_from_groups(
+pub(crate) fn report_from_groups(
     groups: &BTreeMap<String, CodexGroup>,
     kind: AgentReportKind,
     pricing: &PricingMap,
@@ -118,7 +118,10 @@ fn codex_config_requests_fast_service_tier(content: &str) -> bool {
     })
 }
 
-fn load_groups(shared: &SharedArgs, kind: AgentReportKind) -> Result<BTreeMap<String, CodexGroup>> {
+pub(crate) fn load_groups(
+    shared: &SharedArgs,
+    kind: AgentReportKind,
+) -> Result<BTreeMap<String, CodexGroup>> {
     let mut groups = BTreeMap::new();
     let seen = create_dedupe_shards();
     for path in crate::codex_usage_paths()? {

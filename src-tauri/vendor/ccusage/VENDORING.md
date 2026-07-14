@@ -207,9 +207,48 @@ nothing calls them directly yet") — none of that changed.
 
 ## Local modifications
 
-Three categories, per the brief's own permitted-edit rule ("deleting a `mod
+Four categories, per the brief's own permitted-edit rule ("deleting a `mod
 x;` line... must be recorded here") plus the honest accounting of
 everything this exercise's discovered cut-line problems required:
+
+0. **Visibility widening in a vendored file** (Task 3). `src/adapter/codex.rs`
+   — the **only** edit to any file under "Files taken", and the only one Task 3
+   needed. Two functions changed from private `fn` to `pub(crate) fn`:
+
+   - `report_from_groups` (upstream line 61)
+   - `load_groups` (upstream line 121) — its signature also reflows onto three
+     lines, purely because the added `pub(crate) ` pushes it past rustfmt's
+     100-column limit. No other character changes.
+
+   **Nothing else in the file changed**: no logic, no types, no test. `git diff`
+   against the pinned upstream commit shows exactly these two `fn` → `pub(crate)
+   fn` tokens and the one reflow.
+
+   **Why these two, and not `report_json`:** Task 3 needs the JSON that
+   `ccusage codex daily --json` prints. Upstream's `main.rs:134` dispatches that
+   command to `adapter::codex::run`, whose body is
+   `PricingMap::load` → `load_groups` → `resolve_codex_speed` →
+   `report_from_groups` → print. `run` itself is unusable here (it prints via
+   the `print_json_or_jq` stub, which is `unimplemented!()`), so `lib.rs`'s
+   `codex_daily_json` wrapper reproduces that body minus the printing — which
+   requires exactly `load_groups` and `report_from_groups` to be reachable.
+
+   The obvious-looking alternative is `report_json` (already `pub(crate)`, just
+   behind `#[cfg(test)]`), driven by `load_codex_events`. **That would be
+   wrong**, and silently so. `report_json` is a test-only helper — upstream
+   calls it *only* from `main.rs`'s `#[cfg(test)] mod tests`, never from the
+   CLI — and the two paths do not dedupe the same way:
+
+   | path | dedupe key |
+   |---|---|
+   | `load_groups` → `insert_event_key` (the CLI) | `(timestamp, model, tokens…)` |
+   | `load_codex_events` → `dedupe_codex_events` (the test helper) | `(session_id, timestamp, model, tokens…)` |
+
+   The CLI's key omits `session_id`, so it collapses an event duplicated across
+   two session files; the test helper's key keeps both. On real user data that
+   is a silent over-report. The differential corpus happens not to contain a
+   cross-session duplicate, so **the gate cannot catch this** — it is a
+   reachability/semantics argument, not a test result. Take the CLI's path.
 
 1. **Pruned `mod` lines**: `src/adapter/mod.rs`. Upstream declares 15
    `pub(crate) mod` provider lines (`all`, `amp`, `codebuff`, `codex`,
@@ -265,6 +304,28 @@ everything this exercise's discovered cut-line problems required:
      (from upstream `output.rs`) and `week_start` (from upstream
      `summary.rs`), reproduced verbatim, not stubbed — both are reachable
      from `adapter/codex.rs`'s pure-data path (see "The cut line").
+   - `src/claude_report.rs` — new (Task 3). Same category as
+     `report_support.rs`: reproduced **verbatim** from upstream, not
+     reinvented, because these are on the money path. Four functions —
+     `summary_json` and `totals_json` (upstream `output.rs`),
+     `filter_and_sort_summaries` and `sort_summaries` (upstream `summary.rs`).
+     They are the Claude half of what upstream's `commands::run_daily` does
+     *after* `load_daily_summaries` returns, and neither `output.rs` nor
+     `summary.rs` is vendored (both are CLI-rendering files, out of scope).
+     They live inside this crate, not in `usagepal`, because they need
+     `pub(crate)` access to `UsageSummary`'s fields.
+
+     Three traps they exist to avoid, each of which silently changes users'
+     spend history if you "simplify" them:
+     - `summary_json` is **not** `serde_json::to_value(row)`. It emits
+       `totalTokens` (a computed method, not a serde field), omits `credits`
+       entirely when `None` (serde emits `null`), and excludes
+       `messageCount`/`versions`.
+     - `totals_json` sums `extra_total_tokens`, which is
+       `#[serde(skip_serializing)]` and therefore invisible to serde.
+     - `load_daily_summaries` does **no** filtering or sorting internally — it
+       groups through a `BTreeMap`, i.e. ascending. `--since`/`--until` and
+       `--order desc` happen in `filter_and_sort_summaries` or not at all.
    - `src/adapter/mod.rs` — new (Task 2 review fix), not byte-identical;
      see item 1 above.
    - `build.rs` — upstream's `build.rs` also generates `cli-help.rs` (moot,
@@ -283,35 +344,70 @@ everything this exercise's discovered cut-line problems required:
    - `Cargo.toml`, `rustfmt.toml` — this crate's own manifest/format config,
      naturally not upstream files.
 
-**No file under "Files taken" above was edited.** `git diff` against a
-fresh `v20.0.2` checkout of those specific files (now including
-`adapter/codex.rs`) is empty.
+**Exactly one file under "Files taken" has been edited, and only its
+visibility:** `adapter/codex.rs`, two `fn` → `pub(crate) fn` tokens (item 0
+above). `git diff` against a fresh `v20.0.2` checkout of every *other* file
+under "Files taken" is empty, and for `adapter/codex.rs` the diff contains
+those two tokens plus the one signature reflow they force — no logic, no
+types, no tests.
 
-## Public API for Task 3 (`plugin_engine/ccusage.rs`)
+## Public API (consumed by `usagepal`'s `plugin_engine/ccusage.rs`)
 
-Because this vendor tree is its own crate, the vendored functions' original
-`pub(crate)` visibility (e.g. `claude_loader::load_daily_summaries` at
-`claude_loader.rs:34`, deliberately left as-is per the brief) is only
-visible *inside* `ccusage-vendor` — not to `usagepal`. `src/lib.rs`
-re-exports the needed items as `pub` (a superset of `pub(crate)`, so this
-required no change to any vendored file):
+**This section previously described a `pub use` re-export plan that does not
+work and was never implemented. Rewritten by Task 3 to describe the real
+`lib.rs`.**
 
-- `SharedArgs`, `CostMode`, `SortOrder` (from the `cli.rs` shim)
-- `UsageSummary`, `CodexTokenUsageEvent`, `TokenUsageRaw`, and the rest of
-  `types.rs`
-- `PricingMap`
-- `load_daily_summaries`, `load_codex_events`, `calculate_cost_for_usage`
-  (plus thin same-signature wrappers `load_claude_daily_summaries` /
-  `calculate_usage_cost` for call-site readability — no new logic)
+Why the re-export plan fails: the vendored items are `pub(crate)` (that is how
+upstream declared them, and vendored files are not edited to widen them), and
+Rust rejects re-exporting a `pub(crate)` item as `pub` — E0364/E0365. You
+cannot widen an item's effective visibility past its declaration, only alias it
+at the same-or-narrower level. So no arrangement of `pub use` in `lib.rs` can
+make `load_daily_summaries` or `UsageSummary` callable from `usagepal`.
 
-This is visibility plumbing only. It does not implement `Provider`,
-`query_daily`, or error mapping to `usagepal`'s error types — that is Task
-3's work, per the brief ("Task 3 wraps them; nothing calls them directly
-yet"). `adapter::codex` (containing `report_json`, `aggregate_events`, etc.)
-is declared `pub(crate) mod codex;` in `src/adapter/mod.rs` but is not yet
-re-exported from `src/lib.rs` at all — deliberately: widening its
-visibility for Task 3 to call through is Task 3's own change to make, not
-bundled into this fix.
+What actually works, and what `src/lib.rs` does: a **`pub fn` can call a
+`pub(crate) fn`**. So the crate exposes two hand-written wrapper functions
+that take only `std` types and return `serde_json::Value`. Because no
+`pub(crate)` type appears in their signatures, `UsageSummary`, `PricingMap`,
+`CodexGroup` etc. never need to become `pub` — they stay exactly as upstream
+declared them.
+
+```rust
+pub fn claude_daily_json(home: Option<&Path>, since: Option<&str>, until: Option<&str>)
+    -> Result<serde_json::Value, String>;
+pub fn codex_daily_json (home: Option<&Path>, since: Option<&str>, until: Option<&str>)
+    -> Result<serde_json::Value, String>;
+```
+
+Each returns exactly the JSON `ccusage <provider> daily --json --breakdown
+--order desc` prints, by reproducing the corresponding upstream command's body
+minus the printing (`commands::run_daily` and `adapter::codex::run`
+respectively). **No aggregation, cost, dedup, or formatting logic is written in
+`lib.rs`** — it is all called into.
+
+Two things the wrappers own, which upstream got from its CLI/process context:
+
+- **`SharedArgs`** (`daily_shared_args`): reproduces the flags the replaced
+  subprocess passed, field for field — `json: true`, `breakdown: true`,
+  `order: Desc`, plus `since`/`until`. Everything else keeps upstream's default,
+  notably `mode: CostMode::Auto` (prefer a pre-baked `costUSD` over recomputing)
+  and `timezone: None` (day bucketing is **local** time).
+
+- **`offline`** (`OFFLINE_PRICING`, currently `true`). Upstream's `--offline`
+  defaults to `false`, so the subprocess re-fetched LiteLLM pricing over the
+  network on *every* refresh. Pinned to `true` here — verified
+  output-identical on the differential corpus (the run with `false` passes the
+  same gate, and takes ~7s of network time instead of ~0.02s; live LiteLLM and
+  the embedded tables agree bit-for-bit on the fixture's models). It is the
+  same numbers without the network call, and it makes each query deterministic
+  and offline-safe. A cached/refreshable pricing source is Task 4's job.
+
+`home` is passed by temporarily setting `CLAUDE_CONFIG_DIR` / `CODEX_HOME` —
+process-wide, because that is the only channel the vendored path resolvers
+(`claude_loader::claude_paths`, `codex_loader::codex_home_paths`) accept an
+override through. The subprocess set the same two variables, just on the child.
+`setenv` races a concurrent `getenv`, so a single crate-level `ENV_LOCK` mutex
+guards every wrapper call, and an `EnvVarGuard` restores the previous value on
+drop. (`std::env::set_var` is safe to call here: this crate is edition 2021.)
 
 ## Dependencies added (`vendor/ccusage/Cargo.toml`)
 
@@ -360,8 +456,9 @@ separate crate, not a module" — fixed there via `src-tauri/Cargo.toml`'s new
 1. Clone the new upstream tag.
 2. Diff its `rust/crates/ccusage/src/` against `src/` in this crate for each
    file listed under "Files taken" above (now including `adapter/codex.rs`)
-   — should be empty for the pinned commit; for a new tag, this is the real
-   changelog to read.
+   — should be empty for the pinned commit, **except** `adapter/codex.rs`'s two
+   `fn` → `pub(crate) fn` visibility widenings (see "Local modifications" item
+   0). For a new tag, everything else in the diff is the real changelog to read.
 3. If `adapter/codex.rs`'s imports changed (new symbols, or existing ones
    moving between `report_json`/`aggregate_events`/etc. and `run`/
    `print_table`), redo the reachability check in "The cut line": anything
@@ -371,7 +468,13 @@ separate crate, not a module" — fixed there via `src-tauri/Cargo.toml`'s new
    sibling module), never stubbed. If `cli.rs`'s `AgentCommandArgs`/
    `AgentReportKind`/`CodexSpeed`/`WeekDay` change shape, re-copy them
    verbatim into `src/cli.rs` — do not hand-adjust.
-4. Read the diff for behavior changes that move dollar figures — see the
+4. Re-copy `src/claude_report.rs`'s four functions verbatim if upstream's
+   `output.rs::summary_json`/`totals_json` or
+   `summary.rs::filter_and_sort_summaries`/`sort_summaries` changed, and
+   re-check that `commands::run_daily` and `adapter::codex::run` still compose
+   the same calls in the same order — `lib.rs`'s two wrappers reproduce those
+   two bodies, so a change in either is a change here. Do not hand-adjust.
+5. Read the diff for behavior changes that move dollar figures — see the
    four listed in
    `docs/superpowers/specs/2026-07-13-pricing-and-native-scanners-design.md`.
-5. Any number that moves needs a release note.
+6. Any number that moves needs a release note.
