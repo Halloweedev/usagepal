@@ -570,7 +570,9 @@ handling.
 
 Pricing comes from a LiteLLM snapshot embedded in the app at build time. Nothing is fetched at runtime, so costs are deterministic and work offline — but they are only as fresh as that snapshot.
 
-The consequence, for Codex specifically: Codex session files carry no cost, so cost is always computed from the pricing table. **A model released after the embedded snapshot is not in the table, and its usage is priced at $0** — the day still reports its tokens, but contributes nothing to spend. There is no error and no log line; the number is simply low.
+A second embedded snapshot from models.dev fills models the LiteLLM table lacks, so fewer models fall through to `$0`. But the same freshness limit applies to both snapshots.
+
+The consequence, for Codex specifically: Codex session files carry no cost, so cost is always computed from the pricing table. **A model in neither snapshot is priced at $0** — the day still reports its tokens, but contributes nothing to spend. There is no error and no log line; the number is simply low.
 
 Claude session files usually carry a pre-baked cost, which is preferred when present, so Claude is much less exposed to this.
 
@@ -606,6 +608,33 @@ if (result.status === "ok") {
   // Any non-"ok" status means "no usage data this time" — omit the lines
   // rather than reporting zero.
   ctx.host.log.warn("ccusage unavailable: " + result.status)
+}
+```
+
+## pricing (Model Rates)
+
+```typescript
+host.pricing.lookup(model: string):
+  | { input: number, output: number, cacheWrite: number, cacheRead: number }
+  | null
+```
+
+Looks up per-token rates for a model, in **USD per million tokens**, from the
+same price source that computes Claude/Codex spend (a LiteLLM snapshot embedded
+at build time, plus a models.dev snapshot that fills models LiteLLM lacks).
+
+- Returns an object with the four rates when the model is priced.
+- Returns **`null`** — never an object of zeroes — when the model has no known
+  price. A `$0` that means "we don't know" is indistinguishable from a `$0` that
+  means "free", so an unknown model must be surfaced (omit its cost, note it as
+  unpriced), not silently zeroed.
+
+```javascript
+var rates = ctx.host.pricing.lookup("claude-sonnet-4-5")
+if (rates) {
+  var costUsd = (inputTokens * rates.input + outputTokens * rates.output) / 1e6
+} else {
+  ctx.host.log.info("unpriced model — surfacing rather than reporting $0")
 }
 ```
 
