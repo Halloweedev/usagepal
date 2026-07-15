@@ -37,7 +37,7 @@
       { pattern: "^kimi-k2\\.6", canonical: "kimi-k2.6" },
       { pattern: "^mimo-v2\\.5-pro", canonical: "mimo-v2.5-pro" },
       { pattern: "^mimo-v2\\.5", canonical: "mimo-v2.5" },
-      { pattern: "^minimax-m3", canonical: "minimax-m3" },
+      { pattern: "^minimax-m3(?![\\d.])", canonical: "minimax-m3" },
       { pattern: "^minimax-m2\\.7", canonical: "minimax-m2.7" },
       { pattern: "^minimax-m2\\.5", canonical: "minimax-m2.5" },
       { pattern: "^qwen3\\.7-max", canonical: "qwen3.7-max" },

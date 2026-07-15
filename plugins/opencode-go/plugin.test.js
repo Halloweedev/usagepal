@@ -506,3 +506,23 @@ describe("opencode-go spend aggregation", () => {
     expect(plugin.__test.rowCostUsd(row, ctx)).toBe(2.5);
   });
 });
+
+describe("opencode-go pricing fallthrough", () => {
+  it("does not let an unlisted minimax version fall through to minimax-m3's rates", async () => {
+    const plugin = await loadPlugin();
+    // Regression: `^minimax-m3` was an unanchored prefix, so a future
+    // minimax-m3.x matched it and silently inherited minimax-m3's price.
+    const base = plugin.__test.estimatedCostDollars("minimax-m3", 1_000_000, 0, 0, 0, 0);
+    expect(base).toBeGreaterThan(0);
+    expect(
+      plugin.__test.estimatedCostDollars("minimax-m3.5", 1_000_000, 0, 0, 0, 0),
+    ).toBeNull();
+  });
+
+  it("still prices the listed minimax versions", async () => {
+    const plugin = await loadPlugin();
+    expect(plugin.__test.estimatedCostDollars("minimax-m3", 1_000_000, 0, 0, 0, 0)).toBeGreaterThan(0);
+    expect(plugin.__test.estimatedCostDollars("minimax-m2.7", 1_000_000, 0, 0, 0, 0)).toBeGreaterThan(0);
+    expect(plugin.__test.estimatedCostDollars("minimax-m2.5", 1_000_000, 0, 0, 0, 0)).toBeGreaterThan(0);
+  });
+});

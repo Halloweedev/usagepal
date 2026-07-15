@@ -70,9 +70,9 @@
     // put more specific patterns first. Extend as new slugs are observed in the CSV.
     alias_rules: [
       { pattern: "^composer-2\\.5", canonical: "composer-2.5" },
-      { pattern: "^composer-2\\b", canonical: "composer-2" },
+      { pattern: "^composer-2(?![\\d.])", canonical: "composer-2" },
       { pattern: "^composer-1\\.5", canonical: "composer-1.5" },
-      { pattern: "^composer-1\\b", canonical: "composer-1" },
+      { pattern: "^composer-1(?![\\d.])", canonical: "composer-1" },
       { pattern: "^claude-sonnet-5", canonical: "claude-sonnet-5" },
       { pattern: "^claude-opus-4\\.8", canonical: "claude-opus-4.8" },
       { pattern: "^claude-opus-4\\.7.*fast", canonical: "claude-opus-4.7-fast" },
@@ -96,7 +96,11 @@
       { pattern: "^gpt-5-codex", canonical: "gpt-5-codex" },
       { pattern: "^gpt-5-mini", canonical: "gpt-5-mini" },
       { pattern: "^gpt-5-fast", canonical: "gpt-5-fast" },
-      { pattern: "^gpt-5\\b", canonical: "gpt-5" },
+      // A bare `\b` here matches between "5" and ".", so an unlisted gpt-5.x
+      // (e.g. a future gpt-5.7) would silently inherit gpt-5's rates. The
+      // negative lookahead keeps "gpt-5" matching while letting a versioned
+      // slug fall through to the unknown-model path instead of a wrong price.
+      { pattern: "^gpt-5(?![\\d.])", canonical: "gpt-5" },
       { pattern: "^gemini-3\\.5-flash", canonical: "gemini-3.5-flash" },
       { pattern: "^gemini-3\\.1-pro", canonical: "gemini-3.1-pro" },
       { pattern: "^gemini-3-pro", canonical: "gemini-3-pro" },
