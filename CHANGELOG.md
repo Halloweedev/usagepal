@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.7.35
+## v0.7.35-beta.1
 
 Native token & pricing engine. Claude and Codex usage is now computed inside the app — no Node or Bun runtime, no package download — and one shared price source drives every provider. This corrects four pricing details, each named below; some historical figures shift as a result.
 
