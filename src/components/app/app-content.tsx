@@ -33,6 +33,7 @@ export type AppContentActionProps = {
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void
   onThemeModeChange: (mode: ThemeMode) => void
   onDisplayModeChange: (mode: DisplayMode) => void
+  onUsageValueToggle: () => void
   onResetTimerDisplayModeChange: (mode: ResetTimerDisplayMode) => void
   onResetTimerDisplayModeToggle: () => void
   onTimeFormatModeChange: (mode: TimeFormatMode) => void
@@ -59,6 +60,7 @@ export function AppContent({
   onAutoUpdateIntervalChange,
   onThemeModeChange,
   onDisplayModeChange,
+  onUsageValueToggle,
   onResetTimerDisplayModeChange,
   onResetTimerDisplayModeToggle,
   onTimeFormatModeChange,
@@ -122,6 +124,7 @@ export function AppContent({
         timeFormatMode={timeFormatMode}
         overviewSpendStripEnabled={overviewSpendStripEnabled}
         onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+        onUsageValueToggle={onUsageValueToggle}
       />
     )
   }
@@ -181,6 +184,7 @@ export function AppContent({
       resetTimerDisplayMode={resetTimerDisplayMode}
       timeFormatMode={timeFormatMode}
       onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+      onUsageValueToggle={onUsageValueToggle}
     />
   )
 }

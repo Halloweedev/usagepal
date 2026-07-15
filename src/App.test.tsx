@@ -409,6 +409,7 @@ describe("App", () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllEnvs()
     window.location.hash = ""
     delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollHeight
   })
@@ -1020,6 +1021,7 @@ describe("App", () => {
   })
 
   it("applies start on login state on startup in tauri", async () => {
+    vi.stubEnv("DEV", false) // production build: the installed app owns the login item
     state.isTauriMock.mockReturnValue(true)
     state.loadStartOnLoginMock.mockResolvedValueOnce(true)
     state.autostartIsEnabledMock.mockResolvedValueOnce(false)
@@ -1048,6 +1050,7 @@ describe("App", () => {
   })
 
   it("logs when applying start on login setting fails on startup", async () => {
+    vi.stubEnv("DEV", false) // production build: the installed app owns the login item
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     state.isTauriMock.mockReturnValue(true)
     state.loadStartOnLoginMock.mockResolvedValueOnce(true)
@@ -1062,6 +1065,7 @@ describe("App", () => {
   })
 
   it("logs when updating start on login fails from settings", async () => {
+    vi.stubEnv("DEV", false) // production build: the installed app owns the login item
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     state.isTauriMock.mockReturnValue(true)
     state.loadStartOnLoginMock.mockResolvedValueOnce(false)

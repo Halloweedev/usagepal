@@ -1,16 +1,18 @@
 import * as React from "react"
 
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
   value?: number
   indicatorColor?: string
   markerValue?: number
+  markerTooltip?: React.ReactNode
   refreshing?: boolean
 }
 
 const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
-  ({ className, value = 0, indicatorColor, markerValue, refreshing, ...props }, ref) => {
+  ({ className, value = 0, indicatorColor, markerValue, markerTooltip, refreshing, ...props }, ref) => {
     const clamped = Math.min(100, Math.max(0, value))
     const clampedMarker =
       typeof markerValue === "number" && Number.isFinite(markerValue)
@@ -49,14 +51,31 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
           className="h-full transition-all bg-primary"
           style={{ width: `${clamped}%`, ...indicatorStyle }}
         />
-        {showMarker && (
-          <div
-            data-slot="progress-marker"
-            aria-hidden="true"
-            className="absolute top-0 bottom-0 w-1 z-10 pointer-events-none rounded-sm bg-muted-foreground ring-1 ring-background/50"
-            style={markerStyle}
-          />
-        )}
+        {showMarker &&
+          (markerTooltip != null ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={(triggerProps) => (
+                  <div
+                    {...triggerProps}
+                    data-slot="progress-marker"
+                    className="absolute top-0 bottom-0 w-1 z-10 cursor-help rounded-sm bg-muted-foreground ring-1 ring-background/50"
+                    style={markerStyle}
+                  />
+                )}
+              />
+              <TooltipContent side="top" className="text-xs text-center">
+                {markerTooltip}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <div
+              data-slot="progress-marker"
+              aria-hidden="true"
+              className="absolute top-0 bottom-0 w-1 z-10 pointer-events-none rounded-sm bg-muted-foreground ring-1 ring-background/50"
+              style={markerStyle}
+            />
+          ))}
         {refreshing && (
           <div
             data-slot="progress-refreshing"

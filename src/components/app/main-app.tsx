@@ -177,6 +177,7 @@ export function MainApp() {
   const {
     handleThemeModeChange,
     handleDisplayModeChange,
+    handleDisplayModeToggle,
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleTimeFormatModeChange,
@@ -189,6 +190,7 @@ export function MainApp() {
     menubarIconStyle,
     multiTrayProviderCount,
     setThemeMode,
+    displayMode,
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
@@ -311,6 +313,7 @@ export function MainApp() {
         onBetaUpdatesEnabledChange: handleBetaUpdatesEnabledChange,
         onThemeModeChange: handleThemeModeChange,
         onDisplayModeChange: handleDisplayModeChange,
+        onUsageValueToggle: handleDisplayModeToggle,
         onResetTimerDisplayModeChange: handleResetTimerDisplayModeChange,
         onResetTimerDisplayModeToggle: handleResetTimerDisplayModeToggle,
         onTimeFormatModeChange: handleTimeFormatModeChange,

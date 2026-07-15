@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.7.35-beta.2
+
+Interaction polish on the usage bars, plus a fix for launch-at-login registering the wrong binary.
+
+### Bug Fixes
+- Start on login no longer registers a dev build's throwaway binary — only the installed app manages the login item, so it launches reliably after a reboot by @Halloweedev
+
+### Improvements
+- Click the "% used" / "% left" text under a usage bar to flip between them (persisted), matching the reset-timer toggle beside it by @Halloweedev
+- Hover the grey pace marker inside a usage bar to see how far through the period you are — "Expected pace — N% of the period has elapsed" by @Halloweedev
+- The "running hot" flame is dropped once a limit is reached; the full bar already says it, so the flame no longer lingers past 100% by @Halloweedev
+
+---
+
 ## v0.7.35-beta.1
 
 Native token & pricing engine. Claude and Codex usage is now computed inside the app — no Node or Bun runtime, no package download — and one shared price source drives every provider. This corrects four pricing details, each named below; some historical figures shift as a result.
