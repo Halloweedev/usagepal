@@ -1,8 +1,12 @@
-use std::time::Duration;
+use std::{borrow::Cow, time::Duration};
 
 use serde::Deserialize;
 
 use crate::fast::FxHashMap;
+
+// Anthropic date-suffixed model aliases use YYYYMMDD, while other numeric
+// suffixes are treated as distinct model versions.
+const MODEL_DATE_SUFFIX_DIGITS: usize = 8;
 
 const BUILD_TIME_PRICING_JSON: &str =
     include_str!(concat!(env!("OUT_DIR"), "/litellm-pricing.json"));
@@ -178,9 +182,12 @@ impl PricingMap {
 
     pub(crate) fn find(&self, model: &str) -> Option<Pricing> {
         self.entries.get(model).copied().or_else(|| {
+            let normalized_model = normalized_pricing_key(model);
             self.entries
                 .iter()
-                .filter(|(candidate, _)| model.contains(*candidate) || candidate.contains(model))
+                .filter(|(candidate, _)| {
+                    pricing_key_matches(candidate, model, normalized_model.as_ref())
+                })
                 .max_by(|(left, _), (right, _)| {
                     left.len().cmp(&right.len()).then_with(|| right.cmp(left))
                 })
@@ -190,9 +197,12 @@ impl PricingMap {
 
     pub(crate) fn context_limit(&self, model: &str) -> Option<u64> {
         self.context_limits.get(model).copied().or_else(|| {
+            let normalized_model = normalized_pricing_key(model);
             self.context_limits
                 .iter()
-                .filter(|(candidate, _)| model.contains(*candidate) || candidate.contains(model))
+                .filter(|(candidate, _)| {
+                    pricing_key_matches(candidate, model, normalized_model.as_ref())
+                })
                 .max_by(|(left, _), (right, _)| {
                     left.len().cmp(&right.len()).then_with(|| right.cmp(left))
                 })
@@ -542,6 +552,73 @@ fn matches_model_suffix(part: &str, base: &str) -> bool {
     suffix == base || suffix.as_bytes().get(base.len()) == Some(&b'-')
 }
 
+/// Matches pricing keys across provider/model aliases while preserving version boundaries.
+fn pricing_key_matches(candidate: &str, model: &str, normalized_model: &str) -> bool {
+    if contains_pricing_key(model, candidate) || contains_pricing_key(candidate, model) {
+        return true;
+    }
+    let normalized_candidate = normalized_pricing_key(candidate);
+    contains_pricing_key(normalized_model, normalized_candidate.as_ref())
+        || contains_pricing_key(normalized_candidate.as_ref(), normalized_model)
+}
+
+/// Finds a key only when the surrounding bytes are non-alphanumeric boundaries.
+fn contains_pricing_key(value: &str, key: &str) -> bool {
+    value.match_indices(key).any(|(index, _)| {
+        let before = index
+            .checked_sub(1)
+            .and_then(|before| value.as_bytes().get(before))
+            .copied();
+        let suffix = &value[index + key.len()..];
+        before.is_none_or(is_pricing_key_boundary) && suffix_allows_pricing_key_match(key, suffix)
+    })
+}
+
+/// Treats punctuation separators as boundaries, but not adjacent version digits.
+fn is_pricing_key_boundary(byte: u8) -> bool {
+    !byte.is_ascii_alphanumeric()
+}
+
+fn suffix_allows_pricing_key_match(key: &str, suffix: &str) -> bool {
+    let Some(separator) = suffix.as_bytes().first().copied() else {
+        return true;
+    };
+    if !is_pricing_key_boundary(separator) {
+        return false;
+    }
+    !suffix_starts_with_numeric_model_version(key, suffix)
+}
+
+fn suffix_starts_with_numeric_model_version(key: &str, suffix: &str) -> bool {
+    if !key.as_bytes().last().is_some_and(u8::is_ascii_digit) {
+        return false;
+    }
+    if !matches!(suffix.as_bytes().first(), Some(b'-' | b'.')) {
+        return false;
+    }
+
+    let rest = &suffix[1..];
+    let digit_len = rest
+        .as_bytes()
+        .iter()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    if digit_len == 0 {
+        return false;
+    }
+    let after_digits = rest.as_bytes().get(digit_len).copied();
+    !(digit_len == MODEL_DATE_SUFFIX_DIGITS && after_digits.is_none_or(is_pricing_key_boundary))
+}
+
+/// Normalizes known model separator variants without allocating for canonical keys.
+fn normalized_pricing_key(value: &str) -> Cow<'_, str> {
+    if value.contains(['.', '@']) {
+        Cow::Owned(value.replace(['.', '@'], "-"))
+    } else {
+        Cow::Borrowed(value)
+    }
+}
+
 fn should_log_pricing_refresh_details() -> bool {
     crate::log_level().is_some_and(|level| level >= 4)
 }
@@ -849,5 +926,32 @@ mod tests {
             .unwrap();
 
         assert_eq!(matched.input, 2.0);
+    }
+
+    #[test]
+    fn version_suffix_does_not_fuzzy_match_shorter_model() {
+        let mut pricing = PricingMap::default();
+        pricing.entries.insert(
+            "gpt-5".to_string(),
+            Pricing {
+                input: 1.0,
+                output: 0.0,
+                cache_create: 0.0,
+                cache_read: 0.0,
+                cache_read_explicit: true,
+                input_above_200k: None,
+                output_above_200k: None,
+                cache_create_above_200k: None,
+                cache_read_above_200k: None,
+                fast_multiplier: 1.0,
+            },
+        );
+
+        // "gpt-5.1" is a distinct model version, not gpt-5 with a suffix — the
+        // v20.0.2 substring matcher priced it at gpt-5's rates (the same bug class
+        // as our own `^gpt-5\b` cursor fallthrough). It must not fuzzy-match now.
+        assert!(pricing.find("gpt-5.1").is_none());
+        // Date-suffixed aliases (YYYYMMDD) still fuzzy-match their base.
+        assert!(pricing.find("gpt-5-20250101").is_some());
     }
 }

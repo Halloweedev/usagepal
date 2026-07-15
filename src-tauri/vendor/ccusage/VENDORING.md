@@ -543,13 +543,37 @@ six such edits, across three files, and all six are single tokens.**
    output** — 2026-07-12 is intentionally HEAD semantics. Every other day still
    matches the binary exactly.
 
+7. **HEAD backport: word-boundary model→price matching** (Phase 3 Task 9).
+   `src/pricing.rs`. v20.0.2's fuzzy fallback in `find`/`context_limit` was a raw
+   bidirectional substring scan (`model.contains(key) || key.contains(model)`,
+   longest key wins) — the *same bug class* as our own `^gpt-5\b` cursor
+   fallthrough: it matches `gpt-5` inside `gpt-5.1`. Backport HEAD's
+   `pricing_key_matches` predicate: it enforces non-alphanumeric boundaries and
+   treats a `.N`/`-N` numeric suffix as a distinct model version (while still
+   allowing an 8-digit `YYYYMMDD` date alias to match its base). Ported verbatim
+   from HEAD's `pricing.rs`: `pricing_key_matches`, `contains_pricing_key`,
+   `is_pricing_key_boundary`, `suffix_allows_pricing_key_match`,
+   `suffix_starts_with_numeric_model_version`, `normalized_pricing_key`, and the
+   `MODEL_DATE_SUFFIX_DIGITS` const.
+
+   **Deliberately NOT ported:** HEAD's surrounding `find_entry`/alias/models.dev
+   layering — that belongs to Task 10. Only the boundary-aware predicate is
+   grafted into the vendored single-method `find`/`context_limit`; the
+   longest-key-wins selection is byte-for-byte unchanged.
+
+   **Number impact: none on the differential corpus** — every corpus model
+   resolves via an exact key and never reaches the fuzzy fallback, so
+   `claude-expected.json` is untouched. Proven instead by a new unit test
+   (`version_suffix_does_not_fuzzy_match_shorter_model`): `gpt-5.1` no longer
+   resolves to `gpt-5`'s rates, while a `YYYYMMDD` date alias still does.
+
 **Files under "Files taken" have been edited.** Items 0/0b/0c are six
 single-token edits across `adapter/codex.rs`, `codex_loader.rs` and
-`claude_loader.rs` (plus one rustfmt reflow). Item 6 is the one substantive
-edit: a HEAD backport of the sidechain dedup into `claude_loader.rs`'s daily
-path — so that file alone is **no longer byte-identical to v20.0.2**, by design
-(see item 6). `git diff` against a fresh `v20.0.2` checkout of every *other*
-file under "Files taken" is empty.
+`claude_loader.rs` (plus one rustfmt reflow). Items 6 and 7 are substantive HEAD
+backports: the sidechain dedup in `claude_loader.rs` (item 6) and the
+word-boundary matcher in `pricing.rs` (item 7) — so those two files are **no
+longer byte-identical to v20.0.2**, by design. `git diff` against a fresh
+`v20.0.2` checkout of every *other* file under "Files taken" is empty.
 
 ## Public API (consumed by `usagepal`'s `plugin_engine/ccusage.rs`)
 
