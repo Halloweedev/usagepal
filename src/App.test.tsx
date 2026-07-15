@@ -121,6 +121,23 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: eventState.listenMock,
 }))
 
+// settings.ts holds a module-level LazyStore; without this mock its lazy
+// get/set/save reach the real plugin-store, which invokes a Tauri command that
+// does not exist in jsdom and rejects unawaited (81 unhandled rejections).
+vi.mock("@tauri-apps/plugin-store", () => ({
+  LazyStore: class {
+    async get() {
+      return undefined
+    }
+    async set() {}
+    async save() {}
+    async delete() {}
+    async onKeyChange() {
+      return () => {}
+    }
+  },
+}))
+
 vi.mock("@tauri-apps/api/menu", () => ({
   IconMenuItem: {
     new: async (config: { id: string; action?: () => void }) => {

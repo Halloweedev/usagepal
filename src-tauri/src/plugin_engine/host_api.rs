@@ -4,10 +4,13 @@ use aes_gcm::{
     aes::Aes256,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use rquickjs::{function::Rest, Ctx, Exception, Function, Object};
+use rquickjs::{function::Rest, Ctx, Exception, Function, Object, Value};
+
+use super::ccusage;
+use super::pricing_cache;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{LazyLock, Mutex, OnceLock};
@@ -35,6 +38,11 @@ const WHITELISTED_ENV_VARS: [&str; 19] = [
     "CLINE_API_KEY",
 ];
 const MIN_BLOCKING_TIMEOUT: Duration = Duration::from_millis(1);
+/// Ceiling on a single ccusage load, clamped further by the probe deadline.
+/// Same 15s the `bunx ccusage` subprocess allowed each attempt before killing
+/// its process group — ccusage is the longest host call in a probe, and a huge
+/// or network-mounted `~/.claude` must not pin a probe worker indefinitely.
+const CCUSAGE_TIMEOUT: Duration = Duration::from_secs(15);
 
 // Redaction patterns are compiled once and reused. They previously recompiled
 // on every call — `redact_body` alone built ~6 fixed regexes plus one per
@@ -696,6 +704,7 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     let host = Object::new(ctx.clone())?;
     inject_log(ctx, &host, plugin_id)?;
     inject_fs(ctx, &host)?;
+    inject_pricing(ctx, &host)?;
     inject_crypto(ctx, &host)?;
     inject_env(ctx, &host, plugin_id)?;
     inject_http(ctx, &host, plugin_id, deadline)?;
@@ -804,6 +813,39 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
     )?;
 
     host.set("fs", fs_obj)?;
+    Ok(())
+}
+
+/// Backs `ctx.host.pricing.lookup(model)`. The one place JS plugins reach the
+/// app's one price source (`pricing_cache`) instead of carrying their own
+/// hand-written tables.
+fn inject_pricing<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+    let pricing_obj = Object::new(ctx.clone())?;
+
+    pricing_obj.set(
+        "lookup",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'js>, model: String| -> rquickjs::Result<Value<'js>> {
+                match crate::plugin_engine::pricing_cache::rates_for(&model) {
+                    Some(rates) => {
+                        let obj = Object::new(ctx_inner.clone())?;
+                        obj.set("input", rates.input)?;
+                        obj.set("output", rates.output)?;
+                        obj.set("cacheWrite", rates.cache_write)?;
+                        obj.set("cacheRead", rates.cache_read)?;
+                        Ok(obj.into_value())
+                    }
+                    // Unknown model is null, never zero. A $0 that means "we
+                    // don't know" is indistinguishable from a $0 that means
+                    // "free" — see the spec.
+                    None => Ok(Value::new_null(ctx_inner)),
+                }
+            },
+        )?,
+    )?;
+
+    host.set("pricing", pricing_obj)?;
     Ok(())
 }
 
@@ -1691,16 +1733,6 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
     ports.into_iter().collect()
 }
 
-const CCUSAGE_VERSION: &str = "20.0.2";
-const CCUSAGE_PACKAGE_NAME: &str = "ccusage";
-const CCUSAGE_BIN_NAME: &str = "ccusage";
-const CCUSAGE_LEGACY_VERSION: &str = "18.0.11";
-const CCUSAGE_LEGACY_CLAUDE_PACKAGE_NAME: &str = "ccusage";
-const CCUSAGE_LEGACY_CODEX_PACKAGE_NAME: &str = "@ccusage/codex";
-const CCUSAGE_LEGACY_CODEX_BIN_NAME: &str = "ccusage-codex";
-const CCUSAGE_TIMEOUT_SECS: u64 = 15;
-const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
-
 #[derive(Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CcusageQueryOpts {
@@ -1715,6 +1747,15 @@ struct CcusageQueryOpts {
 enum CcusageProvider {
     Claude,
     Codex,
+}
+
+impl From<CcusageProvider> for ccusage::Provider {
+    fn from(provider: CcusageProvider) -> Self {
+        match provider {
+            CcusageProvider::Claude => Self::Claude,
+            CcusageProvider::Codex => Self::Codex,
+        }
+    }
 }
 
 static CCUSAGE_ACTIVE_PROVIDERS: OnceLock<Mutex<HashSet<CcusageProvider>>> = OnceLock::new();
@@ -1742,47 +1783,6 @@ impl Drop for CcusageQueryGuard {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum CcusageRunnerKind {
-    Bunx,
-    PnpmDlx,
-    YarnDlx,
-    NpmExec,
-    Npx,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum CcusageCommandFlavor {
-    Current,
-    Legacy,
-}
-
-fn ccusage_runner_order() -> [CcusageRunnerKind; 5] {
-    [
-        CcusageRunnerKind::Bunx,
-        CcusageRunnerKind::PnpmDlx,
-        CcusageRunnerKind::YarnDlx,
-        CcusageRunnerKind::NpmExec,
-        CcusageRunnerKind::Npx,
-    ]
-}
-
-fn ccusage_runner_label(kind: CcusageRunnerKind) -> &'static str {
-    match kind {
-        CcusageRunnerKind::Bunx => "bunx",
-        CcusageRunnerKind::PnpmDlx => "pnpm dlx",
-        CcusageRunnerKind::YarnDlx => "yarn dlx",
-        CcusageRunnerKind::NpmExec => "npm exec",
-        CcusageRunnerKind::Npx => "npx",
-    }
-}
-
-#[derive(Copy, Clone)]
-struct CcusageProviderConfig {
-    command_namespace: &'static str,
-    home_env_var: &'static str,
-}
-
 fn parse_ccusage_provider(value: &str) -> Option<CcusageProvider> {
     match value.trim().to_ascii_lowercase().as_str() {
         "claude" => Some(CcusageProvider::Claude),
@@ -1803,656 +1803,24 @@ fn resolve_ccusage_provider(opts: &CcusageQueryOpts, plugin_id: &str) -> Ccusage
         .unwrap_or(CcusageProvider::Claude)
 }
 
-fn ccusage_provider_config(provider: CcusageProvider) -> CcusageProviderConfig {
-    match provider {
-        CcusageProvider::Claude => CcusageProviderConfig {
-            command_namespace: "claude",
-            home_env_var: "CLAUDE_CONFIG_DIR",
-        },
-        CcusageProvider::Codex => CcusageProviderConfig {
-            command_namespace: "codex",
-            home_env_var: "CODEX_HOME",
-        },
-    }
-}
-
-fn ccusage_package_spec() -> String {
-    format!("{}@{}", CCUSAGE_PACKAGE_NAME, CCUSAGE_VERSION)
-}
-
-fn ccusage_legacy_package_spec(provider: CcusageProvider) -> String {
-    let package_name = match provider {
-        CcusageProvider::Claude => CCUSAGE_LEGACY_CLAUDE_PACKAGE_NAME,
-        CcusageProvider::Codex => CCUSAGE_LEGACY_CODEX_PACKAGE_NAME,
-    };
-    format!("{}@{}", package_name, CCUSAGE_LEGACY_VERSION)
+/// Trims and discards blank strings — the shape every `CcusageQueryOpts` field
+/// is normalized with before it reaches the loader.
+fn non_blank(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
 }
 
 fn ccusage_home_override<'a>(
     opts: &'a CcusageQueryOpts,
     provider: CcusageProvider,
 ) -> Option<&'a str> {
-    if let Some(home_path) = opts
-        .home_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(home_path) = non_blank(opts.home_path.as_deref()) {
         return Some(home_path);
     }
 
     match provider {
-        CcusageProvider::Claude => opts
-            .claude_path
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty()),
+        CcusageProvider::Claude => non_blank(opts.claude_path.as_deref()),
         CcusageProvider::Codex => None,
     }
-}
-
-fn ccusage_runner_candidates(kind: CcusageRunnerKind) -> Vec<String> {
-    let mut candidates: Vec<String> = Vec::new();
-    match kind {
-        CcusageRunnerKind::Bunx => {
-            if let Some(home) = dirs::home_dir() {
-                candidates.push(home.join(".bun/bin/bunx").to_string_lossy().to_string());
-            }
-            candidates.extend(
-                ["/opt/homebrew/bin/bunx", "/usr/local/bin/bunx", "bunx"]
-                    .into_iter()
-                    .map(str::to_string),
-            );
-        }
-        CcusageRunnerKind::PnpmDlx => {
-            candidates.extend(
-                ["/opt/homebrew/bin/pnpm", "/usr/local/bin/pnpm", "pnpm"]
-                    .into_iter()
-                    .map(str::to_string),
-            );
-        }
-        CcusageRunnerKind::YarnDlx => {
-            candidates.extend(
-                ["/opt/homebrew/bin/yarn", "/usr/local/bin/yarn", "yarn"]
-                    .into_iter()
-                    .map(str::to_string),
-            );
-        }
-        CcusageRunnerKind::NpmExec => {
-            candidates.extend(
-                ["/opt/homebrew/bin/npm", "/usr/local/bin/npm", "npm"]
-                    .into_iter()
-                    .map(str::to_string),
-            );
-        }
-        CcusageRunnerKind::Npx => {
-            candidates.extend(
-                ["/opt/homebrew/bin/npx", "/usr/local/bin/npx", "npx"]
-                    .into_iter()
-                    .map(str::to_string),
-            );
-        }
-    }
-
-    let mut unique = Vec::new();
-    for candidate in candidates {
-        if candidate.is_empty() || unique.iter().any(|c| c == &candidate) {
-            continue;
-        }
-        unique.push(candidate);
-    }
-    unique
-}
-
-fn nvm_default_bin_path(home: &Path) -> Option<PathBuf> {
-    let alias_path = home.join(".nvm/alias/default");
-    let version = std::fs::read_to_string(&alias_path).ok()?;
-    let version = version.trim();
-    if version.is_empty() {
-        return None;
-    }
-    let version = if version.starts_with('v') {
-        version.to_string()
-    } else {
-        format!("v{version}")
-    };
-    Some(home.join(".nvm/versions/node").join(version).join("bin"))
-}
-
-fn ccusage_path_entries_with(home: Option<&Path>, existing_path: Option<&OsStr>) -> Vec<PathBuf> {
-    let mut entries: Vec<PathBuf> = Vec::new();
-
-    if let Some(home) = home {
-        entries.push(home.join(".bun/bin"));
-        entries.push(home.join(".nvm/current/bin"));
-        if let Some(nvm_bin) = nvm_default_bin_path(home) {
-            entries.push(nvm_bin);
-        }
-        entries.push(home.join(".local/bin"));
-    }
-
-    entries.extend(
-        ["/opt/homebrew/bin", "/usr/local/bin"]
-            .into_iter()
-            .map(PathBuf::from),
-    );
-
-    if let Some(existing_path) = existing_path {
-        for path in std::env::split_paths(existing_path) {
-            entries.push(path);
-        }
-    }
-
-    let mut unique_entries = Vec::new();
-    for entry in entries {
-        if entry.as_os_str().is_empty() || unique_entries.iter().any(|path| path == &entry) {
-            continue;
-        }
-        unique_entries.push(entry);
-    }
-    unique_entries
-}
-
-fn ccusage_enriched_path_with(
-    home: Option<&Path>,
-    existing_path: Option<&OsStr>,
-) -> Option<OsString> {
-    let entries = ccusage_path_entries_with(home, existing_path);
-    if entries.is_empty() {
-        return None;
-    }
-    std::env::join_paths(entries).ok()
-}
-
-fn ccusage_enriched_path() -> Option<OsString> {
-    let home = dirs::home_dir();
-    let existing_path = std::env::var_os("PATH");
-    ccusage_enriched_path_with(home.as_deref(), existing_path.as_deref())
-}
-
-fn ccusage_runner_available(candidate: &str, enriched_path: Option<&OsStr>) -> bool {
-    let mut command = std::process::Command::new(candidate);
-    command.arg("--version");
-    if let Some(path) = enriched_path {
-        command.env("PATH", path);
-    }
-    command
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-
-    command.status().map(|s| s.success()).unwrap_or(false)
-}
-
-fn configure_ccusage_command(
-    command: &mut std::process::Command,
-    args: &[String],
-    enriched_path: Option<&OsStr>,
-) {
-    command.args(args);
-    if let Some(path) = enriched_path {
-        command.env("PATH", path);
-    }
-    command
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
-}
-
-fn resolve_ccusage_runner_binary(kind: CcusageRunnerKind) -> Option<String> {
-    let path = ccusage_enriched_path();
-    for candidate in ccusage_runner_candidates(kind) {
-        if ccusage_runner_available(&candidate, path.as_deref()) {
-            return Some(candidate);
-        }
-    }
-    None
-}
-
-fn collect_ccusage_runners_with<F>(mut resolver: F) -> Vec<(CcusageRunnerKind, String)>
-where
-    F: FnMut(CcusageRunnerKind) -> Option<String>,
-{
-    let mut runners = Vec::new();
-    for kind in ccusage_runner_order() {
-        if let Some(program) = resolver(kind) {
-            runners.push((kind, program));
-        }
-    }
-    runners
-}
-
-fn collect_ccusage_runners() -> Vec<(CcusageRunnerKind, String)> {
-    collect_ccusage_runners_with(resolve_ccusage_runner_binary)
-}
-
-fn append_ccusage_common_args(
-    args: &mut Vec<String>,
-    opts: &CcusageQueryOpts,
-    provider: CcusageProvider,
-    flavor: CcusageCommandFlavor,
-) {
-    let config = ccusage_provider_config(provider);
-    if flavor == CcusageCommandFlavor::Current {
-        args.push(config.command_namespace.to_string());
-    }
-    args.extend([
-        "daily".to_string(),
-        "--json".to_string(),
-        "--breakdown".to_string(),
-        "--order".to_string(),
-        "desc".to_string(),
-    ]);
-
-    if let Some(since) = opts
-        .since
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        args.push("--since".to_string());
-        args.push(since.to_string());
-    }
-
-    if let Some(until) = opts
-        .until
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        args.push("--until".to_string());
-        args.push(until.to_string());
-    }
-}
-
-fn ccusage_runner_args(
-    kind: CcusageRunnerKind,
-    opts: &CcusageQueryOpts,
-    provider: CcusageProvider,
-    flavor: CcusageCommandFlavor,
-) -> Vec<String> {
-    let package_spec = match flavor {
-        CcusageCommandFlavor::Current => ccusage_package_spec(),
-        CcusageCommandFlavor::Legacy => ccusage_legacy_package_spec(provider),
-    };
-    let npm_exec_bin = match (flavor, provider) {
-        (CcusageCommandFlavor::Current, _) => CCUSAGE_BIN_NAME,
-        (CcusageCommandFlavor::Legacy, CcusageProvider::Claude) => CCUSAGE_BIN_NAME,
-        (CcusageCommandFlavor::Legacy, CcusageProvider::Codex) => CCUSAGE_LEGACY_CODEX_BIN_NAME,
-    };
-    let mut args: Vec<String> = match kind {
-        CcusageRunnerKind::Bunx => vec!["--silent".to_string(), package_spec.clone()],
-        CcusageRunnerKind::PnpmDlx => {
-            vec!["-s".to_string(), "dlx".to_string(), package_spec.clone()]
-        }
-        CcusageRunnerKind::YarnDlx => {
-            vec!["dlx".to_string(), "-q".to_string(), package_spec.clone()]
-        }
-        CcusageRunnerKind::NpmExec => vec![
-            "exec".to_string(),
-            "--yes".to_string(),
-            format!("--package={package_spec}"),
-            "--".to_string(),
-            npm_exec_bin.to_string(),
-        ],
-        CcusageRunnerKind::Npx => vec!["--yes".to_string(), package_spec],
-    };
-
-    append_ccusage_common_args(&mut args, opts, provider, flavor);
-    args
-}
-
-fn extract_last_json_value(stdout: &str) -> Option<String> {
-    let trimmed = stdout.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
-        return Some(trimmed.to_string());
-    }
-
-    let mut starts: Vec<usize> = trimmed
-        .char_indices()
-        .filter(|(_, c)| *c == '{' || *c == '[')
-        .map(|(idx, _)| idx)
-        .collect();
-    starts.reverse();
-
-    for start in starts {
-        let candidate = trimmed[start..].trim();
-        if serde_json::from_str::<serde_json::Value>(candidate).is_ok() {
-            return Some(candidate.to_string());
-        }
-    }
-
-    None
-}
-
-fn normalize_ccusage_output(stdout: &str) -> Option<String> {
-    let json_value = extract_last_json_value(stdout)?;
-    let parsed: serde_json::Value = serde_json::from_str(&json_value).ok()?;
-
-    let normalized = match parsed {
-        serde_json::Value::Array(daily) => serde_json::json!({ "daily": daily }),
-        serde_json::Value::Object(map) => {
-            let daily = map.get("daily")?;
-            if !daily.is_array() {
-                return None;
-            }
-            serde_json::Value::Object(map)
-        }
-        _ => return None,
-    };
-
-    serde_json::to_string(&normalized).ok()
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum CcusageRunnerResult {
-    Success(String),
-    Failed,
-    TimedOut,
-}
-
-#[cfg(unix)]
-fn kill_ccusage_process_group(child_id: u32) -> std::io::Result<()> {
-    let pgid = i32::try_from(child_id)
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid child pid"))?;
-    let rc = unsafe { libc::kill(-pgid, libc::SIGKILL) };
-    if rc == 0 {
-        return Ok(());
-    }
-
-    let err = std::io::Error::last_os_error();
-    if err.raw_os_error() == Some(libc::ESRCH) {
-        return Ok(());
-    }
-    Err(err)
-}
-
-fn kill_ccusage_on_timeout(child: &mut std::process::Child) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        kill_ccusage_process_group(child.id())
-    }
-
-    #[cfg(not(unix))]
-    {
-        child.kill()
-    }
-}
-
-fn format_ccusage_timeout(timeout: std::time::Duration) -> String {
-    if timeout.subsec_millis() == 0 {
-        return format!("{}s", timeout.as_secs());
-    }
-    if timeout.as_secs() == 0 {
-        return format!("{}ms", timeout.as_millis());
-    }
-    format!("{:.3}s", timeout.as_secs_f64())
-}
-
-#[cfg(test)]
-fn run_ccusage_with_runner(
-    kind: CcusageRunnerKind,
-    program: &str,
-    opts: &CcusageQueryOpts,
-    provider: CcusageProvider,
-    plugin_id: &str,
-) -> CcusageRunnerResult {
-    run_ccusage_with_runner_deadline(
-        kind,
-        program,
-        opts,
-        provider,
-        plugin_id,
-        ProbeDeadline::none(),
-    )
-}
-
-fn run_ccusage_with_runner_deadline(
-    kind: CcusageRunnerKind,
-    program: &str,
-    opts: &CcusageQueryOpts,
-    provider: CcusageProvider,
-    plugin_id: &str,
-    deadline: ProbeDeadline,
-) -> CcusageRunnerResult {
-    if deadline.has_elapsed() {
-        log::warn!("[plugin:{}] ccusage skipped: probe timed out", plugin_id);
-        return CcusageRunnerResult::TimedOut;
-    }
-
-    let Some(current_timeout) = deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS))
-    else {
-        log_probe_deadline_skip(plugin_id, "ccusage");
-        return CcusageRunnerResult::TimedOut;
-    };
-
-    let current = run_ccusage_with_runner_timeout(
-        kind,
-        program,
-        opts,
-        provider,
-        plugin_id,
-        CcusageCommandFlavor::Current,
-        current_timeout,
-    );
-    match current {
-        CcusageRunnerResult::Failed if deadline.has_elapsed() => CcusageRunnerResult::TimedOut,
-        CcusageRunnerResult::Failed => {
-            let Some(legacy_timeout) =
-                deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS))
-            else {
-                log_probe_deadline_skip(plugin_id, "ccusage legacy fallback");
-                return CcusageRunnerResult::TimedOut;
-            };
-            run_ccusage_with_runner_timeout(
-                kind,
-                program,
-                opts,
-                provider,
-                plugin_id,
-                CcusageCommandFlavor::Legacy,
-                legacy_timeout,
-            )
-        }
-        other => other,
-    }
-}
-
-fn run_ccusage_with_runner_timeout(
-    kind: CcusageRunnerKind,
-    program: &str,
-    opts: &CcusageQueryOpts,
-    provider: CcusageProvider,
-    plugin_id: &str,
-    flavor: CcusageCommandFlavor,
-    timeout: std::time::Duration,
-) -> CcusageRunnerResult {
-    let args = ccusage_runner_args(kind, opts, provider, flavor);
-    let enriched_path = ccusage_enriched_path();
-    let mut command = std::process::Command::new(program);
-    configure_ccusage_command(&mut command, &args, enriched_path.as_deref());
-
-    if let Some(home_path) = ccusage_home_override(opts, provider) {
-        let config = ccusage_provider_config(provider);
-        command.env(config.home_env_var, expand_path(&home_path));
-    }
-
-    let redacted_program = redact_log_message(program);
-
-    log::info!(
-        "[plugin:{}] ccusage query via {} {:?} ({})",
-        plugin_id,
-        ccusage_runner_label(kind),
-        flavor,
-        redacted_program
-    );
-
-    let mut child = match command.spawn() {
-        Ok(c) => c,
-        Err(e) => {
-            log::warn!(
-                "[plugin:{}] ccusage spawn failed for {}: {}",
-                plugin_id,
-                ccusage_runner_label(kind),
-                e
-            );
-            return CcusageRunnerResult::Failed;
-        }
-    };
-
-    // Drain pipes concurrently while the process is running so the child cannot block on full
-    // stdout/stderr buffers before exit.
-    let mut stdout_reader = child.stdout.take().map(|mut stdout| {
-        std::thread::spawn(move || {
-            let mut v = Vec::new();
-            let _ = std::io::Read::read_to_end(&mut stdout, &mut v);
-            v
-        })
-    });
-    let mut stderr_reader = child.stderr.take().map(|mut stderr| {
-        std::thread::spawn(move || {
-            let mut v = Vec::new();
-            let _ = std::io::Read::read_to_end(&mut stderr, &mut v);
-            v
-        })
-    });
-
-    let start = std::time::Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                let stdout = stdout_reader
-                    .take()
-                    .and_then(|reader| reader.join().ok())
-                    .unwrap_or_default();
-                let stderr = stderr_reader
-                    .take()
-                    .and_then(|reader| reader.join().ok())
-                    .unwrap_or_default();
-
-                if status.success() {
-                    let out = String::from_utf8_lossy(&stdout);
-                    if let Some(normalized_json) = normalize_ccusage_output(&out) {
-                        return CcusageRunnerResult::Success(normalized_json);
-                    }
-                    log::warn!(
-                        "[plugin:{}] ccusage output parse failed for {}",
-                        plugin_id,
-                        ccusage_runner_label(kind)
-                    );
-                    return CcusageRunnerResult::Failed;
-                }
-
-                let err = String::from_utf8_lossy(&stderr);
-                log::warn!(
-                    "[plugin:{}] ccusage failed for {}: {}",
-                    plugin_id,
-                    ccusage_runner_label(kind),
-                    err.trim()
-                );
-                return CcusageRunnerResult::Failed;
-            }
-            Ok(None) => {
-                if start.elapsed() > timeout {
-                    if let Err(e) = kill_ccusage_on_timeout(&mut child) {
-                        log::warn!(
-                            "[plugin:{}] ccusage process group kill failed for {}: {}",
-                            plugin_id,
-                            ccusage_runner_label(kind),
-                            e
-                        );
-                        let _ = child.kill();
-                    }
-                    let _ = child.wait();
-                    let _ = stdout_reader.take().and_then(|reader| reader.join().ok());
-                    let _ = stderr_reader.take().and_then(|reader| reader.join().ok());
-                    log::warn!(
-                        "[plugin:{}] ccusage timed out after {} for {}",
-                        plugin_id,
-                        format_ccusage_timeout(timeout),
-                        ccusage_runner_label(kind)
-                    );
-                    return CcusageRunnerResult::TimedOut;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(CCUSAGE_POLL_INTERVAL_MS));
-            }
-            Err(e) => {
-                log::warn!(
-                    "[plugin:{}] ccusage wait failed for {}: {}",
-                    plugin_id,
-                    ccusage_runner_label(kind),
-                    e
-                );
-                return CcusageRunnerResult::Failed;
-            }
-        }
-    }
-}
-
-fn run_ccusage_query_with_runners<F>(
-    runners: Vec<(CcusageRunnerKind, String)>,
-    opts: &CcusageQueryOpts,
-    provider: CcusageProvider,
-    plugin_id: &str,
-    mut run: F,
-) -> String
-where
-    F: FnMut(
-        CcusageRunnerKind,
-        &str,
-        &CcusageQueryOpts,
-        CcusageProvider,
-        &str,
-    ) -> CcusageRunnerResult,
-{
-    if runners.is_empty() {
-        log::warn!(
-            "[plugin:{}] no package runner found for ccusage query",
-            plugin_id
-        );
-        return serde_json::json!({ "status": "no_runner" }).to_string();
-    }
-
-    for (kind, program) in runners {
-        match run(kind, &program, opts, provider, plugin_id) {
-            CcusageRunnerResult::Success(result) => {
-                let data: serde_json::Value = match serde_json::from_str(&result) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        log::warn!(
-                            "[plugin:{}] ccusage normalized payload parse failed: {}",
-                            plugin_id,
-                            e
-                        );
-                        continue;
-                    }
-                };
-                return serde_json::json!({ "status": "ok", "data": data }).to_string();
-            }
-            CcusageRunnerResult::Failed => {}
-            CcusageRunnerResult::TimedOut => {
-                log::warn!(
-                    "[plugin:{}] ccusage query timed out; skipping fallback runners",
-                    plugin_id
-                );
-                return serde_json::json!({ "status": "runner_failed" }).to_string();
-            }
-        }
-    }
-
-    log::warn!(
-        "[plugin:{}] ccusage query failed with all available runners",
-        plugin_id
-    );
-    serde_json::json!({ "status": "runner_failed" }).to_string()
 }
 
 fn inject_ccusage<'js>(
@@ -2469,36 +1837,114 @@ fn inject_ccusage<'js>(
         Function::new(
             ctx.clone(),
             move |_ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
-                let opts: CcusageQueryOpts = match serde_json::from_str(&opts_json) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        log::warn!("[plugin:{}] invalid ccusage opts JSON: {}", pid, e);
-                        CcusageQueryOpts::default()
-                    }
-                };
-                let provider = resolve_ccusage_provider(&opts, &pid);
-                let Some(_active_query) = CcusageQueryGuard::acquire(provider) else {
-                    log::warn!("[plugin:{}] ccusage query already running", pid);
-                    return Ok(serde_json::json!({ "status": "runner_failed" }).to_string());
-                };
-                let runners = collect_ccusage_runners();
-                Ok(run_ccusage_query_with_runners(
-                    runners,
-                    &opts,
-                    provider,
-                    &pid,
-                    |kind, program, opts, provider, plugin_id| {
-                        run_ccusage_with_runner_deadline(
-                            kind, program, opts, provider, plugin_id, deadline,
-                        )
-                    },
-                ))
+                Ok(run_ccusage_query(&opts_json, &pid, deadline))
             },
         )?,
     )?;
 
     host.set("ccusage", ccusage_obj)?;
     Ok(())
+}
+
+/// Backs `ctx.host.ccusage.query(opts)`.
+///
+/// Returns exactly the JSON string `patch_ccusage_wrapper` expects, and that
+/// the `bunx ccusage` subprocess this replaced returned:
+/// `{"status":"ok","data":<the daily JSON>}` on success, and
+/// `{"status":"runner_failed"}` on any failure. `plugins/claude/plugin.js` and
+/// `plugins/codex/plugin.js` are unchanged by the cutover.
+///
+/// The old `{"status":"no_runner"}` is gone: it meant "no bunx/npx/pnpm on
+/// PATH", which cannot happen now that the loader is in-process. Both plugins
+/// already treat every non-`ok` status identically, and Codex still raises
+/// `no_runner` itself when `ctx.host.ccusage` is absent.
+fn run_ccusage_query(opts_json: &str, plugin_id: &str, deadline: ProbeDeadline) -> String {
+    fn runner_failed() -> String {
+        serde_json::json!({ "status": "runner_failed" }).to_string()
+    }
+
+    let opts: CcusageQueryOpts = match serde_json::from_str(opts_json) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("[plugin:{}] invalid ccusage opts JSON: {}", plugin_id, e);
+            CcusageQueryOpts::default()
+        }
+    };
+    let provider = resolve_ccusage_provider(&opts, plugin_id);
+
+    // Bounds the load, and doubles as the "probe budget already spent" check:
+    // `clamp_duration` yields `None` once the deadline has elapsed.
+    let Some(timeout) = deadline.clamp_duration(CCUSAGE_TIMEOUT) else {
+        log_probe_deadline_skip(plugin_id, "ccusage");
+        return runner_failed();
+    };
+
+    // Bounds concurrency to one in-flight load per provider. That is what makes
+    // abandoning a timed-out load safe: without it, every probe cycle would
+    // start *another* full scan of the same slow directory and the threads
+    // would pile up. It also keeps the pre-existing contract that a second
+    // concurrent same-provider query returns `runner_failed` rather than
+    // queueing. The guard is moved into the worker below, so a load that
+    // outlives its timeout still holds it until it actually finishes.
+    let Some(active_query) = CcusageQueryGuard::acquire(provider) else {
+        log::warn!("[plugin:{}] ccusage query already running", plugin_id);
+        return runner_failed();
+    };
+
+    let home = ccusage_home_override(&opts, provider).map(expand_path);
+    let since = non_blank(opts.since.as_deref()).map(str::to_string);
+    let until = non_blank(opts.until.as_deref()).map(str::to_string);
+
+    log::info!("[plugin:{}] ccusage query via vendored loader", plugin_id);
+
+    // Serve the prices we already have (and revalidate behind the query — see
+    // `PricingCache::overlay`). The loader is pinned offline, so this overlay is
+    // the only path a price newer than its embedded snapshot has into a Claude
+    // or Codex cost. `None` before startup wiring, which is embedded-only.
+    let pricing_overlay = pricing_cache::global().and_then(|cache| cache.overlay());
+
+    // The load runs on its own thread so the probe worker can stop waiting on
+    // it. An in-process loader cannot be killed the way the old subprocess's
+    // process group could, so a load that blows the deadline is abandoned, not
+    // cancelled: it keeps running, and drops `active_query` when it finishes.
+    // The vendored home override is a thread-local set inside `query_daily`, so
+    // it lands on this worker thread — not the caller's.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _active_query = active_query;
+        let result = ccusage::query_daily(
+            provider.into(),
+            home.as_deref().map(Path::new),
+            since.as_deref(),
+            until.as_deref(),
+            pricing_overlay.as_deref(),
+        );
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(data)) => serde_json::json!({ "status": "ok", "data": data }).to_string(),
+        Ok(Err(e)) => {
+            log::warn!(
+                "[plugin:{}] ccusage query failed: {}",
+                plugin_id,
+                redact_log_message(&e)
+            );
+            runner_failed()
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            log::warn!(
+                "[plugin:{}] ccusage query timed out after {:?}; abandoning the load",
+                plugin_id,
+                timeout
+            );
+            runner_failed()
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            log::warn!("[plugin:{}] ccusage loader panicked", plugin_id);
+            runner_failed()
+        }
+    }
 }
 
 pub fn patch_ccusage_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
@@ -3400,6 +2846,63 @@ mod tests {
     }
 
     #[test]
+    fn pricing_lookup_returns_rates_for_known_model_and_null_for_unknown_model() {
+        // `host.pricing.lookup` reads through `pricing_cache::global()`, which
+        // is `None` until something seeds it (only `lib.rs`'s Tauri setup calls
+        // the real `init` in production, before any plugin probe). Seed it here
+        // with `init_for_tests` instead of `init`: it installs the global
+        // without starting the refresh ticker, so nothing this test does can
+        // ever reach `fetch`. A guarded, unique temp dir (not the shared
+        // `std::env::temp_dir()`) plus an unreachable endpoint means a cold
+        // cache is genuinely served from the embedded snapshot — deterministic,
+        // no network dependency, and no cross-test coupling through a leftover
+        // cache file.
+        let pricing_dir = pricing_cache::test_fixtures::temp_dir("host-api-pricing");
+        pricing_cache::init_for_tests(&pricing_dir, "http://127.0.0.1:1/");
+
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data_dir = pricing_cache::test_fixtures::temp_dir("host-api-pricing-app-data");
+            let app_data = app_data_dir.to_path_buf();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+
+            let input_rate: f64 = ctx
+                .eval(r#"__openusage_ctx.host.pricing.lookup("claude-sonnet-4-5-20250929").input"#)
+                .expect("js pricing lookup for known model");
+            assert!(
+                input_rate > 0.0,
+                "known model must price with a positive per-million input rate, got {}",
+                input_rate
+            );
+
+            // The entire point of this API: an unknown model must come back as
+            // `null`, never `0` and never an object of zeroes. A `$0` that means
+            // "we don't know" is indistinguishable from a `$0` that means "free".
+            let is_null: bool = ctx
+                .eval(r#"__openusage_ctx.host.pricing.lookup("nope-9000") === null"#)
+                .expect("js pricing lookup for unknown model");
+            assert!(
+                is_null,
+                "unknown model must resolve to null, not 0 or a zeroed object"
+            );
+
+            // Guard against a test that would pass for `0`: assert the raw
+            // value's JS typeof is "object" (which `typeof null === "object"`
+            // satisfies) and that it is falsy, then separately pin strict
+            // equality with `null` above. This line exists so a future change
+            // that returns `0` instead of `null` fails loudly here too.
+            let typeof_result: String = ctx
+                .eval(r#"typeof __openusage_ctx.host.pricing.lookup("nope-9000")"#)
+                .expect("js typeof unknown model result");
+            assert_eq!(
+                typeof_result, "object",
+                "unknown model result must be null (typeof \"object\"), not a number"
+            );
+        });
+    }
+
+    #[test]
     fn current_macos_keychain_account_prefers_explicit_user_value() {
         assert_eq!(
             current_macos_keychain_account_from_user_env(Some("usagepal-test-user".to_string())),
@@ -3886,476 +3389,33 @@ mod tests {
         assert!(redacted.contains("\"displayText\": \"Sign...oday\""));
     }
 
+    /// AGENTS.md requires a redaction-list audit on every plugin-API change.
+    /// `host.pricing` carries only a model name in and USD-per-million rates
+    /// out — confirmed here, rather than assumed, that neither is
+    /// credential-shaped: none of the four output field names collide with
+    /// `SENSITIVE_JSON_KEYS`, and a model name passes the existing log
+    /// redaction unchanged.
+    ///
+    /// No `redact_body` assertion here: `SENSITIVE_JSON_KEY_RES` only ever
+    /// matches quoted *string* values (`"key":\s*"([^"]+)"`), so a numeric
+    /// pricing payload passes `redact_body` untouched regardless of whether
+    /// any of these field names were ever added to `SENSITIVE_JSON_KEYS` —
+    /// that call could not fail for the reason it would appear to check, so
+    /// it is not included as a load-bearing assertion.
     #[test]
-    fn ccusage_runner_order_matches_expected_priority() {
+    fn pricing_lookup_fields_are_not_credential_shaped_and_are_never_redacted() {
+        for field in ["input", "output", "cacheWrite", "cacheRead"] {
+            assert!(
+                !SENSITIVE_JSON_KEYS.contains(&field),
+                "host.pricing output field `{field}` must not appear in the redaction list"
+            );
+        }
+
+        let model = "claude-sonnet-4-5-20250929";
         assert_eq!(
-            ccusage_runner_order(),
-            [
-                CcusageRunnerKind::Bunx,
-                CcusageRunnerKind::PnpmDlx,
-                CcusageRunnerKind::YarnDlx,
-                CcusageRunnerKind::NpmExec,
-                CcusageRunnerKind::Npx
-            ]
-        );
-    }
-
-    #[test]
-    fn ccusage_runner_args_include_expected_non_interactive_flags() {
-        let opts = CcusageQueryOpts {
-            provider: None,
-            since: Some("20260101".to_string()),
-            until: Some("20260131".to_string()),
-            home_path: None,
-            claude_path: None,
-        };
-        let expected_ccusage_package = ccusage_package_spec();
-        assert_eq!(expected_ccusage_package, "ccusage@20.0.2");
-        let expected_npm_exec_package = format!("--package={expected_ccusage_package}");
-
-        let bunx = ccusage_runner_args(
-            CcusageRunnerKind::Bunx,
-            &opts,
-            CcusageProvider::Claude,
-            CcusageCommandFlavor::Current,
-        );
-        assert_eq!(
-            bunx,
-            vec![
-                "--silent",
-                expected_ccusage_package.as_str(),
-                "claude",
-                "daily",
-                "--json",
-                "--breakdown",
-                "--order",
-                "desc",
-                "--since",
-                "20260101",
-                "--until",
-                "20260131"
-            ]
-        );
-
-        let pnpm = ccusage_runner_args(
-            CcusageRunnerKind::PnpmDlx,
-            &opts,
-            CcusageProvider::Claude,
-            CcusageCommandFlavor::Current,
-        );
-        assert_eq!(
-            pnpm,
-            vec![
-                "-s",
-                "dlx",
-                expected_ccusage_package.as_str(),
-                "claude",
-                "daily",
-                "--json",
-                "--breakdown",
-                "--order",
-                "desc",
-                "--since",
-                "20260101",
-                "--until",
-                "20260131"
-            ]
-        );
-
-        let yarn = ccusage_runner_args(
-            CcusageRunnerKind::YarnDlx,
-            &opts,
-            CcusageProvider::Claude,
-            CcusageCommandFlavor::Current,
-        );
-        assert_eq!(
-            yarn,
-            vec![
-                "dlx",
-                "-q",
-                expected_ccusage_package.as_str(),
-                "claude",
-                "daily",
-                "--json",
-                "--breakdown",
-                "--order",
-                "desc",
-                "--since",
-                "20260101",
-                "--until",
-                "20260131"
-            ]
-        );
-
-        let npm_exec = ccusage_runner_args(
-            CcusageRunnerKind::NpmExec,
-            &opts,
-            CcusageProvider::Claude,
-            CcusageCommandFlavor::Current,
-        );
-        assert_eq!(
-            npm_exec,
-            vec![
-                "exec",
-                "--yes",
-                expected_npm_exec_package.as_str(),
-                "--",
-                "ccusage",
-                "claude",
-                "daily",
-                "--json",
-                "--breakdown",
-                "--order",
-                "desc",
-                "--since",
-                "20260101",
-                "--until",
-                "20260131"
-            ]
-        );
-
-        let npx = ccusage_runner_args(
-            CcusageRunnerKind::Npx,
-            &opts,
-            CcusageProvider::Claude,
-            CcusageCommandFlavor::Current,
-        );
-        assert_eq!(
-            npx,
-            vec![
-                "--yes",
-                expected_ccusage_package.as_str(),
-                "claude",
-                "daily",
-                "--json",
-                "--breakdown",
-                "--order",
-                "desc",
-                "--since",
-                "20260101",
-                "--until",
-                "20260131"
-            ]
-        );
-    }
-
-    #[test]
-    fn ccusage_runner_args_codex_use_unified_package_and_bin() {
-        let opts = CcusageQueryOpts {
-            provider: Some("codex".to_string()),
-            since: Some("20260101".to_string()),
-            until: Some("20260131".to_string()),
-            home_path: None,
-            claude_path: None,
-        };
-        let expected_ccusage_package = ccusage_package_spec();
-        let expected_npm_exec_package = format!("--package={expected_ccusage_package}");
-
-        let bunx = ccusage_runner_args(
-            CcusageRunnerKind::Bunx,
-            &opts,
-            CcusageProvider::Codex,
-            CcusageCommandFlavor::Current,
-        );
-        assert_eq!(
-            bunx,
-            vec![
-                "--silent",
-                expected_ccusage_package.as_str(),
-                "codex",
-                "daily",
-                "--json",
-                "--breakdown",
-                "--order",
-                "desc",
-                "--since",
-                "20260101",
-                "--until",
-                "20260131"
-            ]
-        );
-
-        let npm_exec = ccusage_runner_args(
-            CcusageRunnerKind::NpmExec,
-            &opts,
-            CcusageProvider::Codex,
-            CcusageCommandFlavor::Current,
-        );
-        assert_eq!(
-            npm_exec,
-            vec![
-                "exec",
-                "--yes",
-                expected_npm_exec_package.as_str(),
-                "--",
-                "ccusage",
-                "codex",
-                "daily",
-                "--json",
-                "--breakdown",
-                "--order",
-                "desc",
-                "--since",
-                "20260101",
-                "--until",
-                "20260131"
-            ]
-        );
-
-        let npx = ccusage_runner_args(
-            CcusageRunnerKind::Npx,
-            &opts,
-            CcusageProvider::Codex,
-            CcusageCommandFlavor::Current,
-        );
-        assert_eq!(
-            npx,
-            vec![
-                "--yes",
-                expected_ccusage_package.as_str(),
-                "codex",
-                "daily",
-                "--json",
-                "--breakdown",
-                "--order",
-                "desc",
-                "--since",
-                "20260101",
-                "--until",
-                "20260131"
-            ]
-        );
-    }
-
-    #[test]
-    fn ccusage_runner_args_legacy_fallback_uses_release_age_safe_packages() {
-        let opts = CcusageQueryOpts {
-            provider: None,
-            since: Some("20260101".to_string()),
-            until: Some("20260131".to_string()),
-            home_path: None,
-            claude_path: None,
-        };
-
-        let claude = ccusage_runner_args(
-            CcusageRunnerKind::Bunx,
-            &opts,
-            CcusageProvider::Claude,
-            CcusageCommandFlavor::Legacy,
-        );
-        assert_eq!(
-            claude,
-            vec![
-                "--silent",
-                "ccusage@18.0.11",
-                "daily",
-                "--json",
-                "--breakdown",
-                "--order",
-                "desc",
-                "--since",
-                "20260101",
-                "--until",
-                "20260131"
-            ]
-        );
-
-        let codex_npm = ccusage_runner_args(
-            CcusageRunnerKind::NpmExec,
-            &opts,
-            CcusageProvider::Codex,
-            CcusageCommandFlavor::Legacy,
-        );
-        assert_eq!(
-            codex_npm,
-            vec![
-                "exec",
-                "--yes",
-                "--package=@ccusage/codex@18.0.11",
-                "--",
-                "ccusage-codex",
-                "daily",
-                "--json",
-                "--breakdown",
-                "--order",
-                "desc",
-                "--since",
-                "20260101",
-                "--until",
-                "20260131"
-            ]
-        );
-    }
-
-    #[test]
-    fn ccusage_path_entries_with_home_and_existing_path_preserves_order() {
-        let home = std::path::PathBuf::from("/tmp/usagepal-home");
-        let existing = std::env::join_paths([
-            std::path::PathBuf::from("/usr/bin"),
-            std::path::PathBuf::from("/bin"),
-        ])
-        .expect("join existing path");
-
-        let entries = ccusage_path_entries_with(Some(home.as_path()), Some(existing.as_os_str()));
-        assert_eq!(
-            entries,
-            vec![
-                home.join(".bun/bin"),
-                home.join(".nvm/current/bin"),
-                home.join(".local/bin"),
-                std::path::PathBuf::from("/opt/homebrew/bin"),
-                std::path::PathBuf::from("/usr/local/bin"),
-                std::path::PathBuf::from("/usr/bin"),
-                std::path::PathBuf::from("/bin"),
-            ]
-        );
-    }
-
-    #[test]
-    fn ccusage_path_entries_with_deduplicates_prefix_and_existing_entries() {
-        let existing = std::env::join_paths([
-            std::path::PathBuf::from("/usr/local/bin"),
-            std::path::PathBuf::from("/custom/bin"),
-            std::path::PathBuf::from("/custom/bin"),
-            std::path::PathBuf::from("/opt/homebrew/bin"),
-        ])
-        .expect("join existing path");
-
-        let entries = ccusage_path_entries_with(None, Some(existing.as_os_str()));
-        assert_eq!(
-            entries,
-            vec![
-                std::path::PathBuf::from("/opt/homebrew/bin"),
-                std::path::PathBuf::from("/usr/local/bin"),
-                std::path::PathBuf::from("/custom/bin"),
-            ]
-        );
-    }
-
-    #[test]
-    fn ccusage_enriched_path_with_uses_defaults_without_home_or_existing_path() {
-        let enriched = ccusage_enriched_path_with(None, None).expect("enriched path");
-        let entries: Vec<std::path::PathBuf> =
-            std::env::split_paths(enriched.as_os_str()).collect();
-        assert_eq!(
-            entries,
-            vec![
-                std::path::PathBuf::from("/opt/homebrew/bin"),
-                std::path::PathBuf::from("/usr/local/bin"),
-            ]
-        );
-    }
-
-    #[test]
-    fn ccusage_enriched_path_with_preserves_entries_after_join_and_split() {
-        let home = std::path::PathBuf::from("/tmp/usagepal-home");
-        let existing = std::env::join_paths([
-            std::path::PathBuf::from("/usr/bin"),
-            std::path::PathBuf::from("/bin"),
-        ])
-        .expect("join existing path");
-
-        let enriched = ccusage_enriched_path_with(Some(home.as_path()), Some(existing.as_os_str()))
-            .expect("path");
-        let entries: Vec<std::path::PathBuf> =
-            std::env::split_paths(enriched.as_os_str()).collect();
-
-        assert_eq!(
-            entries,
-            vec![
-                home.join(".bun/bin"),
-                home.join(".nvm/current/bin"),
-                home.join(".local/bin"),
-                std::path::PathBuf::from("/opt/homebrew/bin"),
-                std::path::PathBuf::from("/usr/local/bin"),
-                std::path::PathBuf::from("/usr/bin"),
-                std::path::PathBuf::from("/bin"),
-            ]
-        );
-    }
-
-    #[test]
-    fn nvm_default_bin_path_resolves_version_with_v_prefix() {
-        let home = std::env::temp_dir().join("usagepal-test-nvm-v-prefix");
-        let alias_dir = home.join(".nvm/alias");
-        std::fs::create_dir_all(&alias_dir).expect("create alias dir");
-        std::fs::write(alias_dir.join("default"), "v22.16.0").expect("write alias");
-        let result = nvm_default_bin_path(&home);
-        let _ = std::fs::remove_dir_all(&home);
-        assert_eq!(result, Some(home.join(".nvm/versions/node/v22.16.0/bin")));
-    }
-
-    #[test]
-    fn nvm_default_bin_path_resolves_version_without_v_prefix() {
-        let home = std::env::temp_dir().join("usagepal-test-nvm-no-v-prefix");
-        let alias_dir = home.join(".nvm/alias");
-        std::fs::create_dir_all(&alias_dir).expect("create alias dir");
-        std::fs::write(alias_dir.join("default"), "22.16.0").expect("write alias");
-        let result = nvm_default_bin_path(&home);
-        let _ = std::fs::remove_dir_all(&home);
-        assert_eq!(result, Some(home.join(".nvm/versions/node/v22.16.0/bin")));
-    }
-
-    #[test]
-    fn nvm_default_bin_path_returns_none_when_alias_missing() {
-        let home = std::env::temp_dir().join("usagepal-test-nvm-no-alias");
-        let _ = std::fs::remove_dir_all(&home);
-        let result = nvm_default_bin_path(&home);
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn ccusage_path_entries_with_includes_nvm_default_version() {
-        let home = std::env::temp_dir().join("usagepal-test-nvm-entries");
-        let alias_dir = home.join(".nvm/alias");
-        std::fs::create_dir_all(&alias_dir).expect("create alias dir");
-        std::fs::write(alias_dir.join("default"), "22.16.0").expect("write alias");
-        let entries = ccusage_path_entries_with(Some(&home), None);
-        let _ = std::fs::remove_dir_all(&home);
-        assert!(
-            entries.contains(&home.join(".nvm/versions/node/v22.16.0/bin")),
-            "expected nvm default version bin in entries"
-        );
-    }
-
-    #[test]
-    fn configure_ccusage_command_sets_path_override() {
-        let mut command = std::process::Command::new("echo");
-        let args = vec!["daily".to_string(), "--json".to_string()];
-        let path = std::env::join_paths([
-            std::path::PathBuf::from("/tmp/bin"),
-            std::path::PathBuf::from("/usr/bin"),
-        ])
-        .expect("join path override");
-
-        configure_ccusage_command(&mut command, &args, Some(path.as_os_str()));
-
-        let configured_args: Vec<String> = command
-            .get_args()
-            .map(|arg| arg.to_string_lossy().to_string())
-            .collect();
-        assert_eq!(configured_args, args);
-
-        let configured_path = command
-            .get_envs()
-            .find(|(key, _)| *key == std::ffi::OsStr::new("PATH"))
-            .and_then(|(_, value)| value.map(std::borrow::ToOwned::to_owned));
-        assert_eq!(configured_path.as_deref(), Some(path.as_os_str()));
-    }
-
-    #[test]
-    fn configure_ccusage_command_skips_path_override_when_absent() {
-        let mut command = std::process::Command::new("echo");
-        let args = vec!["daily".to_string()];
-
-        configure_ccusage_command(&mut command, &args, None);
-
-        let has_path_override = command
-            .get_envs()
-            .any(|(key, _)| key == std::ffi::OsStr::new("PATH"));
-        assert!(
-            !has_path_override,
-            "PATH should only be set when an override exists"
+            redact_log_message(model),
+            model,
+            "a model name is not a secret and must pass through log redaction unchanged"
         );
     }
 
@@ -4424,62 +3484,6 @@ mod tests {
     }
 
     #[test]
-    fn normalize_ccusage_output_converts_empty_array_to_daily_object() {
-        let normalized = normalize_ccusage_output("noise\n[]\n").expect("normalized output");
-        let value: serde_json::Value = serde_json::from_str(&normalized).expect("valid json");
-        assert_eq!(value, serde_json::json!({ "daily": [] }));
-    }
-
-    #[test]
-    fn normalize_ccusage_output_keeps_daily_object_shape() {
-        let output = r#"
-Saved lockfile
-{
-  "daily": [
-    { "date": "2026-02-21", "totalTokens": 123, "totalCost": 0.5 }
-  ],
-  "totals": { "totalTokens": 123 }
-}
-"#;
-        let normalized = normalize_ccusage_output(output).expect("normalized output");
-        let value: serde_json::Value = serde_json::from_str(&normalized).expect("valid json");
-        assert!(value.get("daily").and_then(|v| v.as_array()).is_some());
-        assert!(value.get("totals").is_some());
-    }
-
-    #[test]
-    fn normalize_ccusage_output_rejects_invalid_payloads() {
-        assert!(normalize_ccusage_output("not-json").is_none());
-        assert!(normalize_ccusage_output(r#"{"totals":{"totalTokens":1}}"#).is_none());
-    }
-
-    #[test]
-    fn collect_ccusage_runners_uses_fallback_order() {
-        let runners = collect_ccusage_runners_with(|kind| match kind {
-            CcusageRunnerKind::Bunx => None,
-            CcusageRunnerKind::PnpmDlx => Some("pnpm".to_string()),
-            CcusageRunnerKind::YarnDlx => Some("yarn".to_string()),
-            CcusageRunnerKind::NpmExec => Some("npm".to_string()),
-            CcusageRunnerKind::Npx => Some("npx".to_string()),
-        });
-        assert_eq!(
-            runners,
-            vec![
-                (CcusageRunnerKind::PnpmDlx, "pnpm".to_string()),
-                (CcusageRunnerKind::YarnDlx, "yarn".to_string()),
-                (CcusageRunnerKind::NpmExec, "npm".to_string()),
-                (CcusageRunnerKind::Npx, "npx".to_string()),
-            ]
-        );
-    }
-
-    #[test]
-    fn collect_ccusage_runners_returns_empty_when_none_available() {
-        let runners = collect_ccusage_runners_with(|_| None);
-        assert!(runners.is_empty());
-    }
-
-    #[test]
     fn ccusage_query_guard_blocks_overlapping_provider_query() {
         let first = CcusageQueryGuard::acquire(CcusageProvider::Codex)
             .expect("first query should acquire guard");
@@ -4498,109 +3502,14 @@ Saved lockfile
         );
     }
 
+    /// The load is bounded, and the bound is the probe's, not just the 15s
+    /// ceiling: an already-spent budget must refuse the query outright rather
+    /// than start an unbounded, uninterruptible scan on a probe worker.
     #[test]
-    fn ccusage_timeout_stops_runner_fallback() {
-        let opts = CcusageQueryOpts::default();
-        let runners = vec![
-            (CcusageRunnerKind::Bunx, "bunx".to_string()),
-            (CcusageRunnerKind::Npx, "npx".to_string()),
-        ];
-        let mut calls = Vec::new();
+    fn ccusage_query_refuses_to_start_once_the_probe_deadline_is_spent() {
+        let response = run_ccusage_query("{}", "claude", ProbeDeadline::at(Instant::now()));
 
-        let result = run_ccusage_query_with_runners(
-            runners,
-            &opts,
-            CcusageProvider::Codex,
-            "codex",
-            |kind, _, _, _, _| {
-                calls.push(kind);
-                CcusageRunnerResult::TimedOut
-            },
-        );
-
-        let value: serde_json::Value = serde_json::from_str(&result).expect("valid status json");
-        assert_eq!(value["status"], "runner_failed");
-        assert_eq!(calls, vec![CcusageRunnerKind::Bunx]);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn ccusage_runner_retries_legacy_package_when_current_package_fails() {
-        use std::io::Write;
-        use std::os::unix::fs::PermissionsExt;
-
-        let test_id = format!(
-            "usagepal-ccusage-legacy-fallback-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("system time")
-                .as_nanos()
-        );
-        let dir = std::env::temp_dir().join(test_id);
-        std::fs::create_dir_all(&dir).expect("create temp dir");
-        let script_path = dir.join("fake-bunx.sh");
-        let args_path = dir.join("args.log");
-
-        let mut script = std::fs::File::create(&script_path).expect("create script");
-        let script_body = format!(
-            r#"#!/bin/sh
-echo "$*" >> "{}"
-case "$*" in
-  *"@ccusage/codex@18.0.11"*)
-    printf '{{"daily":[]}}\n'
-    exit 0
-    ;;
-  *)
-    echo "blocked current package" >&2
-    exit 1
-    ;;
-esac
-"#,
-            args_path.display()
-        );
-        script
-            .write_all(script_body.as_bytes())
-            .expect("write script");
-        let mut permissions = script.metadata().expect("script metadata").permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&script_path, permissions).expect("make script executable");
-
-        let opts = CcusageQueryOpts {
-            provider: Some("codex".to_string()),
-            since: Some("20260101".to_string()),
-            until: None,
-            home_path: None,
-            claude_path: None,
-        };
-        let result = run_ccusage_with_runner(
-            CcusageRunnerKind::Bunx,
-            script_path.to_string_lossy().as_ref(),
-            &opts,
-            CcusageProvider::Codex,
-            "codex",
-        );
-        assert_eq!(
-            result,
-            CcusageRunnerResult::Success(r#"{"daily":[]}"#.to_string())
-        );
-
-        let calls = std::fs::read_to_string(&args_path).expect("read args log");
-        assert!(calls.contains("ccusage@20.0.2 codex daily"));
-        assert!(calls.contains("@ccusage/codex@18.0.11 daily"));
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn ccusage_timeout_log_uses_actual_timeout() {
-        assert_eq!(
-            format_ccusage_timeout(std::time::Duration::from_millis(100)),
-            "100ms"
-        );
-        assert_eq!(
-            format_ccusage_timeout(std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS)),
-            "15s"
-        );
+        assert_eq!(response, r#"{"status":"runner_failed"}"#);
     }
 
     #[test]
@@ -4625,93 +3534,5 @@ esac
         let deadline = ProbeDeadline::at(Instant::now());
 
         assert_eq!(deadline.clamp_duration(Duration::from_secs(10)), None);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn ccusage_timeout_kills_descendant_and_closes_pipes() {
-        use std::io::Write;
-        use std::os::unix::fs::PermissionsExt;
-        use std::path::Path;
-        use std::time::{Duration, Instant};
-
-        fn pid_exists(pid: i32) -> bool {
-            unsafe { libc::kill(pid, 0) == 0 }
-        }
-
-        fn read_pid_file(path: &Path, deadline: Instant) -> i32 {
-            loop {
-                if let Ok(pid_text) = std::fs::read_to_string(path) {
-                    let pid_text = pid_text.trim();
-                    if !pid_text.is_empty() {
-                        return pid_text.parse().expect("parse descendant pid");
-                    }
-                }
-                if Instant::now() >= deadline {
-                    panic!("descendant pid file was not created at {}", path.display());
-                }
-                std::thread::sleep(Duration::from_millis(20));
-            }
-        }
-
-        let test_id = format!(
-            "usagepal-ccusage-timeout-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("system time")
-                .as_nanos()
-        );
-        let dir = std::env::temp_dir().join(test_id);
-        std::fs::create_dir_all(&dir).expect("create temp dir");
-        let script_path = dir.join("fake-ccusage-runner.sh");
-        let pid_path = dir.join("descendant.pid");
-
-        let mut script = std::fs::File::create(&script_path).expect("create script");
-        let script_body = format!(
-            r#"#!/bin/sh
-sh -c 'sleep 30' &
-echo $! > "{}"
-echo "started"
-wait
-"#,
-            pid_path.display()
-        );
-        script
-            .write_all(script_body.as_bytes())
-            .expect("write script");
-        let mut permissions = script.metadata().expect("script metadata").permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&script_path, permissions).expect("make script executable");
-
-        let opts = CcusageQueryOpts::default();
-        let start = Instant::now();
-        let result = run_ccusage_with_runner_timeout(
-            CcusageRunnerKind::Bunx,
-            script_path.to_string_lossy().as_ref(),
-            &opts,
-            CcusageProvider::Codex,
-            "codex",
-            CcusageCommandFlavor::Current,
-            Duration::from_secs(1),
-        );
-
-        assert_eq!(result, CcusageRunnerResult::TimedOut);
-        assert!(
-            start.elapsed() < Duration::from_secs(3),
-            "timeout cleanup should not hang on inherited stdout/stderr pipes"
-        );
-
-        let descendant_pid = read_pid_file(&pid_path, Instant::now() + Duration::from_secs(1));
-
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while pid_exists(descendant_pid) && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        assert!(
-            !pid_exists(descendant_pid),
-            "descendant process should be killed with ccusage process group"
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

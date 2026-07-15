@@ -1,11 +1,27 @@
 [package]
 name = "usagepal"
-version = "0.7.34"
+version = "0.7.35-beta.1"
 description = "UsagePal is an open source AI subscription limit tracker (a fork of OpenUsage)"
 authors = ["Nicolas Demanez"]
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# Explicit workspace, root package included implicitly. Without this table,
+# Cargo treats `vendor/ccusage` (a path dependency) as an external crate for
+# `cargo test -p`/dev-dependency purposes, not a workspace member — even
+# though it lives inside this directory tree and is built as part of every
+# `cargo build`/`cargo test --lib` here. That distinction only bites once a
+# path dependency has its own `[dev-dependencies]` (added for
+# `ccusage-vendor`'s vendored `insta` snapshot test): `cargo test -p
+# ccusage-vendor` then fails with "cannot be tested because it requires
+# dev-dependencies and is not a member of the workspace". Declaring the
+# workspace explicitly (root package + `vendor/ccusage`) fixes that, with no
+# other observable effect — `vendor/ccusage/Cargo.lock` did not previously
+# exist as a separate lockfile; everything already resolved through this
+# crate's single `Cargo.lock`.
+[workspace]
+members = ["vendor/ccusage"]
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -21,12 +37,17 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `float_roundtrip`: serde_json's DEFAULT float parser is not correctly rounded
+# — it can land 1 ULP away from the nearest double. That silently corrupts money
+# values: the `ccusage_differential` fixture's `0.00015000000000000001` parses to
+# `0.00015` (a different double) without this feature, which made the gate report
+# a bogus diff against a loader whose output is in fact bit-identical to
+# ccusage@20.0.2's. Costs are f64 all the way to the UI, so we want exact parsing.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 time = { version = "0.3.47", features = ["formatting"] }
 dirs = "6"
 log = "0.4"
-libc = "0.2"
 reqwest = { version = "0.13", features = ["blocking", "socks"] }
 rquickjs = { version = "0.12", features = ["bindgen"] }
 tauri-plugin-store = "2.4.3"
@@ -46,6 +67,7 @@ tauri-plugin-keylight = "0.3.2"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 specta-typescript = "0.0.12"
+ccusage-vendor = { path = "vendor/ccusage" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mac-notification-sys = "0.6.15"

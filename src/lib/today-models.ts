@@ -283,8 +283,19 @@ export function buildModelUsage(plugins: TodayModelsSource[], period: UsagePerio
     // provider.models is the provider's own uncapped list; set each entry's
     // share against the same grand total the ranked list uses.
     for (const model of provider.models) model.share = model.todayCost / totalCost
+    provider.models = provider.models.filter(isDisplayableModel)
   }
-  return { models: ranked, providers, totalCost }
+  // Sub-cent models (mostly percent-only rows whose derived cost rounds to
+  // $0.00) are hidden as their own rows, but their spend stays in totalCost and
+  // in each provider's subtotal — so the grand total and shares stay honest.
+  return { models: ranked.filter(isDisplayableModel), providers, totalCost }
+}
+
+/** A model earns its own row only once its spend reaches a full cent; below
+ * that it would render as "$0.00". */
+const MIN_DISPLAY_COST = 0.01
+function isDisplayableModel(model: TodayModelEntry): boolean {
+  return model.todayCost >= MIN_DISPLAY_COST
 }
 
 /** Today's usage — the default window. Thin wrapper over {@link buildModelUsage}. */

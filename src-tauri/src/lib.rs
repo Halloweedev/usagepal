@@ -8,7 +8,12 @@ mod onboarding;
 mod openrouter_key;
 mod panel;
 mod keylight;
-mod plugin_engine;
+// `pub` only so the `ccusage_differential` integration test (an external crate)
+// can reach `plugin_engine::ccusage::query_daily`, the vendored loader's
+// entrypoint. `#[doc(hidden)]` says what that `pub` means: this is not public
+// API, it is a test seam. Nothing outside this crate and that test should use it.
+#[doc(hidden)]
+pub mod plugin_engine;
 mod tray;
 mod whats_new;
 
@@ -906,6 +911,15 @@ pub fn run() {
                 app_data_dir_tail,
                 redacted_app_data_dir
             );
+
+            // One price source for every provider. Serves the disk cache (or the
+            // embedded snapshot) immediately and starts the refresh ticker that
+            // keeps it current; reading a price never fetches, so nothing
+            // downstream ever waits on a LiteLLM fetch. The one synchronous cost
+            // here is parsing the cached price table — ~8ms on a warm 1.6MB
+            // LiteLLM file (measured, release), which is not worth trading for a
+            // startup window in which the app is up but has no prices to serve.
+            plugin_engine::pricing_cache::init(&app_data_dir);
 
             let (_, plugins) = plugin_engine::initialize_plugins(&app_data_dir, &resource_dir);
             let known_plugin_ids: Vec<String> =

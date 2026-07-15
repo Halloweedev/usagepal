@@ -538,40 +538,53 @@ host.ccusage.query(opts: {
   claudePath?: string,           // Legacy Claude-only override (deprecated; use homePath)
 }):
   | { status: "ok", data: { daily: DailyUsage[] } }
-  | { status: "no_runner" }
   | { status: "runner_failed" }
 ```
 
-Queries local token usage via provider-focused ccusage commands:
+Reads local token usage for one provider:
 
-- Claude: [`ccusage claude daily`](https://github.com/ryoppippi/ccusage)
-- Codex: [`ccusage codex daily`](https://github.com/ryoppippi/ccusage)
+- Claude: the same data [`ccusage claude daily`](https://github.com/ryoppippi/ccusage) reports
+- Codex: the same data [`ccusage codex daily`](https://github.com/ryoppippi/ccusage) reports
 
 Returns a status envelope:
 
 - `ok`: query succeeded, usage data is in `data.daily`
-- `no_runner`: no package runner (`bunx/pnpm/yarn/npm/npx`) was found
-- `runner_failed`: at least one runner was available but all attempts failed
+- `runner_failed`: the query failed (unreadable usage directory, or a query for this provider is already in flight)
+
+`no_runner` is no longer returned by the host. It used to mean "no package
+runner was found on PATH", which cannot happen now that the loader runs
+in-process. Plugins may still produce it themselves when `ctx.host.ccusage` is
+absent, and treating any non-`ok` status as "no data" remains the correct
+handling.
 
 ### Behavior
 
-- **Runtime runners**: Executes pinned `ccusage@20.0.2` via fallback chain `bunx -> pnpm dlx -> yarn dlx -> npm exec -> npx`
+- **In-process**: The ccusage v20.0.2 core is vendored into the app and runs inside the host. **No Node or Bun process is spawned**, nothing is downloaded from a package registry, and the app works with no package manager installed. (Before v0.7.x this shelled out to `bunx ccusage@20.0.2`, falling back through `pnpm dlx`/`yarn dlx`/`npm exec`/`npx`.)
 - **Provider-aware**: Resolves provider from `opts.provider` or plugin id (`claude`/`codex`)
-- **Focused commands**: Uses `ccusage claude daily` or `ccusage codex daily`; it intentionally does not use `ccusage daily` because that aggregates all detected agents
-- **Legacy fallback**: If `ccusage@20.0.2` cannot run through the package manager release-age policy, retries with release-age-safe `ccusage@18.0.11` for Claude or `@ccusage/codex@18.0.11` for Codex
-- **No provider API calls**: Usage is computed from local JSONL session files; the host does not call Claude/Codex (or other provider) APIs, but package runners may contact a package registry to download the `ccusage` CLI if it is not already available locally
-- **Graceful degradation**: returns `no_runner` when no runner exists, `runner_failed` when execution fails
-- **Pricing**: Uses ccusage's built-in LiteLLM pricing data
+- **Focused queries**: Loads only the requested provider's data; it never aggregates across all detected agents
+- **No provider API calls, and no network at all**: Usage is computed from local JSONL session files, and pricing comes from a table embedded in the app. See the trade-off below.
+- **One query per provider at a time**: A second concurrent query for the same provider returns `runner_failed` rather than queuing
+- **Time-bounded**: A query is capped at 15 seconds (less, if the plugin's probe budget is shorter). A load that exceeds it returns `runner_failed`.
+
+### Pricing freshness
+
+Pricing comes from a LiteLLM snapshot embedded in the app at build time. Nothing is fetched at runtime, so costs are deterministic and work offline — but they are only as fresh as that snapshot.
+
+A second embedded snapshot from models.dev fills models the LiteLLM table lacks, so fewer models fall through to `$0`. But the same freshness limit applies to both snapshots.
+
+The consequence, for Codex specifically: Codex session files carry no cost, so cost is always computed from the pricing table. **A model in neither snapshot is priced at $0** — the day still reports its tokens, but contributes nothing to spend. There is no error and no log line; the number is simply low.
+
+Claude session files usually carry a pre-baked cost, which is preferred when present, so Claude is much less exposed to this.
 
 ### DailyUsage
 
-The host normalizes only the top-level shape to `{ daily: [...] }`. Inner day fields come from the selected CLI and may differ by provider/version.
+`data` is the same `{ daily: [...], totals: {...} }` object the `ccusage` CLI prints for that provider. Inner day fields differ by provider.
 
 Commonly observed fields include:
 
 | Property             | Type            | Notes |
 | -------------------- | --------------- | ----- |
-| `date`               | `string`        | Date label from CLI output (provider/locale-dependent) |
+| `date`               | `string`        | Local-time day bucket, `YYYY-MM-DD` |
 | `inputTokens`        | `number`        | Present in Claude and Codex |
 | `outputTokens`       | `number`        | Present in Claude and Codex |
 | `cacheCreationTokens`| `number`        | Claude field |
@@ -591,8 +604,37 @@ if (result.status === "ok") {
     var cost = day.totalCost != null ? day.totalCost : day.costUSD
     ctx.host.log.info(day.date + ": " + (day.totalTokens || 0) + " tokens, $" + (cost != null ? cost : "n/a"))
   }
-} else if (result.status === "no_runner") {
-  ctx.host.log.warn("ccusage unavailable: no package runner found")
+} else {
+  // Any non-"ok" status means "no usage data this time" — omit the lines
+  // rather than reporting zero.
+  ctx.host.log.warn("ccusage unavailable: " + result.status)
+}
+```
+
+## pricing (Model Rates)
+
+```typescript
+host.pricing.lookup(model: string):
+  | { input: number, output: number, cacheWrite: number, cacheRead: number }
+  | null
+```
+
+Looks up per-token rates for a model, in **USD per million tokens**, from the
+same price source that computes Claude/Codex spend (a LiteLLM snapshot embedded
+at build time, plus a models.dev snapshot that fills models LiteLLM lacks).
+
+- Returns an object with the four rates when the model is priced.
+- Returns **`null`** — never an object of zeroes — when the model has no known
+  price. A `$0` that means "we don't know" is indistinguishable from a `$0` that
+  means "free", so an unknown model must be surfaced (omit its cost, note it as
+  unpriced), not silently zeroed.
+
+```javascript
+var rates = ctx.host.pricing.lookup("claude-sonnet-4-5")
+if (rates) {
+  var costUsd = (inputTokens * rates.input + outputTokens * rates.output) / 1e6
+} else {
+  ctx.host.log.info("unpriced model — surfacing rather than reporting $0")
 }
 ```
 

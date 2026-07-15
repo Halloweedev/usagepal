@@ -1845,6 +1845,37 @@ describe("cursor pricing", () => {
     expect(plugin.__test.resolveModelRates("totally-unknown-model")).toBeNull()
     expect(plugin.__test.resolveModelRates("")).toBeNull()
   })
+
+  it("does not let an unlisted version fall through to the base model's rates", async () => {
+    const plugin = await loadPlugin()
+    // Regression: the base catch-alls ended in `\b`, and `\b` matches between a
+    // digit and a `.`, so an unlisted `gpt-5.x` (or `composer-2.x`) silently
+    // inherited the base model's price instead of being surfaced as unknown.
+    const gpt5 = plugin.__test.resolveModelRates("gpt-5")
+    expect(gpt5).not.toBeNull()
+    expect(plugin.__test.resolveModelRates("gpt-5.6")).not.toEqual(gpt5)
+    expect(plugin.__test.resolveModelRates("gpt-5.7")).toBeNull()
+
+    const composer2 = plugin.__test.resolveModelRates("composer-2")
+    expect(composer2).not.toBeNull()
+    expect(plugin.__test.resolveModelRates("composer-2.6")).toBeNull()
+
+    const composer1 = plugin.__test.resolveModelRates("composer-1")
+    expect(composer1).not.toBeNull()
+    expect(plugin.__test.resolveModelRates("composer-1.6")).toBeNull()
+  })
+
+  it("still resolves the plain base versions after the fallthrough guard", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.resolveModelRates("gpt-5")).toEqual({
+      input: 1.25, cache_write: null, cache_read: 0.125, output: 10.0, apply_max_mode_uplift: true,
+    })
+    expect(plugin.__test.resolveModelRates("composer-2")).not.toBeNull()
+    expect(plugin.__test.resolveModelRates("composer-1")).not.toBeNull()
+    // Listed tiers keep resolving through their specific rules.
+    expect(plugin.__test.resolveModelRates("gpt-5.6-sol").output).toBe(30.0)
+    expect(plugin.__test.resolveModelRates("gpt-5.4").output).toBe(15.0)
+  })
 })
 
 describe("cursor usage CSV parser", () => {

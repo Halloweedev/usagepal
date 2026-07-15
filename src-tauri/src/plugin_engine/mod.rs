@@ -1,5 +1,7 @@
+pub mod ccusage;
 pub mod host_api;
 pub mod manifest;
+pub mod pricing_cache;
 pub mod runtime;
 
 use manifest::LoadedPlugin;

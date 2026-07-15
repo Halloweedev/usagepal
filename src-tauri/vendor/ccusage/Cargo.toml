@@ -1,0 +1,54 @@
+[package]
+name = "ccusage-vendor"
+version = "20.0.2"
+description = "Vendored ccusage Rust core (MIT); see VENDORING.md"
+edition = "2021"
+publish = false
+build = "build.rs"
+
+# Dependency versions are pinned to exactly what upstream ccusage v20.0.2
+# (rust/crates/ccusage/Cargo.toml) declares for the modules we vendor. Do not
+# upgrade opportunistically — matching upstream is the point (VENDORING.md).
+[dependencies]
+# DEVIATION FROM UPSTREAM'S DEPENDENCY LIST #2 (upstream declares no logging
+# facade; it writes to stderr with `eprintln!`). See VENDORING.md, "Local
+# modifications" item 5.
+#
+# Used by exactly one line, in the NON-vendored `src/lib.rs`
+# (`load_pricing_map`), to report a pricing overlay that loaded no models.
+# `eprintln!` — what upstream does at the equivalent point — is effectively
+# silent in a bundled Tauri app: nothing captures the process's stderr, so the
+# warning would reach no log and no Sentry. `log` is the facade `usagepal`
+# already routes to both. No vendored file uses it.
+log = "0.4"
+jiff = { version = "0.2.24", default-features = false, features = [
+    "std",
+    "tz-system",
+    "tzdb-zoneinfo",
+] }
+memchr = "2"
+compact_str = "0.9"
+phf = { version = "0.13", features = ["macros"] }
+rustc-hash = "2"
+serde = { version = "1", features = ["derive"] }
+# DEVIATION FROM UPSTREAM'S DEPENDENCY LIST #1 (upstream declares plain
+# `serde_json = "1"`). See VENDORING.md, "Local modifications" item 4.
+#
+# `usagepal` enables `float_roundtrip` (src-tauri/Cargo.toml). Cargo unifies
+# features across the graph, so building this crate as part of the app turns
+# `float_roundtrip` on inside it whether or not it is declared here — meaning
+# the vendored loader in production parses JSONL floats with a *different*
+# parser than upstream's own `cargo test` would. Declaring it here is what
+# makes `cargo test -p ccusage-vendor` (which does not unify) exercise the
+# same parser production does. Without it, this crate's 40 upstream tests —
+# including the `insta` snapshot — silently test a configuration nobody ships.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+smallvec = "1"
+ureq = { version = "3.3.0", default-features = false, features = ["rustls"] }
+
+# Only needed by the `#[cfg(test)]` snapshot test that came in with vendored
+# `adapter/codex.rs` (`insta::assert_json_snapshot!`). Version pinned to
+# exactly what upstream `rust/crates/ccusage/Cargo.toml`'s `[dev-dependencies]`
+# declares for it, same rule as everything else in this file.
+[dev-dependencies]
+insta = { version = "1.47.2", features = ["json"] }

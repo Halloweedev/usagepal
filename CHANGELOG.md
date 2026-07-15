@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.7.35-beta.1
+
+Native token & pricing engine. Claude and Codex usage is now computed inside the app — no Node or Bun runtime, no package download — and one shared price source drives every provider. This corrects four pricing details, each named below; some historical figures shift as a result.
+
+### New Features
+- Native in-process usage engine for Claude and Codex — no Node or Bun runtime, nothing downloaded from a package registry, works offline from embedded price snapshots by @Halloweedev
+- One shared price source exposed to plugins (`host.pricing.lookup`), backed by an embedded LiteLLM snapshot with a models.dev snapshot filling the gaps by @Halloweedev
+
+### Bug Fixes
+- `/btw` sidechain replays are no longer double-counted — Claude spend that included replayed parent messages drops to its true value by @Halloweedev
+- 1-hour prompt cache creation is now priced at 2× input instead of flat — spend for anyone using 1h caching rises to the correct figure by @Halloweedev
+- Tighter model→price matching — a version like `gpt-5.6` can no longer inherit `gpt-5`'s rates through a loose substring match by @Halloweedev
+- Cursor no longer mis-prices an unlisted `gpt-5.x` at the base `gpt-5` rate, and the same version-fallthrough guard covers OpenCode Go by @Halloweedev
+
+### Improvements
+- Fewer `$0` models — a second embedded price source (models.dev) covers models the LiteLLM table lacks by @Halloweedev
+
+---
+
 ## v0.7.34
 
 Stable release for the cross-provider models graph, Overview models strip, expanded share-graph providers, and polish from the 0.7.34 betas.
