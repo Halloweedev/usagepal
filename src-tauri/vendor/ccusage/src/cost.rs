@@ -4,6 +4,8 @@ use crate::{
     types::{Speed, UsageEntry},
 };
 
+const CACHE_CREATE_1H_INPUT_MULTIPLIER: f64 = 2.0;
+
 pub(crate) fn calculate_cost(
     data: &UsageEntry,
     mode: CostMode,
@@ -50,6 +52,24 @@ fn calculate_cost_from_tokens(
     } else {
         1.0
     };
+
+    // The `cache_creation` sub-object OVERRIDES the flat
+    // `cache_creation_input_tokens` field when present. 1h ephemeral cache
+    // creation is priced at input x 2.0; 5m stays at the flat cache-create rate.
+    let (cache_create_5m_tokens, cache_create_1h_tokens) =
+        if let Some(breakdown) = usage.cache_creation {
+            (
+                breakdown.ephemeral_5m_input_tokens,
+                breakdown.ephemeral_1h_input_tokens,
+            )
+        } else {
+            (usage.cache_creation_input_tokens, 0)
+        };
+    let cache_create_1h_cost = pricing.input * CACHE_CREATE_1H_INPUT_MULTIPLIER;
+    let cache_create_1h_cost_above_200k = pricing
+        .input_above_200k
+        .map(|c| c * CACHE_CREATE_1H_INPUT_MULTIPLIER);
+
     (tiered_cost(usage.input_tokens, pricing.input, pricing.input_above_200k)
         + tiered_cost(
             usage.output_tokens,
@@ -57,9 +77,14 @@ fn calculate_cost_from_tokens(
             pricing.output_above_200k,
         )
         + tiered_cost(
-            usage.cache_creation_input_tokens,
+            cache_create_5m_tokens,
             pricing.cache_create,
             pricing.cache_create_above_200k,
+        )
+        + tiered_cost(
+            cache_create_1h_tokens,
+            cache_create_1h_cost,
+            cache_create_1h_cost_above_200k,
         )
         + tiered_cost(
             usage.cache_read_input_tokens,

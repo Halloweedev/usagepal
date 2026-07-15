@@ -702,7 +702,7 @@ impl DailyAccumulator {
             let breakdown = &mut self.breakdowns[index];
             breakdown.input_tokens += entry.usage.input_tokens;
             breakdown.output_tokens += entry.usage.output_tokens;
-            breakdown.cache_creation_tokens += entry.usage.cache_creation_input_tokens;
+            breakdown.cache_creation_tokens += entry.usage.cache_creation_token_count();
             breakdown.cache_read_tokens += entry.usage.cache_read_input_tokens;
             breakdown.cost += entry.cost;
         }

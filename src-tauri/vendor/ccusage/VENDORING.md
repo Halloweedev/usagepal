@@ -567,13 +567,42 @@ six such edits, across three files, and all six are single tokens.**
    (`version_suffix_does_not_fuzzy_match_shorter_model`): `gpt-5.1` no longer
    resolves to `gpt-5`'s rates, while a `YYYYMMDD` date alias still does.
 
+8. **HEAD backport: 1-hour cache creation priced at input × 2.0** (Phase 3
+   Task 8 — a deliberate, number-moving change; spend goes UP). `src/types.rs`,
+   `src/cost.rs`, `src/claude_loader.rs`. v20.0.2 has no `cache_creation`
+   sub-object and prices all cache creation flat, underpricing anyone using 1h
+   caching. Backport HEAD's split:
+
+   - `types.rs`: added `cache_creation: Option<CacheCreationRaw>` (serde default)
+     to `TokenUsageRaw`, the `CacheCreationRaw { ephemeral_5m_input_tokens,
+     ephemeral_1h_input_tokens }` struct, and the `cache_creation_token_count()`
+     helper. The sub-object OVERRIDES the flat `cache_creation_input_tokens` when
+     present. Token counting (`TokenCounts::add_usage`) and the per-model
+     breakdown (`claude_loader.rs`) now use that helper so totals are unchanged
+     when flat == 5m+1h.
+   - `cost.rs`: added `CACHE_CREATE_1H_INPUT_MULTIPLIER = 2.0` and split
+     `calculate_cost_from_tokens` — the 5m portion prices at `pricing.cache_create`
+     (flat), the 1h portion at `pricing.input * 2.0`.
+
+   **Deliberately NOT ported:** HEAD's `long_context_threshold` two-stage branch
+   and its 4-arg `tiered_cost` — that machinery does not exist in the vendored
+   v20.0.2 `Pricing`. The vendored 3-arg `tiered_cost` (hardcoded 200_000
+   threshold) is kept.
+
+   **Proof:** new `cache1h.jsonl` fixture (a `cache_creation` sub-object with
+   both tiers, on 2026-07-13). The real `ccusage@20.0.2` binary ignores the
+   sub-object and prices that day at cost 0.01164; the vendored loader now prices
+   0.01209. `claude-expected.json` updated for that one day — intentionally not
+   byte-identical to the binary there.
+
 **Files under "Files taken" have been edited.** Items 0/0b/0c are six
 single-token edits across `adapter/codex.rs`, `codex_loader.rs` and
-`claude_loader.rs` (plus one rustfmt reflow). Items 6 and 7 are substantive HEAD
-backports: the sidechain dedup in `claude_loader.rs` (item 6) and the
-word-boundary matcher in `pricing.rs` (item 7) — so those two files are **no
-longer byte-identical to v20.0.2**, by design. `git diff` against a fresh
-`v20.0.2` checkout of every *other* file under "Files taken" is empty.
+`claude_loader.rs` (plus one rustfmt reflow). Items 6, 7 and 8 are substantive
+HEAD backports: the sidechain dedup (`claude_loader.rs`, item 6), the
+word-boundary matcher (`pricing.rs`, item 7), and 1h-cache pricing (`types.rs` +
+`cost.rs` + `claude_loader.rs`, item 8) — so those files are **no longer
+byte-identical to v20.0.2**, by design. `git diff` against a fresh `v20.0.2`
+checkout of every *other* file under "Files taken" is empty.
 
 ## Public API (consumed by `usagepal`'s `plugin_engine/ccusage.rs`)
 
