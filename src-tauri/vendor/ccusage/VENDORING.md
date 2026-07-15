@@ -595,12 +595,51 @@ six such edits, across three files, and all six are single tokens.**
    0.01209. `claude-expected.json` updated for that one day — intentionally not
    byte-identical to the binary there.
 
+9. **HEAD backport: models.dev as a second price source** (Phase 3 Task 10 —
+   Part A only). `src/pricing.rs` + a NEW vendored data file
+   `src/models-dev-pricing.json` (copied verbatim from HEAD, 37 KB / 226 models
+   — it is vendored *data* like `litellm-pricing-fallback.json`, not logic).
+   models.dev fills price misses LiteLLM lacks (fewer silent unpriced models).
+
+   Ported: the models.dev types (`ModelsDevProvider/Json/Model/Cost/Limit`),
+   `parse_models_dev_json` + its two shape predicates, `load_models_dev_json_missing`
+   / `load_models_dev_models` (models.dev `cost` is per-million → ÷1e6 to per-token;
+   only fills keys not already present), an `embedded_models_dev_pricing()`
+   `OnceLock`, and a split of `find` into `find_entry` (the primary lookup, which
+   keeps item 7's word-boundary matcher) + `find` (primary, then the embedded
+   models.dev fallback when `enable_embedded_models_dev_fallback` is set —
+   `load_embedded` sets it; the embedded map leaves it off so it cannot recurse).
+
+   **Deliberately NOT ported — the live network source (Part B).** HEAD also
+   fetches `https://models.dev/api.json` lazily on a lookup miss, throttled by a
+   60s `ModelsDevPricingCache`. That is exactly the "second uncached network fetch
+   on the probe path" the plan forbids (Task 10 Step 3) — `rates_for` is a pure
+   in-memory read; the ticker is the only fetcher. So the network source, its
+   `MODELS_DEV_API_URL`/retry constants, and `ModelsDevPricingCache` are NOT
+   vendored. Part A (embedded snapshot, offline) delivers the goal for all 226
+   snapshot models with zero probe-path I/O. Routing a *live* models.dev overlay
+   through the ticker-driven disk cache (`pricing_cache.rs`, mirroring the LiteLLM
+   overlay) is a documented follow-up, not required by the plan's proof test.
+
+   Also NOT ported: `long_context_threshold` on `Pricing` and any
+   `clear_find_cache()` calls — absent from the vendored crate. `context_limit`
+   was left without the models.dev fallback (no consumer in usagepal); only `find`
+   gained it.
+
+   **Proof:** `models_dev_prices_a_model_litellm_lacks` in `pricing_cache.rs` —
+   `claude-fable-5` is absent from LiteLLM but present in the embedded snapshot;
+   `rates_for` now prices it (input 10 / output 50 / cache_write 12.5 /
+   cache_read 1, per-million), fully offline. The differential corpus is
+   unperturbed (its models resolve via LiteLLM exact keys, never reaching the
+   fallback).
+
 **Files under "Files taken" have been edited.** Items 0/0b/0c are six
 single-token edits across `adapter/codex.rs`, `codex_loader.rs` and
-`claude_loader.rs` (plus one rustfmt reflow). Items 6, 7 and 8 are substantive
-HEAD backports: the sidechain dedup (`claude_loader.rs`, item 6), the
-word-boundary matcher (`pricing.rs`, item 7), and 1h-cache pricing (`types.rs` +
-`cost.rs` + `claude_loader.rs`, item 8) — so those files are **no longer
+`claude_loader.rs` (plus one rustfmt reflow). Items 6-9 are substantive HEAD
+backports: the sidechain dedup (`claude_loader.rs`, item 6), the word-boundary
+matcher (`pricing.rs`, item 7), 1h-cache pricing (`types.rs` + `cost.rs` +
+`claude_loader.rs`, item 8), and the models.dev fallback (`pricing.rs` + new
+`models-dev-pricing.json`, item 9) — so those files are **no longer
 byte-identical to v20.0.2**, by design. `git diff` against a fresh `v20.0.2`
 checkout of every *other* file under "Files taken" is empty.
 

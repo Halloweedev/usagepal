@@ -555,6 +555,21 @@ mod tests {
     }
 
     #[test]
+    fn models_dev_prices_a_model_litellm_lacks() {
+        let dir = temp_dir("pricing-models-dev");
+        let cache = PricingCache::new(&dir);
+        // claude-fable-5 is absent from LiteLLM but present in the embedded
+        // models.dev snapshot. Resolved entirely offline — no network.
+        let rates = cache
+            .rates_for("claude-fable-5")
+            .expect("embedded models.dev snapshot must price a model LiteLLM lacks");
+        assert_near(rates.input, 10.0);
+        assert_near(rates.output, 50.0);
+        assert_near(rates.cache_write, 12.5);
+        assert_near(rates.cache_read, 1.0);
+    }
+
+    #[test]
     fn unknown_model_returns_none_not_zero() {
         let dir = temp_dir("pricing-unknown");
         let cache = PricingCache::new(&dir);

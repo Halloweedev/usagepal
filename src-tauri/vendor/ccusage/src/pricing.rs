@@ -1,6 +1,7 @@
-use std::{borrow::Cow, time::Duration};
+use std::{borrow::Cow, sync::OnceLock, time::Duration};
 
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::fast::FxHashMap;
 
@@ -12,6 +13,10 @@ const BUILD_TIME_PRICING_JSON: &str =
     include_str!(concat!(env!("OUT_DIR"), "/litellm-pricing.json"));
 const FAST_MULTIPLIER_OVERRIDES_JSON: &str = include_str!("fast-multiplier-overrides.json");
 const FALLBACK_PRICING_JSON: &str = include_str!("litellm-pricing-fallback.json");
+// models.dev fills price misses LiteLLM lacks. Embedded snapshot only (offline);
+// the live https://models.dev/api.json network source is intentionally NOT
+// vendored here — it belongs in the ticker-driven disk cache, not the probe path.
+const BUILD_TIME_MODELS_DEV_JSON: &str = include_str!("models-dev-pricing.json");
 const LITELLM_PRICING_URL: &str =
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 const PRICING_FETCH_TIMEOUT_SECONDS: u64 = 10;
@@ -35,6 +40,40 @@ pub(crate) struct Pricing {
 pub(crate) struct PricingMap {
     entries: FxHashMap<String, Pricing>,
     context_limits: FxHashMap<String, u64>,
+    /// When set, `find` falls back to the embedded models.dev snapshot for models
+    /// LiteLLM lacks. Off by default so the embedded map itself cannot recurse.
+    enable_embedded_models_dev_fallback: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelsDevProvider {
+    models: FxHashMap<String, ModelsDevModel>,
+}
+
+#[derive(Debug)]
+enum ModelsDevJson {
+    Providers(FxHashMap<String, ModelsDevProvider>),
+    Models(FxHashMap<String, ModelsDevModel>),
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelsDevModel {
+    id: Option<String>,
+    cost: Option<ModelsDevCost>,
+    limit: Option<ModelsDevLimit>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelsDevCost {
+    input: Option<f64>,
+    output: Option<f64>,
+    cache_read: Option<f64>,
+    cache_write: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelsDevLimit {
+    context: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,6 +129,7 @@ impl PricingMap {
         map.load_json_with_overrides(BUILD_TIME_PRICING_JSON, &fast_multiplier_overrides);
         map.load_json_with_overrides(FALLBACK_PRICING_JSON, &fast_multiplier_overrides);
         map.put_fallback_pricing(&fast_multiplier_overrides);
+        map.enable_embedded_models_dev_fallback = true;
         map
     }
 
@@ -180,7 +220,78 @@ impl PricingMap {
         loaded_count
     }
 
+    /// Load models.dev entries for models this map does not already price.
+    /// models.dev `cost` is USD per million; convert to per-token here.
+    fn load_models_dev_json_missing(&mut self, json: &str) -> Option<usize> {
+        let raw = parse_models_dev_json(json)?;
+        Some(match raw {
+            ModelsDevJson::Providers(providers) => providers
+                .into_values()
+                .map(|provider| self.load_models_dev_models(provider.models))
+                .sum(),
+            ModelsDevJson::Models(models) => self.load_models_dev_models(models),
+        })
+    }
+
+    fn load_models_dev_models(&mut self, models: FxHashMap<String, ModelsDevModel>) -> usize {
+        let mut loaded_count = 0;
+        for (model_key, model) in models {
+            let model_id = model.id.unwrap_or(model_key);
+            if self.entries.contains_key(&model_id) {
+                continue;
+            }
+            let Some(cost) = model.cost else {
+                continue;
+            };
+            let Some(input) = cost.input else {
+                continue;
+            };
+            let Some(output) = cost.output else {
+                continue;
+            };
+            let input = input / 1_000_000.0;
+            let output = output / 1_000_000.0;
+            let cache_read_explicit = cost.cache_read.is_some();
+            self.entries.insert(
+                model_id.clone(),
+                Pricing {
+                    input,
+                    output,
+                    cache_create: cost
+                        .cache_write
+                        .map(|v| v / 1_000_000.0)
+                        .unwrap_or(input * 1.25),
+                    cache_read: cost
+                        .cache_read
+                        .map(|v| v / 1_000_000.0)
+                        .unwrap_or(input * 0.1),
+                    cache_read_explicit,
+                    input_above_200k: None,
+                    output_above_200k: None,
+                    cache_create_above_200k: None,
+                    cache_read_above_200k: None,
+                    fast_multiplier: 1.0,
+                },
+            );
+            if let Some(ctx) = model.limit.and_then(|limit| limit.context) {
+                self.context_limits.insert(model_id, ctx);
+            }
+            loaded_count += 1;
+        }
+        loaded_count
+    }
+
     pub(crate) fn find(&self, model: &str) -> Option<Pricing> {
+        self.find_entry(model).or_else(|| {
+            // models.dev fills LiteLLM misses. The embedded map has the fallback
+            // flag off, so `find_entry` on it cannot recurse.
+            self.enable_embedded_models_dev_fallback
+                .then(|| embedded_models_dev_pricing().find_entry(model))
+                .flatten()
+        })
+    }
+
+    fn find_entry(&self, model: &str) -> Option<Pricing> {
         self.entries.get(model).copied().or_else(|| {
             let normalized_model = normalized_pricing_key(model);
             self.entries
@@ -617,6 +728,58 @@ fn normalized_pricing_key(value: &str) -> Cow<'_, str> {
     } else {
         Cow::Borrowed(value)
     }
+}
+
+/// The embedded models.dev snapshot, parsed once. Its `PricingMap` has the
+/// fallback flag off (Default), so `find_entry` on it terminates.
+fn embedded_models_dev_pricing() -> &'static PricingMap {
+    static EMBEDDED: OnceLock<PricingMap> = OnceLock::new();
+    EMBEDDED.get_or_init(|| {
+        let mut map = PricingMap::default();
+        map.load_models_dev_json_missing(BUILD_TIME_MODELS_DEV_JSON)
+            .expect("embedded models-dev-pricing.json must parse");
+        map
+    })
+}
+
+/// Auto-detects the nested "Providers" form (live api.json) and the flat "Models"
+/// form (the embedded snapshot).
+fn parse_models_dev_json(json: &str) -> Option<ModelsDevJson> {
+    let value = serde_json::from_str::<Value>(json).ok()?;
+    let Value::Object(entries) = &value else {
+        return None;
+    };
+    if entries.values().any(models_dev_entry_has_models_field) {
+        if !entries.values().all(models_dev_entry_has_models_field) {
+            return None;
+        }
+        return serde_json::from_value::<FxHashMap<String, ModelsDevProvider>>(value)
+            .ok()
+            .map(ModelsDevJson::Providers);
+    }
+    if !entries.values().all(models_dev_entry_has_required_cost) {
+        return None;
+    }
+    serde_json::from_value::<FxHashMap<String, ModelsDevModel>>(value)
+        .ok()
+        .map(ModelsDevJson::Models)
+}
+
+fn models_dev_entry_has_models_field(value: &Value) -> bool {
+    value
+        .as_object()
+        .is_some_and(|entry| entry.get("models").is_some_and(Value::is_object))
+}
+
+fn models_dev_entry_has_required_cost(value: &Value) -> bool {
+    value
+        .as_object()
+        .and_then(|entry| entry.get("cost"))
+        .and_then(Value::as_object)
+        .is_some_and(|cost| {
+            cost.get("input").is_some_and(Value::is_number)
+                && cost.get("output").is_some_and(Value::is_number)
+        })
 }
 
 fn should_log_pricing_refresh_details() -> bool {
