@@ -135,6 +135,27 @@ describe("buildTodayModelUsage", () => {
     expect(usage.providers).toEqual([])
     expect(usage.totalCost).toBe(0)
   })
+
+  it("hides sub-cent models but keeps their spend in the total", () => {
+    // Percent-only provider (Codex): per-model cost is derived as
+    // provider total × the model's %. GPT-5.5 at 0.1% of $3.52 is $0.0035 —
+    // a real but sub-cent slice that must not render as its own $0.00 row.
+    const codexTiny = makeSource("codex", "Codex", "#74AA9C", [
+      modelLine("Today", "$3.52 · 4.4M"),
+      modelLine("GPT-5.6 Sol", "99.9%"),
+      modelLine("GPT-5.5", "0.1%"),
+    ])
+    const usage = buildTodayModelUsage([codexTiny])
+
+    const names = usage.models.map((m) => m.name)
+    expect(names).toContain("GPT-5.6 Sol")
+    expect(names).not.toContain("GPT-5.5")
+    // The provider total still reflects the real spend, sub-cent slices included.
+    expect(usage.totalCost).toBeCloseTo(3.52, 5)
+    // The provider's own model list is filtered the same way.
+    const codexProvider = usage.providers.find((p) => p.id === "codex")
+    expect(codexProvider?.models.map((m) => m.name)).toEqual(["GPT-5.6 Sol"])
+  })
 })
 
 describe("graph grouping + selection", () => {
