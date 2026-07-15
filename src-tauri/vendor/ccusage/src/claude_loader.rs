@@ -291,6 +291,7 @@ struct DailyLoadedEntry {
     model: Option<String>,
     message_id: Option<String>,
     request_id: Option<String>,
+    is_sidechain: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -303,6 +304,7 @@ struct DailyUsageEntry {
     #[serde(rename = "costUSD")]
     cost_usd: Option<f64>,
     request_id: Option<String>,
+    is_sidechain: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -323,6 +325,7 @@ impl DailyUsageLine {
                 session_id: None,
                 cost_usd: entry.data.message.cost_usd,
                 request_id: entry.data.message.request_id,
+                is_sidechain: entry.data.message.is_sidechain,
             },
         }
     }
@@ -346,6 +349,7 @@ struct DailyAgentProgressMessage {
     #[serde(rename = "costUSD")]
     cost_usd: Option<f64>,
     request_id: Option<String>,
+    is_sidechain: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -467,6 +471,7 @@ fn read_daily_usage_file(
             model,
             message_id: data.message.id,
             request_id: data.request_id,
+            is_sidechain: data.is_sidechain,
         });
     }
     loaded_file
@@ -575,27 +580,32 @@ fn push_deduped_daily_entry(
 ) {
     let dedupe_lookup = entry.message_id.as_deref().map(|message_id| {
         let request_id = entry.request_id.as_deref();
-        let hash = usage_dedupe_hash(message_id, request_id);
-        let existing_index = deduped_indexes.get(&hash).and_then(|indexes| {
-            indexes.iter().copied().find(|&index| {
-                deduped[index].message_id.as_deref() == Some(message_id)
-                    && deduped[index].request_id.as_deref() == request_id
+        let exact_hash = usage_dedupe_hash(message_id, request_id);
+        let existing_index = deduped_indexes
+            .get(&exact_hash)
+            .and_then(|indexes| {
+                indexes.iter().copied().find(|&index| {
+                    deduped[index].message_id.as_deref() == Some(message_id)
+                        && deduped[index].request_id.as_deref() == request_id
+                })
             })
-        });
-        (hash, existing_index)
+            .or_else(|| {
+                // /btw sidechain logs can replay parent messages with new request IDs.
+                let message_hash = usage_dedupe_hash(message_id, None);
+                let candidate_is_sidechain = is_sidechain_daily_entry(&entry);
+                deduped_indexes.get(&message_hash).and_then(|indexes| {
+                    indexes.iter().copied().find(|&index| {
+                        deduped[index].message_id.as_deref() == Some(message_id)
+                            && (candidate_is_sidechain
+                                || is_sidechain_daily_entry(&deduped[index]))
+                    })
+                })
+            });
+        (exact_hash, existing_index)
     });
 
     if let Some((_, Some(index))) = dedupe_lookup {
-        let candidate_total = daily_usage_token_total(&entry);
-        let existing_total = daily_usage_token_total(&deduped[index]);
-        let should_replace = if candidate_total != existing_total {
-            candidate_total > existing_total
-        } else if entry.cost != deduped[index].cost {
-            entry.cost > deduped[index].cost
-        } else {
-            entry.usage.speed.is_some() && deduped[index].usage.speed.is_none()
-        };
-        if should_replace {
+        if should_replace_deduped_daily_entry(&entry, &deduped[index]) {
             deduped[index] = entry;
         }
         return;
@@ -604,7 +614,46 @@ fn push_deduped_daily_entry(
     let index = deduped.len();
     deduped.push(entry);
     if let Some((hash, None)) = dedupe_lookup {
-        deduped_indexes.entry(hash).or_default().push(index);
+        push_deduped_daily_index(deduped_indexes, hash, index);
+        if let Some(message_id) = deduped[index].message_id.as_deref() {
+            push_deduped_daily_index(deduped_indexes, usage_dedupe_hash(message_id, None), index);
+        }
+    }
+}
+
+fn should_replace_deduped_daily_entry(
+    candidate: &DailyLoadedEntry,
+    existing: &DailyLoadedEntry,
+) -> bool {
+    let candidate_is_sidechain = is_sidechain_daily_entry(candidate);
+    let existing_is_sidechain = is_sidechain_daily_entry(existing);
+    if candidate_is_sidechain != existing_is_sidechain {
+        return existing_is_sidechain;
+    }
+
+    let candidate_total = daily_usage_token_total(candidate);
+    let existing_total = daily_usage_token_total(existing);
+    if candidate_total != existing_total {
+        return candidate_total > existing_total;
+    }
+    if candidate.cost != existing.cost {
+        return candidate.cost > existing.cost;
+    }
+    candidate.usage.speed.is_some() && existing.usage.speed.is_none()
+}
+
+fn is_sidechain_daily_entry(entry: &DailyLoadedEntry) -> bool {
+    entry.is_sidechain == Some(true)
+}
+
+fn push_deduped_daily_index(
+    deduped_indexes: &mut FxHashMap<u64, SmallIndexVec>,
+    hash: u64,
+    index: usize,
+) {
+    let indexes = deduped_indexes.entry(hash).or_default();
+    if !indexes.contains(&index) {
+        indexes.push(index);
     }
 }
 

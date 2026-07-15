@@ -503,16 +503,53 @@ six such edits, across three files, and all six are single tokens.**
    A future upstream bump can drop this line the moment `load_pricing_map` stops
    existing; nothing vendored depends on it.
 
-**Three files under "Files taken" have been edited. Six tokens, total.**
-`adapter/codex.rs` (two `fn` → `pub(crate) fn`, item 0, plus one
-`env::var` → `crate::env_var`, item 0b), `codex_loader.rs` (one
-`env::var` → `crate::env_var`, item 0b), and `claude_loader.rs` (one
-`env::var` → `crate::env_var`, item 0b, plus one `PricingMap::load` →
-`crate::load_pricing_map`, item 0c). `git diff` against a fresh `v20.0.2`
-checkout of every *other* file under "Files taken" is empty; for these three it
-contains exactly those six tokens plus the one signature reflow the
-`pub(crate) ` on `load_groups` forces past rustfmt's 100-column limit. No logic,
-no types, no tests, no error messages.
+6. **HEAD backport: `/btw` sidechain dedup** (Phase 3 Task 7 — a deliberate,
+   number-moving change). `src/claude_loader.rs`. This is the first local
+   modification that changes *behavior* in a vendored file, so it is called out
+   loudly and kept surgical. It backports one upstream-HEAD fix onto the v20.0.2
+   base: **the daily loader now dedupes a `/btw` sidechain replay against its
+   non-sidechain parent instead of counting it twice.**
+
+   Upstream v20.0.2 keys dedup on `(message.id, requestId)`, so a sidechain
+   replay of a parent message with a *new* `requestId` slips past dedup and is
+   counted twice. Upstream HEAD (`adapter/claude/daily.rs`) adds a second lookup
+   pass: on an exact-key miss, it matches by `message.id` alone when either side
+   is `isSidechain`, and prefers the non-sidechain entry. This backports that
+   pass, ported field-for-field from HEAD's `daily.rs`:
+
+   - Added `is_sidechain: Option<bool>` to `DailyLoadedEntry`, `DailyUsageEntry`
+     (top-level `isSidechain`), and `DailyAgentProgressMessage`; threaded through
+     `DailyUsageLine::into_entry` and the `DailyLoadedEntry` build site.
+   - Rewrote `push_deduped_daily_entry`: added the `.or_else` message-id-only
+     fallback and registered surviving entries under both the exact and the
+     message-only hash.
+   - Extracted `should_replace_deduped_daily_entry` (sidechain preference first,
+     then the pre-existing token/cost/speed tiebreak) and added helpers
+     `is_sidechain_daily_entry` and `push_deduped_daily_index`.
+
+   **Scope:** the *daily* path only (`query_daily`, the sole path `usagepal`
+   uses). The session path (`push_deduped_entry` / `should_replace_deduped_entry`
+   over `UsageEntry`) is unused by this crate's public API and was left at v20.0.2
+   semantics; a future dev wiring up the session loader must port the twin change
+   from HEAD's `adapter/claude/mod.rs`.
+
+   **Proof it moves the number and the direction is right:** the differential
+   corpus gained `tests/fixtures/ccusage/claude/projects/testproj/sidechain.jsonl`
+   (a parent + an `isSidechain:true` replay with a new `requestId`, on
+   2026-07-12). The real `ccusage@20.0.2` binary reports that day as 400 tokens
+   (double-counted); the vendored loader now reports 200 (deduped), and
+   `claude-expected.json` was hand-updated for that one day to the deduped figure.
+   So `claude-expected.json` is **no longer byte-identical to the 20.0.2 binary's
+   output** — 2026-07-12 is intentionally HEAD semantics. Every other day still
+   matches the binary exactly.
+
+**Files under "Files taken" have been edited.** Items 0/0b/0c are six
+single-token edits across `adapter/codex.rs`, `codex_loader.rs` and
+`claude_loader.rs` (plus one rustfmt reflow). Item 6 is the one substantive
+edit: a HEAD backport of the sidechain dedup into `claude_loader.rs`'s daily
+path — so that file alone is **no longer byte-identical to v20.0.2**, by design
+(see item 6). `git diff` against a fresh `v20.0.2` checkout of every *other*
+file under "Files taken" is empty.
 
 ## Public API (consumed by `usagepal`'s `plugin_engine/ccusage.rs`)
 

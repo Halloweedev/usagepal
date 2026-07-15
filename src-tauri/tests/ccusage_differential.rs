@@ -29,9 +29,16 @@ fn force_utc() {
 fn vendored_claude_loader_matches_upstream_binary() {
     force_utc();
     let home = fixtures().join("claude");
+    // The expected fixture is the ccusage@20.0.2 binary's output over this corpus,
+    // with ONE deliberate divergence: the 2026-07-12 day. That day's sidechain.jsonl
+    // is a /btw sidechain replay (parent + a copy with isSidechain:true and a new
+    // requestId). v20.0.2 counts it TWICE (verified: the binary reports 400 tokens
+    // for that day); HEAD dedupes the replay against its non-sidechain parent and
+    // keeps only the parent (200 tokens). This test asserts the vendored loader
+    // matches the HEAD-corrected number — see Phase 3 Task 7 and VENDORING.md.
     let expected: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(fixtures().join("claude-expected.json"))
-            .expect("checked-in reference output from ccusage@20.0.2"),
+            .expect("checked-in reference: ccusage@20.0.2 + the Task 7 sidechain fix"),
     )
     .expect("reference output is valid JSON");
 

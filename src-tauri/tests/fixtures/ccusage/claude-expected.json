@@ -1,6 +1,28 @@
 {
   "daily": [
     {
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 0,
+      "date": "2026-07-12",
+      "inputTokens": 100,
+      "modelBreakdowns": [
+        {
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 0,
+          "cost": 0.0018,
+          "inputTokens": 100,
+          "modelName": "claude-sonnet-4-5-20250929",
+          "outputTokens": 100
+        }
+      ],
+      "modelsUsed": [
+        "claude-sonnet-4-5-20250929"
+      ],
+      "outputTokens": 100,
+      "totalCost": 0.0018,
+      "totalTokens": 200
+    },
+    {
       "cacheCreationTokens": 100,
       "cacheReadTokens": 50,
       "date": "2026-07-11",
@@ -57,9 +79,9 @@
   "totals": {
     "cacheCreationTokens": 120,
     "cacheReadTokens": 60,
-    "inputTokens": 12522,
-    "outputTokens": 2172,
-    "totalCost": 0.492394,
-    "totalTokens": 14874
+    "inputTokens": 12622,
+    "outputTokens": 2272,
+    "totalCost": 0.494194,
+    "totalTokens": 15074
   }
 }
