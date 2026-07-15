@@ -1,5 +1,5 @@
 import { renderHook, waitFor } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
   arePluginSettingsEqualMock,
@@ -128,6 +128,10 @@ function createArgs() {
 }
 
 describe("useSettingsBootstrap", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   beforeEach(() => {
     invokeMock.mockReset()
     isTauriMock.mockReset()
@@ -190,6 +194,7 @@ describe("useSettingsBootstrap", () => {
   })
 
   it("disables autostart when applyStartOnLogin receives false", async () => {
+    vi.stubEnv("DEV", false) // production build: autostart reconciliation is active
     const args = createArgs()
     const { result } = renderHook(() => useSettingsBootstrap(args))
 

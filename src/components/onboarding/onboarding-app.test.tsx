@@ -76,6 +76,7 @@ async function goToDone() {
 describe("OnboardingApp", () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
   })
 
   beforeEach(() => {
@@ -214,6 +215,7 @@ describe("OnboardingApp", () => {
   })
 
   it("applies start on login when left on", async () => {
+    vi.stubEnv("DEV", false) // production build: the installed app registers autostart
     render(<OnboardingApp />)
     await goToLogin()
 
@@ -247,6 +249,7 @@ describe("OnboardingApp", () => {
   })
 
   it("logs and advances when autostart fails", async () => {
+    vi.stubEnv("DEV", false) // production build: the installed app registers autostart
     const error = new Error("autostart failed")
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined)
     state.enableMock.mockRejectedValueOnce(error)
