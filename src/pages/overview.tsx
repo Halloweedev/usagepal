@@ -11,6 +11,7 @@ interface OverviewPageProps {
   timeFormatMode?: TimeFormatMode
   overviewSpendStripEnabled?: boolean
   onResetTimerDisplayModeToggle?: () => void
+  onUsageValueToggle?: () => void
 }
 
 export function OverviewPage({
@@ -21,6 +22,7 @@ export function OverviewPage({
   timeFormatMode = "auto",
   overviewSpendStripEnabled = true,
   onResetTimerDisplayModeToggle,
+  onUsageValueToggle,
 }: OverviewPageProps) {
   return (
     <div>
@@ -54,6 +56,7 @@ export function OverviewPage({
               resetTimerDisplayMode={resetTimerDisplayMode}
               timeFormatMode={timeFormatMode}
               onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+              onUsageValueToggle={onUsageValueToggle}
             />
           ))}
         </>

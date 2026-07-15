@@ -9,6 +9,7 @@ interface ProviderDetailPageProps {
   resetTimerDisplayMode: ResetTimerDisplayMode
   timeFormatMode?: TimeFormatMode
   onResetTimerDisplayModeToggle?: () => void
+  onUsageValueToggle?: () => void
 }
 
 export function ProviderDetailPage({
@@ -18,6 +19,7 @@ export function ProviderDetailPage({
   resetTimerDisplayMode,
   timeFormatMode = "auto",
   onResetTimerDisplayModeToggle,
+  onUsageValueToggle,
 }: ProviderDetailPageProps) {
   if (!plugin) {
     return (
@@ -45,6 +47,7 @@ export function ProviderDetailPage({
       resetTimerDisplayMode={resetTimerDisplayMode}
       timeFormatMode={timeFormatMode}
       onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+      onUsageValueToggle={onUsageValueToggle}
     />
   )
 }

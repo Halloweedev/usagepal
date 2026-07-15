@@ -68,16 +68,20 @@ function PaceIndicator({
   detailText?: string | null
   isLimitReached?: boolean
 }) {
+  // Once the limit is actually reached, drop the indicator entirely. The full
+  // bar and the 100% value already say it, and the flame reads as "running
+  // hot" — the wrong signal for a state that has already maxed out.
+  if (isLimitReached) return null
+
   const statusText = getPaceStatusText(status)
   const isBehind = status === "behind"
-  const ariaLabel = isLimitReached ? "Limit reached" : statusText
 
   return (
     <Tooltip>
       <TooltipTrigger
         render={(props) =>
           isBehind ? (
-            <span {...props} data-pace-status={status} className="inline-flex items-center" aria-label={ariaLabel}>
+            <span {...props} data-pace-status={status} className="inline-flex items-center" aria-label={statusText}>
               <Flame className="h-3.5 w-3.5 text-red-500" />
             </span>
           ) : (
@@ -85,20 +89,14 @@ function PaceIndicator({
               {...props}
               data-pace-status={status}
               className={`inline-block w-2 h-2 rounded-full ${PACE_DOT_CLASS[status]}`}
-              aria-label={ariaLabel}
+              aria-label={statusText}
             />
           )
         }
       />
       <TooltipContent side="top" className="text-xs text-center">
-        {isLimitReached ? (
-          "Limit reached"
-        ) : (
-          <>
-            <div>{statusText}</div>
-            {detailText && <div className="text-[10px] opacity-60">{detailText}</div>}
-          </>
-        )}
+        <div>{statusText}</div>
+        {detailText && <div className="text-[10px] opacity-60">{detailText}</div>}
       </TooltipContent>
     </Tooltip>
   )
@@ -623,14 +621,22 @@ function MetricLineRenderer({
       ? calculatePaceStatus(line.used, line.limit, resetsAtMs, periodDurationMs!, now)
       : null
     const paceStatus = paceResult?.status ?? null
-    const paceMarkerValue = hasTimeMarkerContext && paceStatus && paceStatus !== "on-track"
-      ? (() => {
-          const periodStartMs = resetsAtMs - periodDurationMs!
-          const elapsedFraction = clamp01((now - periodStartMs) / periodDurationMs!)
-          const elapsedPercent = elapsedFraction * 100
-          return displayMode === "used" ? elapsedPercent : 100 - elapsedPercent
-        })()
-      : undefined
+    // The grey marker sits at the fraction of the period that has elapsed, so
+    // the bar fill can be read against the passage of time. It only appears
+    // when off-track (ahead/behind), matching the pace indicator.
+    const showPaceMarker = hasTimeMarkerContext && !!paceStatus && paceStatus !== "on-track"
+    const elapsedPercent = showPaceMarker
+      ? clamp01((now - (resetsAtMs - periodDurationMs!)) / periodDurationMs!) * 100
+      : null
+    const paceMarkerValue =
+      elapsedPercent !== null ? (displayMode === "used" ? elapsedPercent : 100 - elapsedPercent) : undefined
+    const markerTooltip =
+      elapsedPercent !== null ? (
+        <>
+          <div>Expected pace</div>
+          <div className="text-[10px] opacity-60">{Math.round(elapsedPercent)}% of the period has elapsed</div>
+        </>
+      ) : undefined
     const isLimitReached = line.used >= line.limit
     const paceDetailText =
       hasPaceContext && !isLimitReached
@@ -674,6 +680,7 @@ function MetricLineRenderer({
           value={percent}
           indicatorColor={line.color ?? undefined}
           markerValue={paceMarkerValue}
+          markerTooltip={markerTooltip}
           refreshing={refreshing}
         />
         <div className="flex justify-between items-center mt-1.5">

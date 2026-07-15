@@ -649,7 +649,7 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
-  it("shows over-limit now detail when already at or above 100%", () => {
+  it("drops the pace indicator entirely once the limit is reached", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-02T12:00:00.000Z")
     vi.setSystemTime(now)
@@ -670,10 +670,43 @@ describe("ProviderCard", () => {
         ]}
       />
     )
-    expect(screen.getByLabelText("Limit reached")).toBeInTheDocument()
-    expect(screen.getByText("Limit reached")).toBeInTheDocument()
+    // No flame, no dot, no "Limit reached" affordance — the full bar says it.
+    expect(screen.queryByLabelText("Limit reached")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Will run out")).not.toBeInTheDocument()
+    expect(document.querySelector("[data-pace-status]")).toBeNull()
+    // Deficit / runs-out detail stays suppressed past the limit.
     expect(screen.queryByText(/in deficit/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/runs out in/i)).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("exposes an expected-pace tooltip on the grey marker", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T12:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Pace"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Behind",
+            used: 60,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+        ]}
+      />
+    )
+    const marker = document.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeTruthy()
+    // Half the 24h period has elapsed at 12:00 → marker is interactive, not decorative.
+    expect(marker).not.toHaveClass("pointer-events-none")
+    expect(screen.getByText("Expected pace")).toBeInTheDocument()
+    expect(screen.getByText("50% of the period has elapsed")).toBeInTheDocument()
     vi.useRealTimers()
   })
 

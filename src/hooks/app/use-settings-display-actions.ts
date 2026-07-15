@@ -26,6 +26,7 @@ type UseSettingsDisplayActionsArgs = {
   menubarIconStyle: MenubarIconStyle
   multiTrayProviderCount: MultiTrayProviderCount
   setThemeMode: (value: ThemeMode) => void
+  displayMode: DisplayMode
   setDisplayMode: (value: DisplayMode) => void
   resetTimerDisplayMode: ResetTimerDisplayMode
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
@@ -42,6 +43,7 @@ export function useSettingsDisplayActions({
   menubarIconStyle,
   multiTrayProviderCount,
   setThemeMode,
+  displayMode,
   setDisplayMode,
   resetTimerDisplayMode,
   setResetTimerDisplayMode,
@@ -67,6 +69,11 @@ export function useSettingsDisplayActions({
       console.error("Failed to save display mode:", error)
     })
   }, [scheduleTrayIconUpdate, setDisplayMode])
+
+  const handleDisplayModeToggle = useCallback(() => {
+    const next: DisplayMode = displayMode === "used" ? "left" : "used"
+    handleDisplayModeChange(next)
+  }, [displayMode, handleDisplayModeChange])
 
   const handleResetTimerDisplayModeChange = useCallback((mode: ResetTimerDisplayMode) => {
     setResetTimerDisplayMode(mode)
@@ -145,6 +152,7 @@ export function useSettingsDisplayActions({
   return {
     handleThemeModeChange,
     handleDisplayModeChange,
+    handleDisplayModeToggle,
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleTimeFormatModeChange,
