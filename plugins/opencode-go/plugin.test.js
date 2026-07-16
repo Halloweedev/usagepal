@@ -83,7 +83,7 @@ describe("opencode-go plugin", () => {
       {
         type: "progress",
         label: "Monthly",
-        scope: "detail",
+        scope: "overview",
         escalateAtPercent: 98,
       },
       { type: "text", label: "Today", scope: "detail" },
