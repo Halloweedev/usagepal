@@ -5,20 +5,29 @@
 Stable release rolling up the 0.7.35 betas: the native token & pricing engine, token counts across the Overview and Share pages, per-provider cards on the home page, and the Phosphor icon set.
 
 ### New Features
-- Native in-process usage engine for Claude and Codex with one shared price source (`host.pricing.lookup`) — no Node or Bun runtime, works offline from embedded price snapshots by @Halloweedev
-- Click any value in the Quick Usage Overview to flip the strip between today's cost and token counts (persisted); tooltips follow with tokens up front and cost + effective $/MTok on hover by @Halloweedev
-- Share button on the Overview strip opens the Share page with the same chart style, grouping, metric, and period by @Halloweedev
-- Share cards show token counts in an aligned column next to the price, with a Tokens toggle in Customize by @Halloweedev
+- Native in-process usage engine for Claude and Codex — no Node or Bun runtime, nothing downloaded from a package registry, works offline from embedded price snapshots by @Halloweedev
+- One shared price source exposed to plugins (`host.pricing.lookup`), backed by an embedded LiteLLM snapshot with a models.dev snapshot filling the gaps by @Halloweedev
+- Click any value in the Quick Usage Overview (donut center, rows, legend) to flip the whole strip between today's cost and token counts — persisted, with tooltips following along (tokens up front, cost and effective $/MTok a hover away) by @Halloweedev
+- Share button on the Overview strip opens the Share page with the same chart style, grouping, metric, and period — what you see is what you share by @Halloweedev
+- Share cards show token counts in their own aligned column next to the price; a Tokens toggle in Customize hides them by @Halloweedev
 
 ### Improvements
-- Providers on the home page render as cards — logo, name, and plan above a bordered body — and now surface more lines: Claude's Fable, Cursor's Auto and API usage, OpenCode Go's Monthly by @Halloweedev
-- The strip's period tabs and view toggles sit in a pill above the chart, keeping the chart area purely data by @Halloweedev
-- Slimmer usage bars with a constant-width pace marker, full-width footer line, and icons migrated from Lucide to Phosphor by @Halloweedev
+- Providers on the home page render as cards — logo, name, and plan above a bordered body — replacing the separator list, and now surface more lines: Claude's Fable, Cursor's Auto and API usage, OpenCode Go's Monthly by @Halloweedev
+- The strip's period tabs and view toggles moved into a pill above the chart, so the chart area holds nothing but the data by @Halloweedev
+- Usage bars are slightly slimmer, and the pace marker keeps a constant width over filled and empty track alike by @Halloweedev
+- Icons migrate from Lucide to Phosphor app-wide, with a duotone flame and hourglass by @Halloweedev
+- Click the "% used" / "% left" text under a usage bar to flip between them (persisted), matching the reset-timer toggle beside it by @Halloweedev
+- Hover the grey pace marker inside a usage bar to see how far through the period you are — "Expected pace — N% of the period has elapsed" by @Halloweedev
+- The "running hot" flame is dropped once a limit is reached; the full bar already says it, so the flame no longer lingers past 100% by @Halloweedev
+- Fewer `$0` models — a second embedded price source (models.dev) covers models the LiteLLM table lacks by @Halloweedev
 
 ### Bug Fixes
-- Corrected pricing details from the native engine: no more double-counted sidechain replays, 1-hour cache creation at 2× input, and tighter model→price matching by @Halloweedev
-- The watermark logo in shared images is no longer blurry by @Halloweedev
-- Start on login no longer registers a dev build's binary by @Halloweedev
+- `/btw` sidechain replays are no longer double-counted — Claude spend that included replayed parent messages drops to its true value by @Halloweedev
+- 1-hour prompt cache creation is now priced at 2× input instead of flat — spend for anyone using 1h caching rises to the correct figure by @Halloweedev
+- Tighter model→price matching — a version like `gpt-5.6` can no longer inherit `gpt-5`'s rates through a loose substring match by @Halloweedev
+- Cursor no longer mis-prices an unlisted `gpt-5.x` at the base `gpt-5` rate, and the same version-fallthrough guard covers OpenCode Go by @Halloweedev
+- Start on login no longer registers a dev build's throwaway binary — only the installed app manages the login item, so it launches reliably after a reboot by @Halloweedev
+- The watermark logo in shared images is no longer blurry — it's now pure vector geometry all the way into the export by @Halloweedev
 
 ---
 
