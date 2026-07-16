@@ -58,4 +58,20 @@ describe("app-share-store", () => {
     expect(useAppShareStore.getState().settings.theme).toBe("light")
     expect(saveShareSettingsMock).toHaveBeenCalledWith({ ...DEFAULT_SHARE_SETTINGS, theme: "light" })
   })
+
+  it("hands off a pending graph period exactly once", () => {
+    expect(useAppShareStore.getState().takePendingGraphPeriod()).toBeNull()
+
+    useAppShareStore.getState().setPendingGraphPeriod("yesterday")
+
+    expect(useAppShareStore.getState().takePendingGraphPeriod()).toBe("yesterday")
+    expect(useAppShareStore.getState().takePendingGraphPeriod()).toBeNull()
+  })
+
+  it("resetState clears a pending graph period", () => {
+    useAppShareStore.getState().setPendingGraphPeriod("thirtyDay")
+    useAppShareStore.getState().resetState()
+
+    expect(useAppShareStore.getState().takePendingGraphPeriod()).toBeNull()
+  })
 })

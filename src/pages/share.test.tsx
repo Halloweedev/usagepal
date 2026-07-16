@@ -352,6 +352,19 @@ describe("SharePage", () => {
     expect(lastCardProps<{ plan?: string }>().plan).toBeUndefined()
   })
 
+  it("toggles the token column via the Tokens checkbox and persists it", async () => {
+    const user = userEvent.setup()
+    render(<SharePage plugins={[makePlugin()]} />)
+
+    expect(lastCardProps<{ showTokens?: boolean }>().showTokens).toBe(true)
+
+    await user.click(screen.getByRole("button", { name: "Customize" }))
+    await user.click(screen.getByRole("checkbox", { name: "Tokens" }))
+
+    expect(lastCardProps<{ showTokens?: boolean }>().showTokens).toBe(false)
+    expect(useAppShareStore.getState().settings.showTokens).toBe(false)
+  })
+
   it("hides the plan toggle when the provider has no plan", async () => {
     const user = userEvent.setup()
     render(<SharePage plugins={[makePlugin()]} />)
@@ -509,6 +522,26 @@ describe("SharePage", () => {
 
     expect((graphCardMock.mock.calls.at(-1)?.[0] as { graphStyle: string }).graphStyle).toBe("donut")
     expect(useAppShareStore.getState().settings.graphStyle).toBe("donut")
+  })
+
+  it("seeds the graph period from a pending overview-strip handoff", () => {
+    const plugin = makePlugin({
+      data: {
+        providerId: "claude",
+        displayName: "Claude",
+        iconUrl: "/claude.svg",
+        lines: [{ type: "text", label: "claude-sonnet-5", value: "62% · Today $12.40 · 30d $200.00" }],
+      },
+    })
+    useAppShareStore.getState().patch({ selectedId: "all" })
+    useAppShareStore.getState().setPendingGraphPeriod("thirtyDay")
+
+    render(<SharePage plugins={[plugin]} />)
+
+    const props = graphCardMock.mock.calls.at(-1)?.[0] as { periodLabel: string }
+    expect(props.periodLabel).toBe("30 days")
+    // Consumed on mount — a later visit starts fresh on Today again.
+    expect(useAppShareStore.getState().takePendingGraphPeriod()).toBeNull()
   })
 
   it("switches the graph window via the Period radiogroup", async () => {

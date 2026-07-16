@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
-import { ChartNoAxesGantt, ChartPie, LayoutGrid, ListTree } from "lucide-react"
+import { ChartBarHorizontal, ChartPie, SquaresFour, TreeView } from "@phosphor-icons/react"
+import { ExportIcon } from "@/components/export-icon"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Donut, DonutCenterTotal } from "@/components/donut"
 import { useDarkMode } from "@/hooks/use-dark-mode"
@@ -8,16 +9,25 @@ import { cn } from "@/lib/utils"
 import {
   loadOverviewGraphGroupBy,
   loadOverviewGraphStyle,
+  loadOverviewStripMetric,
   saveOverviewGraphGroupBy,
   saveOverviewGraphStyle,
+  saveOverviewStripMetric,
   type OverviewGraphGroupBy,
   type OverviewGraphStyle,
+  type OverviewStripMetric,
 } from "@/lib/settings"
+import { useAppShareStore } from "@/stores/app-share-store"
+import { useAppUiStore } from "@/stores/app-ui-store"
 import {
+  ALL_SHARE_TAB_ID,
   buildModelUsage,
   formatShareCost,
   formatShareDonutTotal,
   formatSharePercent,
+  formatSharePricePerMillion,
+  formatShareTokens,
+  formatShareTokensStackedTotal,
   modelEntryKey,
   type TodayModelEntry,
   type TodayModelsSource,
@@ -43,20 +53,54 @@ type StripEntry = {
   label: string
   share: number
   cost: number
+  tokenCount: number | null
   brandColor: string | null
   isOthers?: boolean
   tooltip: React.ReactNode
 }
 
-function ModelTooltip({ model }: { model: TodayModelEntry }) {
+/** Clickable metric value that flips the whole strip between $ and tokens. */
+function MetricToggleValue({ value, onToggle }: { value: string; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      data-testid="strip-metric-toggle"
+      aria-label="Toggle between cost and token values"
+      onClick={onToggle}
+      className="cursor-pointer tabular-nums text-right"
+    >
+      {value}
+    </button>
+  )
+}
+
+/** Header value for tooltips: cost in price mode, tokens in usage mode. */
+function tooltipHeadline(metric: OverviewStripMetric, cost: number, tokenCount: number | null): string {
+  if (metric === "price") return formatShareCost(cost)
+  return tokenCount != null ? formatShareTokens(tokenCount) : "—"
+}
+
+/** Muted cost / $-per-MTok line shown under tooltip headers in usage mode. */
+function TooltipCostLine({ cost, tokenCount }: { cost: number; tokenCount: number | null }) {
+  const perMillion = formatSharePricePerMillion(cost, tokenCount)
+  return (
+    <span className="flex justify-between gap-4 tabular-nums text-muted-foreground">
+      <span>{formatShareCost(cost)}</span>
+      {perMillion != null && <span>{perMillion}</span>}
+    </span>
+  )
+}
+
+function ModelTooltip({ model, metric }: { model: TodayModelEntry; metric: OverviewStripMetric }) {
   const providers =
     model.providerNames.length > 0 ? model.providerNames : model.providerName ? [model.providerName] : []
   return (
     <div className="flex min-w-40 flex-col gap-1 text-xs">
       <span className="flex justify-between gap-4 font-semibold">
         <span>{model.name}</span>
-        <span className="tabular-nums">{formatShareCost(model.todayCost)}</span>
+        <span className="tabular-nums">{tooltipHeadline(metric, model.todayCost, model.tokenCount)}</span>
       </span>
+      {metric === "usage" && <TooltipCostLine cost={model.todayCost} tokenCount={model.tokenCount} />}
       {!model.isOthers && providers.length > 0 && (
         <span className="text-muted-foreground">{providers.join(" · ")}</span>
       )}
@@ -64,20 +108,23 @@ function ModelTooltip({ model }: { model: TodayModelEntry }) {
   )
 }
 
-function ProviderTooltip({ provider }: { provider: TodayProviderEntry }) {
+function ProviderTooltip({ provider, metric }: { provider: TodayProviderEntry; metric: OverviewStripMetric }) {
   return (
     <div className="flex min-w-40 flex-col gap-1 text-xs">
       <span className="flex justify-between gap-4 font-semibold">
         <span>{provider.name}</span>
-        <span className="tabular-nums">{formatShareCost(provider.todayCost)}</span>
+        <span className="tabular-nums">{tooltipHeadline(metric, provider.todayCost, provider.tokenCount)}</span>
       </span>
+      {metric === "usage" && <TooltipCostLine cost={provider.todayCost} tokenCount={provider.tokenCount} />}
       <div className="border-t" />
       {provider.models.map((model) => (
         <span key={modelEntryKey(model)} className="flex justify-between gap-4 text-muted-foreground">
           <span className="truncate">{model.name}</span>
           <span className="shrink-0 tabular-nums">
             {formatSharePercent(model.todayCost / provider.todayCost)}{" "}
-            <span className="text-foreground">{formatShareCost(model.todayCost)}</span>
+            <span className="text-foreground">
+              {tooltipHeadline(metric, model.todayCost, model.tokenCount)}
+            </span>
           </span>
         </span>
       ))}
@@ -88,9 +135,13 @@ function ProviderTooltip({ provider }: { provider: TodayProviderEntry }) {
 function StripLegendBar({
   entries,
   colors,
+  metric,
+  onMetricToggle,
 }: {
   entries: StripEntry[]
   colors: Map<string, string>
+  metric: OverviewStripMetric
+  onMetricToggle: () => void
 }) {
   const splitIndex = Math.ceil(entries.length / 2)
   const columns = [entries.slice(0, splitIndex), entries.slice(splitIndex)]
@@ -112,7 +163,16 @@ function StripLegendBar({
                       style={{ backgroundColor: colors.get(entry.key) }}
                     />
                     <span className="truncate">{entry.label}</span>
-                    <span className="tabular-nums text-right">{formatSharePercent(entry.share)}</span>
+                    <MetricToggleValue
+                      value={
+                        metric === "usage"
+                          ? entry.tokenCount != null
+                            ? formatShareTokens(entry.tokenCount)
+                            : "—"
+                          : formatSharePercent(entry.share)
+                      }
+                      onToggle={onMetricToggle}
+                    />
                   </div>
                 }
               />
@@ -129,10 +189,14 @@ function StripDonut({
   entries,
   colors,
   totalLabel,
+  totalUnit,
+  onCenterClick,
 }: {
   entries: StripEntry[]
   colors: Map<string, string>
   totalLabel: string
+  totalUnit?: string
+  onCenterClick: () => void
 }) {
   return (
     <Donut
@@ -154,14 +218,22 @@ function StripDonut({
         ),
       }))}
     >
-      <DonutCenterTotal donutSize={DONUT_SIZE} label={totalLabel} />
+      <g
+        role="button"
+        aria-label="Toggle between cost and token values"
+        className="cursor-pointer"
+        onClick={onCenterClick}
+      >
+        <DonutCenterTotal donutSize={DONUT_SIZE} label={totalLabel} unit={totalUnit} />
+      </g>
     </Donut>
   )
 }
 
 function buildStripEntries(
   usage: ReturnType<typeof buildModelUsage>,
-  groupBy: OverviewGraphGroupBy
+  groupBy: OverviewGraphGroupBy,
+  metric: OverviewStripMetric
 ): StripEntry[] {
   if (groupBy === "provider") {
     return usage.providers.map((provider) => ({
@@ -169,8 +241,9 @@ function buildStripEntries(
       label: provider.name,
       share: provider.share,
       cost: provider.todayCost,
+      tokenCount: provider.tokenCount,
       brandColor: provider.brandColor,
-      tooltip: <ProviderTooltip provider={provider} />,
+      tooltip: <ProviderTooltip provider={provider} metric={metric} />,
     }))
   }
   return usage.models.map((model) => ({
@@ -178,9 +251,10 @@ function buildStripEntries(
     label: model.name,
     share: model.share,
     cost: model.todayCost,
+    tokenCount: model.tokenCount,
     brandColor: model.brandColor,
     isOthers: model.isOthers,
-    tooltip: <ModelTooltip model={model} />,
+    tooltip: <ModelTooltip model={model} metric={metric} />,
   }))
 }
 
@@ -192,6 +266,7 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
   const theme = isDark ? ("dark" as const) : ("light" as const)
   const [graphStyle, setGraphStyle] = useState<OverviewGraphStyle>("donut")
   const [groupBy, setGroupBy] = useState<OverviewGraphGroupBy>("provider")
+  const [metric, setMetric] = useState<OverviewStripMetric>("price")
   const [period, setPeriod] = useState<UsagePeriod>("today")
 
   const usages = useMemo(
@@ -203,16 +278,20 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
     [plugins]
   )
   const firstAvailable = PERIODS.find((p) => usages[p.id].totalCost > 0)?.id
-  const usage = usages[period].totalCost > 0 ? usages[period] : usages[firstAvailable ?? "today"]
-  const entries = useMemo(() => buildStripEntries(usage, groupBy), [usage, groupBy])
+  const activePeriod = usages[period].totalCost > 0 ? period : (firstAvailable ?? "today")
+  const usage = usages[activePeriod]
+  const entries = useMemo(() => buildStripEntries(usage, groupBy, metric), [usage, groupBy, metric])
 
   useEffect(() => {
     let active = true
-    void Promise.all([loadOverviewGraphStyle(), loadOverviewGraphGroupBy()]).then(([storedStyle, storedGroupBy]) => {
-      if (!active) return
-      setGraphStyle(storedStyle)
-      setGroupBy(storedGroupBy)
-    })
+    void Promise.all([loadOverviewGraphStyle(), loadOverviewGraphGroupBy(), loadOverviewStripMetric()]).then(
+      ([storedStyle, storedGroupBy, storedMetric]) => {
+        if (!active) return
+        setGraphStyle(storedStyle)
+        setGroupBy(storedGroupBy)
+        setMetric(storedMetric)
+      }
+    )
     return () => {
       active = false
     }
@@ -246,9 +325,40 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
     void saveOverviewGraphGroupBy(next)
   }
 
+  const toggleMetric = () => {
+    const next: OverviewStripMetric = metric === "price" ? "usage" : "price"
+    setMetric(next)
+    void saveOverviewStripMetric(next)
+  }
+
+  /** Hand this exact view (tab, grouping, style, metric, period) to the Share page. */
+  const openInShare = () => {
+    useAppShareStore.getState().patch({
+      selectedId: ALL_SHARE_TAB_ID,
+      graphStyle,
+      graphGroupBy: groupBy,
+      graphMetric: metric,
+    })
+    useAppShareStore.getState().setPendingGraphPeriod(activePeriod)
+    useAppUiStore.getState().setActiveView("share")
+  }
+
+  const totalTokens = entries.reduce((sum, entry) => sum + (entry.tokenCount ?? 0), 0)
+  const tokensTotalDisplay = totalTokens > 0 ? formatShareTokensStackedTotal(totalTokens) : null
+  const donutCenter: { label: string; unit?: string } =
+    metric === "usage"
+      ? tokensTotalDisplay == null
+        ? { label: "—" }
+        : tokensTotalDisplay.kind === "stacked"
+          ? { label: tokensTotalDisplay.amount, unit: tokensTotalDisplay.unit }
+          : { label: tokensTotalDisplay.value }
+      : { label: formatShareDonutTotal(usage.totalCost) }
+
   return (
-    <div data-testid="models-today-strip" className="mb-3 rounded-xl border p-3">
-      <div className="mb-2.5 flex items-center justify-between gap-2">
+    <div data-testid="models-today-strip" className="mb-3 rounded-xl border p-1.5">
+      {/* Controls pill: lives above the chart area so the content below is
+          exactly what a share/export would show. */}
+      <div className="flex items-center justify-between gap-2 rounded-full bg-muted/50 py-1 pl-1 pr-2.5">
         <div role="radiogroup" aria-label="Period" className="flex min-w-0 gap-0.5">
           {PERIODS.map((p) => {
             const available = usages[p.id].totalCost > 0
@@ -262,8 +372,10 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
                 disabled={!available}
                 onClick={() => setPeriod(p.id)}
                 className={cn(
-                  "rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors",
-                  isActive ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+                  "rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
+                  isActive
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
                   !available && "cursor-default opacity-35 hover:text-muted-foreground"
                 )}
               >
@@ -279,7 +391,7 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
             onClick={toggleGroupBy}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
-            {groupBy === "model" ? <ListTree className="size-3.5" /> : <LayoutGrid className="size-3.5" />}
+            {groupBy === "model" ? <TreeView className="size-3.5" /> : <SquaresFour className="size-3.5" />}
           </button>
           <button
             type="button"
@@ -287,10 +399,20 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
             onClick={toggleGraphStyle}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
-            {graphStyle === "bar" ? <ChartNoAxesGantt className="size-3.5" /> : <ChartPie className="size-3.5" />}
+            {graphStyle === "bar" ? <ChartBarHorizontal className="size-3.5" /> : <ChartPie className="size-3.5" />}
+          </button>
+          <button
+            type="button"
+            aria-label="Share this view"
+            onClick={openInShare}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ExportIcon className="size-4" />
           </button>
         </div>
       </div>
+      {/* Chart area: the shareable content, kept free of controls. */}
+      <div className="px-1.5 pb-1.5 pt-3">
       {graphStyle === "bar" ? (
         <>
           <div data-testid="strip-bar" className="flex h-2 gap-[2px] overflow-hidden rounded-full">
@@ -313,11 +435,17 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
               </Tooltip>
             ))}
           </div>
-          <StripLegendBar entries={entries} colors={colors} />
+          <StripLegendBar entries={entries} colors={colors} metric={metric} onMetricToggle={toggleMetric} />
         </>
       ) : (
         <div className="flex items-center gap-4">
-          <StripDonut entries={entries} colors={colors} totalLabel={formatShareDonutTotal(usage.totalCost)} />
+          <StripDonut
+            entries={entries}
+            colors={colors}
+            totalLabel={donutCenter.label}
+            totalUnit={donutCenter.unit}
+            onCenterClick={toggleMetric}
+          />
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             {entries.map((entry) => (
               <Tooltip key={entry.key}>
@@ -331,7 +459,16 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
                         />
                         <span className="truncate">{entry.label}</span>
                       </span>
-                      <span className="tabular-nums">{formatShareCost(entry.cost)}</span>
+                      <MetricToggleValue
+                        value={
+                          metric === "usage"
+                            ? entry.tokenCount != null
+                              ? formatShareTokens(entry.tokenCount)
+                              : "—"
+                            : formatShareCost(entry.cost)
+                        }
+                        onToggle={toggleMetric}
+                      />
                     </div>
                   }
                 />
@@ -341,6 +478,7 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

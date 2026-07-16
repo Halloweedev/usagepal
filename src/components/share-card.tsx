@@ -28,6 +28,8 @@ export type ShareCardProps = {
   showWatermark: boolean
   modelDisplay?: ModelDisplayOptions
   modelBreakdownLabels?: Set<string>
+  /** Show token counts alongside costs in text rows (default on). */
+  showTokens?: boolean
 }
 
 function progressValueLabel(line: ProgressMetricLine, percent: number): string {
@@ -64,11 +66,31 @@ function ProgressRow({
   )
 }
 
-function TextRow({ line }: { line: Extract<MetricLine, { type: "text" }> }) {
+/** Matches "cost · tokens" values (e.g. "$114.66 · 137M") so the token part
+ * can be hidden or laid out as its own column. */
+const COST_TOKEN_VALUE_RE = /^(.+?) · (\d+(?:\.\d+)?[KMB])$/
+
+function TextRow({
+  line,
+  styles,
+  showTokens,
+}: {
+  line: Extract<MetricLine, { type: "text" }>
+  styles: ThemeStyle
+  showTokens: boolean
+}) {
+  const costTokenMatch = COST_TOKEN_VALUE_RE.exec(line.value)
   return (
     <div data-testid="share-card-line-text" className="flex items-center justify-between">
       <span className="text-sm">{line.label}</span>
-      <span className="text-xs">{line.value}</span>
+      {costTokenMatch ? (
+        <span className="flex items-baseline text-xs tabular-nums">
+          {showTokens && <span className={styles.subtext}>{costTokenMatch[2]}</span>}
+          <span className="min-w-16 text-right">{costTokenMatch[1]}</span>
+        </span>
+      ) : (
+        <span className="text-xs">{line.value}</span>
+      )}
     </div>
   )
 }
@@ -125,11 +147,11 @@ function ModelBreakdownTable({
       className="grid items-baseline gap-x-3 gap-y-1.5"
       style={{ gridTemplateColumns: `minmax(0, 1fr) repeat(${columns.length}, max-content)` }}
     >
-      <span className={cn("text-[10px] font-medium uppercase tracking-wider", styles.subtext)}>Model</span>
+      <span className={cn("text-[11px] font-medium", styles.subtext)}>Model</span>
       {columns.map((column) => (
         <span
           key={column.key}
-          className={cn("text-right text-[10px] font-medium uppercase tracking-wider", styles.subtext)}
+          className={cn("text-right text-[11px] font-medium", styles.subtext)}
         >
           {column.header}
         </span>
@@ -197,6 +219,7 @@ export function ShareCard({
   showWatermark,
   modelDisplay,
   modelBreakdownLabels,
+  showTokens = true,
 }: ShareCardProps) {
   const styles = THEME_STYLES[theme]
   const displayOptions = modelDisplay ?? {
@@ -260,7 +283,14 @@ export function ShareCard({
               return <ProgressRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
             }
             if (line.type === "text") {
-              return <TextRow key={`${line.label}-${index}`} line={line} />
+              return (
+                <TextRow
+                  key={`${line.label}-${index}`}
+                  line={line}
+                  styles={styles}
+                  showTokens={showTokens}
+                />
+              )
             }
             if (line.type === "barChart") {
               return <BarChartRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />

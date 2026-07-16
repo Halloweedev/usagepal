@@ -73,6 +73,9 @@ export type OverviewGraphStyle = "bar" | "donut";
 /** Overview strip slice grouping. */
 export type OverviewGraphGroupBy = "model" | "provider";
 
+/** Overview strip displayed values: today's cost or token counts. */
+export type OverviewStripMetric = "price" | "usage";
+
 export type ShareModelDisplay = {
   showPercent: boolean;
   showToday: boolean;
@@ -88,6 +91,8 @@ export type ShareSettings = {
   checkedLabels: string[];
   theme: ShareTheme;
   showPlan: boolean;
+  /** Show token counts alongside costs on the share card. */
+  showTokens: boolean;
   modelDisplay: ShareModelDisplay;
   /** Options for the cross-provider usage graph (Share "All" tab). */
   graphStyle: ShareGraphStyle;
@@ -104,6 +109,7 @@ export const DEFAULT_SHARE_SETTINGS: ShareSettings = {
   checkedLabels: [],
   theme: "dark",
   showPlan: true,
+  showTokens: true,
   modelDisplay: {
     showPercent: true,
     showToday: true,
@@ -140,6 +146,7 @@ const PACE_NOTIFICATIONS_KEY = "paceNotifications";
 const SHARE_SETTINGS_KEY = "shareSettings";
 const OVERVIEW_GRAPH_STYLE_KEY = "overviewGraphStyle";
 const OVERVIEW_GRAPH_GROUP_BY_KEY = "overviewGraphGroupBy";
+const OVERVIEW_STRIP_METRIC_KEY = "overviewStripMetric";
 const OVERVIEW_SPEND_STRIP_ENABLED_KEY = "overviewSpendStripEnabled";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
@@ -156,6 +163,7 @@ export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
 export const DEFAULT_OVERVIEW_GRAPH_STYLE: OverviewGraphStyle = "donut";
 export const DEFAULT_OVERVIEW_GRAPH_GROUP_BY: OverviewGraphGroupBy = "provider";
+export const DEFAULT_OVERVIEW_STRIP_METRIC: OverviewStripMetric = "price";
 export const DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED = true;
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
@@ -532,6 +540,7 @@ const SHARE_GRAPH_STYLES: ShareGraphStyle[] = ["bar", "donut"];
 const SHARE_GRAPH_METRICS: ShareGraphMetric[] = ["usage", "price", "pricePerM"];
 const OVERVIEW_GRAPH_STYLES: OverviewGraphStyle[] = ["bar", "donut"];
 const OVERVIEW_GRAPH_GROUP_BY: OverviewGraphGroupBy[] = ["model", "provider"];
+const OVERVIEW_STRIP_METRICS: OverviewStripMetric[] = ["price", "usage"];
 
 export function normalizeShareSettings(value: unknown): ShareSettings {
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -553,7 +562,7 @@ export function normalizeShareSettings(value: unknown): ShareSettings {
     ? (record.theme as ShareTheme)
     : DEFAULT_SHARE_SETTINGS.theme;
 
-  const readBool = (key: "showPlan" | "graphShowBreakdown" | "graphShowTotal" | "graphShowDate") =>
+  const readBool = (key: "showPlan" | "showTokens" | "graphShowBreakdown" | "graphShowTotal" | "graphShowDate") =>
     typeof record[key] === "boolean" ? (record[key] as boolean) : DEFAULT_SHARE_SETTINGS[key];
 
   const hasLegacyGraphShowPrices = typeof record.graphShowPrices === "boolean";
@@ -587,6 +596,7 @@ export function normalizeShareSettings(value: unknown): ShareSettings {
     checkedLabels,
     theme,
     showPlan: readBool("showPlan"),
+    showTokens: readBool("showTokens"),
     modelDisplay: {
       showPercent: readMd("showPercent"),
       showToday: readMd("showToday"),
@@ -656,6 +666,24 @@ export async function loadOverviewGraphGroupBy(): Promise<OverviewGraphGroupBy> 
 
 export async function saveOverviewGraphGroupBy(groupBy: OverviewGraphGroupBy): Promise<void> {
   await store.set(OVERVIEW_GRAPH_GROUP_BY_KEY, groupBy);
+  await store.save();
+}
+
+function isOverviewStripMetric(value: unknown): value is OverviewStripMetric {
+  return (
+    typeof value === "string" &&
+    OVERVIEW_STRIP_METRICS.includes(value as OverviewStripMetric)
+  );
+}
+
+export async function loadOverviewStripMetric(): Promise<OverviewStripMetric> {
+  const stored = await store.get<unknown>(OVERVIEW_STRIP_METRIC_KEY);
+  if (isOverviewStripMetric(stored)) return stored;
+  return DEFAULT_OVERVIEW_STRIP_METRIC;
+}
+
+export async function saveOverviewStripMetric(metric: OverviewStripMetric): Promise<void> {
+  await store.set(OVERVIEW_STRIP_METRIC_KEY, metric);
   await store.save();
 }
 
