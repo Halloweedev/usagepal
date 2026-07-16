@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useState, type ReactNode } from "react";
-import { ExternalLink, KeyRound } from "lucide-react";
+import { ArrowSquareOut, Key } from "@phosphor-icons/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -381,7 +381,7 @@ function SortablePluginItem({
             setKeyDialogOpen(true);
           }}
         >
-          <KeyRound className="h-3 w-3 opacity-70" />
+          <Key className="h-3 w-3 opacity-70" />
         </Button>
       )}
 
@@ -397,7 +397,7 @@ function SortablePluginItem({
             openUrl(referralUrl).catch(console.error);
           }}
         >
-          <ExternalLink className="h-3 w-3 opacity-70" />
+          <ArrowSquareOut className="h-3 w-3 opacity-70" />
         </Button>
       )}
 
