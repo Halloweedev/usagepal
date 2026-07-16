@@ -15,3 +15,14 @@ export function getRelativeLuminance(hex: string): number {
   const b = parseInt(h.slice(4, 6), 16) / 255
   return 0.2126 * sRGBtoLinear(r) + 0.7152 * sRGBtoLinear(g) + 0.0722 * sRGBtoLinear(b)
 }
+
+/** Brand color for a provider icon, guarded against vanishing into the theme
+ * background: near-black brands flip to white in dark mode, near-white brands
+ * fall back to the current text color in light mode. */
+export function getProviderIconColor(brandColor: string | undefined, isDark: boolean): string {
+  if (!brandColor) return "currentColor"
+  const luminance = getRelativeLuminance(brandColor)
+  if (isDark && luminance < 0.15) return "#ffffff"
+  if (!isDark && luminance > 0.85) return "currentColor"
+  return brandColor
+}

@@ -857,6 +857,72 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
+  it("renders as a card with the header (logo, name, plan) outside the bordered body", () => {
+    render(
+      <ProviderCard
+        name="Claude"
+        plan="Max 5x"
+        displayMode="used"
+        asCard
+        iconUrl="/claude.svg"
+        pluginId="claude"
+        brandColor="#DE7356"
+        lines={[{ type: "text", label: "Label", value: "Value" }]}
+      />
+    )
+
+    const body = screen.getByTestId("provider-card-body")
+    // Name and plan live outside the card body.
+    expect(within(body).queryByText("Claude")).not.toBeInTheDocument()
+    expect(within(body).queryByText("Max 5x")).not.toBeInTheDocument()
+    expect(screen.getByText("Claude")).toBeInTheDocument()
+    expect(screen.getByText("Max 5x")).toBeInTheDocument()
+    // Lines live inside it.
+    expect(within(body).getByText("Label")).toBeInTheDocument()
+    // Cards separate themselves — no divider even without showSeparator=false.
+    expect(screen.queryAllByRole("separator")).toHaveLength(0)
+  })
+
+  it("divides progress lines from the text details in the detail view", () => {
+    const lines: MetricLine[] = [
+      { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
+      { type: "text", label: "Today", value: "$12.40" },
+      { type: "text", label: "claude-sonnet-5", value: "62% · Today $8.00" },
+    ]
+    const { container, unmount } = render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        scopeFilter="all"
+        showSeparator={false}
+        lines={lines}
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+          { type: "text", label: "Today", scope: "detail" },
+        ]}
+      />
+    )
+    expect(within(container).getAllByRole("separator")).toHaveLength(1)
+    unmount()
+
+    // The overview keeps its compact, divider-free rows.
+    render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        scopeFilter="overview"
+        asCard
+        showSeparator={false}
+        lines={lines}
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+          { type: "text", label: "Today", scope: "overview" },
+        ]}
+      />
+    )
+    expect(screen.queryAllByRole("separator")).toHaveLength(0)
+  })
+
   it("omits separator when disabled", () => {
     const { container } = render(
       <ProviderCard
