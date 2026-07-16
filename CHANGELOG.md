@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.7.40
+
+Stable release rolling up the 0.7.35 betas: the native token & pricing engine, token counts across the Overview and Share pages, per-provider cards on the home page, and the Phosphor icon set.
+
+### New Features
+- Native in-process usage engine for Claude and Codex with one shared price source (`host.pricing.lookup`) — no Node or Bun runtime, works offline from embedded price snapshots by @Halloweedev
+- Click any value in the Quick Usage Overview to flip the strip between today's cost and token counts (persisted); tooltips follow with tokens up front and cost + effective $/MTok on hover by @Halloweedev
+- Share button on the Overview strip opens the Share page with the same chart style, grouping, metric, and period by @Halloweedev
+- Share cards show token counts in an aligned column next to the price, with a Tokens toggle in Customize by @Halloweedev
+
+### Improvements
+- Providers on the home page render as cards — logo, name, and plan above a bordered body — and now surface more lines: Claude's Fable, Cursor's Auto and API usage, OpenCode Go's Monthly by @Halloweedev
+- The strip's period tabs and view toggles sit in a pill above the chart, keeping the chart area purely data by @Halloweedev
+- Slimmer usage bars with a constant-width pace marker, full-width footer line, and icons migrated from Lucide to Phosphor by @Halloweedev
+
+### Bug Fixes
+- Corrected pricing details from the native engine: no more double-counted sidechain replays, 1-hour cache creation at 2× input, and tighter model→price matching by @Halloweedev
+- The watermark logo in shared images is no longer blurry by @Halloweedev
+- Start on login no longer registers a dev build's binary by @Halloweedev
+
+---
+
 ## v0.7.35-beta.3
 
 Token counts step out from behind the dollar signs — flip the Overview strip between $ and tokens, share exactly the view you're looking at, and a refreshed home page with per-provider cards. Icons move to Phosphor throughout.
