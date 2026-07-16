@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.7.35-beta.3
+
+Token counts step out from behind the dollar signs — flip the Overview strip between $ and tokens, share exactly the view you're looking at, and a refreshed home page with per-provider cards. Icons move to Phosphor throughout.
+
+### New Features
+- Click any value in the Quick Usage Overview (donut center, rows, legend) to flip the whole strip between today's cost and token counts — persisted, with tooltips following along (tokens up front, cost and effective $/MTok a hover away) by @Halloweedev
+- Share button on the Overview strip opens the Share page with the same chart style, grouping, metric, and period — what you see is what you share by @Halloweedev
+- Share cards show token counts in their own aligned column next to the price; a Tokens toggle in Customize hides them by @Halloweedev
+
+### Improvements
+- Providers on the home page render as cards — logo, name, and plan above a bordered body — replacing the separator list by @Halloweedev
+- The strip's period tabs and view toggles moved into a pill above the chart, so the chart area holds nothing but the data by @Halloweedev
+- Usage bars are slightly slimmer, and the pace marker keeps a constant width over filled and empty track alike by @Halloweedev
+- Icons migrate from Lucide to Phosphor app-wide, with a duotone flame and hourglass by @Halloweedev
+
+### Bug Fixes
+- The watermark logo in shared images is no longer blurry — it's now pure vector geometry all the way into the export by @Halloweedev
+
+---
+
 ## v0.7.35-beta.2
 
 Interaction polish on the usage bars, plus a fix for launch-at-login registering the wrong binary.
