@@ -176,7 +176,7 @@ export function PanelFooter({
 
   return (
     <>
-      <div className="flex justify-between items-center h-8 pt-1.5 border-t">
+      <div className="-mx-3 flex h-8 items-center justify-between border-t px-3 pt-1.5">
         <VersionDisplay
           version={version}
           updateStatus={updateStatus}

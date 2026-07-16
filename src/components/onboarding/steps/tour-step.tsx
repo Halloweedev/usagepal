@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { Check, MousePointerClick } from "lucide-react"
+import { Check, CursorClick } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { ProviderCard } from "@/components/provider-card"
 import { StepShell } from "@/components/onboarding/step-shell"
@@ -259,7 +259,7 @@ function TourTask({
         {done ? (
           <Check className="size-3 animate-in zoom-in-50 duration-300" aria-hidden />
         ) : active ? (
-          <MousePointerClick className="size-3 animate-pulse" aria-hidden />
+          <CursorClick className="size-3 animate-pulse" aria-hidden />
         ) : null}
       </span>
       <span

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { ChevronRight } from "lucide-react"
+import { CaretRight } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ShareCard, type ShareCardTheme } from "@/components/share-card"
@@ -89,6 +89,7 @@ export function SharePage({ plugins }: SharePageProps) {
   const [checkedLabels, setCheckedLabels] = useState<Set<string>>(new Set(shareSnapshot.checkedLabels))
   const [theme, setTheme] = useState<ShareCardTheme>(shareSnapshot.theme)
   const [showPlan, setShowPlan] = useState(shareSnapshot.showPlan)
+  const [showTokens, setShowTokens] = useState(shareSnapshot.showTokens)
   const [customizeOpen, setCustomizeOpen] = useState(false)
   const [modelDisplay, setModelDisplay] = useState<ModelDisplayOptions>(shareSnapshot.modelDisplay)
   const [graphStyle, setGraphStyle] = useState<GraphStyle>(shareSnapshot.graphStyle)
@@ -121,7 +122,11 @@ export function SharePage({ plugins }: SharePageProps) {
   )
 
   const isAllTab = selectedId === ALL_SHARE_TAB_ID
-  const [graphPeriod, setGraphPeriod] = useState<UsagePeriod>("today")
+  // Seeded from a one-shot "share this view" handoff (Overview strip) when
+  // present; otherwise session-local, resetting to Today each open.
+  const [graphPeriod, setGraphPeriod] = useState<UsagePeriod>(
+    () => useAppShareStore.getState().takePendingGraphPeriod() ?? "today"
+  )
   // All three windows so tabs know which have data. Session-local (resets to
   // Today each open), so it stays out of the persisted share store.
   const graphUsages = useMemo(
@@ -199,6 +204,7 @@ export function SharePage({ plugins }: SharePageProps) {
       checkedLabels: Array.from(checkedLabels),
       theme,
       showPlan,
+      showTokens,
       modelDisplay,
       graphStyle,
       graphGroupBy,
@@ -214,6 +220,7 @@ export function SharePage({ plugins }: SharePageProps) {
     checkedLabels,
     theme,
     showPlan,
+    showTokens,
     modelDisplay,
     graphStyle,
     graphGroupBy,
@@ -547,13 +554,13 @@ export function SharePage({ plugins }: SharePageProps) {
                 className="w-full justify-start gap-1 px-1 text-muted-foreground hover:text-foreground"
                 onClick={() => setCustomizeOpen((open) => !open)}
               >
-                <ChevronRight className={cn("size-4 transition-transform", customizeOpen && "rotate-90")} />
+                <CaretRight className={cn("size-4 transition-transform", customizeOpen && "rotate-90")} />
                 Customize
               </Button>
               {customizeOpen && (
                 <div className="mt-2 space-y-3" data-testid="share-graph-customize">
                   <div className="flex flex-col gap-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span className="text-xs font-semibold text-muted-foreground">
                       Display
                     </span>
                     <div className="flex flex-wrap gap-1.5">
@@ -588,7 +595,7 @@ export function SharePage({ plugins }: SharePageProps) {
                   </div>
                   {/* Choose which providers / models to show off. */}
                   <div className="flex flex-col gap-1.5" data-testid="share-graph-entities">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span className="text-xs font-semibold text-muted-foreground">
                       {graphGroupBy === "model" ? "Models" : "Providers"}
                     </span>
                     <div className="flex flex-wrap gap-1.5">
@@ -651,6 +658,7 @@ export function SharePage({ plugins }: SharePageProps) {
                     showWatermark
                     modelDisplay={modelDisplay}
                     modelBreakdownLabels={modelBreakdownLabels}
+                    showTokens={showTokens}
                   />
                 </div>
               </div>
@@ -713,14 +721,14 @@ export function SharePage({ plugins }: SharePageProps) {
               className="w-full justify-start gap-1 px-1 text-muted-foreground hover:text-foreground"
               onClick={() => setCustomizeOpen((open) => !open)}
             >
-              <ChevronRight className={cn("size-4 transition-transform", customizeOpen && "rotate-90")} />
+              <CaretRight className={cn("size-4 transition-transform", customizeOpen && "rotate-90")} />
               Customize
             </Button>
             {customizeOpen && (
               <div className="mt-2 space-y-3" data-testid="share-customize">
                 {groupedLines.map((group) => (
                   <div key={group.label} className="flex flex-col gap-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span className="text-xs font-semibold text-muted-foreground">
                       {group.label}
                     </span>
                     <div className="flex flex-wrap gap-1.5">
@@ -744,7 +752,7 @@ export function SharePage({ plugins }: SharePageProps) {
 
                 {hasCheckedModels && (
                   <div className="flex flex-col gap-1.5" data-testid="share-model-details-section">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span className="text-xs font-semibold text-muted-foreground">
                       Model Details
                     </span>
                     <div className="flex flex-wrap gap-1.5">
@@ -770,10 +778,10 @@ export function SharePage({ plugins }: SharePageProps) {
                   </div>
                 )}
 
-                {selected.data.plan && (
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Card</span>
-                    <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground">Card</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selected.data.plan && (
                       <label className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs">
                         <Checkbox
                           aria-label="Plan"
@@ -783,9 +791,18 @@ export function SharePage({ plugins }: SharePageProps) {
                         />
                         Plan
                       </label>
-                    </div>
+                    )}
+                    <label className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs">
+                      <Checkbox
+                        aria-label="Tokens"
+                        checked={showTokens}
+                        onCheckedChange={(checked) => setShowTokens(checked === true)}
+                        disabled={copying}
+                      />
+                      Tokens
+                    </label>
                   </div>
-                )}
+                </div>
               </div>
             )}
           </section>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
-import { LoaderCircle } from "lucide-react"
+import { CircleNotch } from "@phosphor-icons/react"
 import type { ReleaseNotes } from "@/bindings"
 import { ChromelessWindowShell } from "@/components/chromeless-window-shell"
 import { Separator } from "@/components/ui/separator"
@@ -80,7 +80,7 @@ function WhatsNewApp() {
           <div className="mx-auto w-full max-w-md">
             {notes === null ? (
               <div className="flex h-full items-center justify-center">
-                <LoaderCircle
+                <CircleNotch
                   className="size-6 animate-spin text-muted-foreground"
                   aria-hidden
                 />

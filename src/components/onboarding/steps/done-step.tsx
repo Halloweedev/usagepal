@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
-import { BellOff, BellRing, Check, CircleCheck, KeyRound, LoaderCircle, Power } from "lucide-react"
+import { BellRinging, BellSlash, Check, CheckCircle, CircleNotch, Key, Power } from "@phosphor-icons/react"
 import type { PluginMeta } from "@/bindings"
 import { Button } from "@/components/ui/button"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
@@ -127,11 +127,11 @@ export function DoneStep({
       }
     >
       <div className="flex h-full flex-col items-center justify-center gap-4 py-4">
-        <CircleCheck className="size-12 text-primary animate-in zoom-in-50 fade-in duration-500" aria-hidden />
+        <CheckCircle className="size-12 text-primary animate-in zoom-in-50 fade-in duration-500" aria-hidden />
 
         {chips === null ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground animate-in fade-in duration-300">
-            <LoaderCircle className="size-4 animate-spin" aria-hidden />
+            <CircleNotch className="size-4 animate-spin" aria-hidden />
             Looking for providers on this Mac…
           </div>
         ) : chips.length === 0 ? (
@@ -171,7 +171,7 @@ export function DoneStep({
                       fallbackClassName="text-foreground"
                     />
                     {chip.name}
-                    {chip.needsKey && <KeyRound className="size-3" aria-hidden />}
+                    {chip.needsKey && <Key className="size-3" aria-hidden />}
                     {isSelected && <Check className="size-3 text-primary" aria-hidden />}
                   </button>
                 )
@@ -187,9 +187,9 @@ export function DoneStep({
           >
             <div className="flex items-center gap-2.5 px-4 py-2.5">
               {alertsEnabled > 0 ? (
-                <BellRing className="size-4 shrink-0 text-primary" aria-hidden />
+                <BellRinging className="size-4 shrink-0 text-primary" aria-hidden />
               ) : (
-                <BellOff className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                <BellSlash className="size-4 shrink-0 text-muted-foreground" aria-hidden />
               )}
               <span className={cn(alertsEnabled > 0 ? "text-foreground" : "text-muted-foreground")}>
                 {alertsText}

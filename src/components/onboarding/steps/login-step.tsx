@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { EyeOff } from "lucide-react"
+import { EyeSlash } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { MenubarPreviewRow } from "@/components/onboarding/menubar-preview"
 import { StepShell } from "@/components/onboarding/step-shell"
@@ -32,7 +32,7 @@ export function LoginStep({ onContinue, busy, backButton }: LoginStepProps) {
         <MenubarPreviewRow dimmed={!enabled} />
 
         <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
-          <EyeOff className="size-4 shrink-0 text-primary" aria-hidden />
+          <EyeSlash className="size-4 shrink-0 text-primary" aria-hidden />
           <span>Starts hidden — no window, no Dock icon.</span>
         </div>
 

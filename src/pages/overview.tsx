@@ -25,7 +25,7 @@ export function OverviewPage({
   onUsageValueToggle,
 }: OverviewPageProps) {
   return (
-    <div>
+    <div className="pb-3">
       {plugins.length === 0 ? (
         <div className="text-center text-muted-foreground py-8">
           No providers enabled
@@ -43,6 +43,9 @@ export function OverviewPage({
               key={plugin.meta.id}
               name={plugin.meta.name}
               plan={plugin.data?.plan ?? undefined}
+              asCard
+              iconUrl={plugin.meta.iconUrl}
+              pluginId={plugin.meta.id}
               showSeparator={index < plugins.length - 1}
               loading={plugin.loading}
               error={plugin.error}

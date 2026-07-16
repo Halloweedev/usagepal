@@ -9,11 +9,17 @@ const {
   saveOverviewGraphStyleMock,
   loadOverviewGraphGroupByMock,
   saveOverviewGraphGroupByMock,
+  loadOverviewStripMetricMock,
+  saveOverviewStripMetricMock,
+  saveShareSettingsMock,
 } = vi.hoisted(() => ({
   loadOverviewGraphStyleMock: vi.fn(),
   saveOverviewGraphStyleMock: vi.fn(),
   loadOverviewGraphGroupByMock: vi.fn(),
   saveOverviewGraphGroupByMock: vi.fn(),
+  loadOverviewStripMetricMock: vi.fn(),
+  saveOverviewStripMetricMock: vi.fn(),
+  saveShareSettingsMock: vi.fn(),
 }))
 
 vi.mock("@/lib/settings", async () => {
@@ -24,11 +30,16 @@ vi.mock("@/lib/settings", async () => {
     saveOverviewGraphStyle: saveOverviewGraphStyleMock,
     loadOverviewGraphGroupBy: loadOverviewGraphGroupByMock,
     saveOverviewGraphGroupBy: saveOverviewGraphGroupByMock,
+    loadOverviewStripMetric: loadOverviewStripMetricMock,
+    saveOverviewStripMetric: saveOverviewStripMetricMock,
+    saveShareSettings: saveShareSettingsMock,
   }
 })
 
 import { ModelsTodayStrip } from "@/components/models-today-strip"
 import type { TodayModelsSource } from "@/lib/today-models"
+import { useAppShareStore } from "@/stores/app-share-store"
+import { useAppUiStore } from "@/stores/app-ui-store"
 
 function makeSource(
   meta: { id: string; name: string; brandColor: string },
@@ -63,6 +74,11 @@ describe("ModelsTodayStrip", () => {
     saveOverviewGraphStyleMock.mockReset().mockResolvedValue(undefined)
     loadOverviewGraphGroupByMock.mockReset().mockResolvedValue("provider")
     saveOverviewGraphGroupByMock.mockReset().mockResolvedValue(undefined)
+    loadOverviewStripMetricMock.mockReset().mockResolvedValue("price")
+    saveOverviewStripMetricMock.mockReset().mockResolvedValue(undefined)
+    saveShareSettingsMock.mockReset().mockResolvedValue(undefined)
+    useAppShareStore.getState().resetState()
+    useAppUiStore.getState().setActiveView("home")
   })
 
   it("renders nothing without today data", async () => {
@@ -169,6 +185,107 @@ describe("ModelsTodayStrip", () => {
     expect(within(chips[2]).getByText("16%")).toBeInTheDocument()
     expect(saveOverviewGraphGroupByMock).toHaveBeenCalledWith("model")
     expect(screen.getByRole("button", { name: "Show providers" })).toBeInTheDocument()
+  })
+
+  it("toggles to token metric on value click and persists the choice", async () => {
+    const user = userEvent.setup()
+    const codexTokens = makeSource({ id: "codex", name: "Codex", brandColor: "#74AA9C" }, [
+      ["Today", "$400.00 · 333M"],
+      ["GPT-5.6 Sol", "99.7%"],
+      ["GPT-5.5", "0.3%"],
+    ])
+    render(<ModelsTodayStrip plugins={[codexTokens]} />)
+    await screen.findByTestId("strip-donut")
+
+    expect(screen.getAllByText("$398.80").length).toBeGreaterThan(0)
+
+    await user.click(screen.getAllByTestId("strip-metric-toggle")[0])
+
+    const row = screen.getByTestId("strip-entry-row")
+    expect(within(row).getByText("333M")).toBeInTheDocument()
+    expect(within(row).queryByText("$398.80")).not.toBeInTheDocument()
+    expect(screen.getByText("Million")).toBeInTheDocument()
+    expect(saveOverviewStripMetricMock).toHaveBeenCalledWith("usage")
+  })
+
+  it("hydrates persisted usage metric and shows an em dash for unknown tokens", async () => {
+    loadOverviewStripMetricMock.mockResolvedValue("usage")
+    render(<ModelsTodayStrip plugins={[claude, codex]} />)
+    await screen.findByTestId("strip-donut")
+
+    const toggles = await screen.findAllByTestId("strip-metric-toggle")
+    expect(toggles).toHaveLength(2)
+    for (const toggle of toggles) expect(toggle).toHaveTextContent("—")
+  })
+
+  it("shows token values in the bar legend in usage metric", async () => {
+    loadOverviewStripMetricMock.mockResolvedValue("usage")
+    loadOverviewGraphStyleMock.mockResolvedValue("bar")
+    const codexTokens = makeSource({ id: "codex", name: "Codex", brandColor: "#74AA9C" }, [
+      ["Today", "$400.00 · 333M"],
+      ["GPT-5.6 Sol", "99.7%"],
+      ["GPT-5.5", "0.3%"],
+    ])
+    render(<ModelsTodayStrip plugins={[codexTokens]} />)
+    await screen.findByTestId("strip-bar")
+
+    const chips = await screen.findAllByTestId("strip-legend-chip")
+    expect(within(chips[0]).getByText("333M")).toBeInTheDocument()
+    expect(within(chips[0]).queryByText("100%")).not.toBeInTheDocument()
+  })
+
+  it("shows token details in provider tooltips in usage metric", async () => {
+    loadOverviewStripMetricMock.mockResolvedValue("usage")
+    const codexTokens = makeSource({ id: "codex", name: "Codex", brandColor: "#74AA9C" }, [
+      ["Today", "$400.00 · 333M"],
+      ["GPT-5.6 Sol", "99.7%"],
+      ["GPT-5.5", "0.3%"],
+    ])
+    render(<ModelsTodayStrip plugins={[codexTokens]} />)
+    await screen.findByTestId("strip-donut")
+
+    // Tooltip header leads with tokens, cost + $/MTok demoted to a muted line.
+    expect(screen.getAllByText("333M").length).toBeGreaterThan(1)
+    expect(screen.getAllByText("$400.00").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("$1.20/MTok").length).toBeGreaterThan(0)
+    // Per-model rows show allocated token counts instead of cost.
+    expect(screen.getAllByText("332M").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("999K").length).toBeGreaterThan(0)
+    expect(screen.queryByText("$398.80")).not.toBeInTheDocument()
+  })
+
+  it("shows token details in model tooltips in usage metric", async () => {
+    loadOverviewStripMetricMock.mockResolvedValue("usage")
+    loadOverviewGraphGroupByMock.mockResolvedValue("model")
+    const codexTokens = makeSource({ id: "codex", name: "Codex", brandColor: "#74AA9C" }, [
+      ["Today", "$400.00 · 333M"],
+      ["GPT-5.6 Sol", "99.7%"],
+      ["GPT-5.5", "0.3%"],
+    ])
+    render(<ModelsTodayStrip plugins={[codexTokens]} />)
+    await screen.findByTestId("strip-donut")
+
+    expect(screen.getAllByText("332M").length).toBeGreaterThan(1)
+    expect(screen.getAllByText("$398.80").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("$1.20/MTok").length).toBeGreaterThan(0)
+  })
+
+  it("opens the share page carrying over the strip's current view", async () => {
+    const user = userEvent.setup()
+    loadOverviewGraphGroupByMock.mockResolvedValue("model")
+    loadOverviewStripMetricMock.mockResolvedValue("usage")
+    render(<ModelsTodayStrip plugins={[claude, codex]} />)
+    await screen.findByTestId("strip-donut")
+
+    await user.click(screen.getByRole("button", { name: "Share this view" }))
+
+    expect(useAppUiStore.getState().activeView).toBe("share")
+    const settings = useAppShareStore.getState().settings
+    expect(settings.selectedId).toBe("all")
+    expect(settings.graphStyle).toBe("donut")
+    expect(settings.graphGroupBy).toBe("model")
+    expect(settings.graphMetric).toBe("usage")
+    expect(useAppShareStore.getState().takePendingGraphPeriod()).toBe("today")
   })
 
   it("hydrates persisted bar style and model grouping on mount", async () => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
 import { openUrl } from "@tauri-apps/plugin-opener"
-import { ExternalLink } from "lucide-react"
+import { ArrowSquareOut } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import type { KeyStatus } from "@/bindings"
 
@@ -110,7 +110,7 @@ export function OpenRouterKeyDialog({
             className="inline-flex items-center gap-0.5 text-primary hover:underline"
             onClick={() => void openUrl(OPENROUTER_KEYS_URL)}
           >
-            Get a key <ExternalLink className="size-3" />
+            Get a key <ArrowSquareOut className="size-3" />
           </button>
         </p>
 

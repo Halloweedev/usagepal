@@ -1,7 +1,7 @@
 // src/components/onboarding/onboarding-app.tsx
 import { useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
-import { ChevronLeft } from "lucide-react"
+import { CaretLeft } from "@phosphor-icons/react"
 
 import { syncAutostart } from "@/lib/autostart"
 
@@ -99,7 +99,7 @@ function OnboardingApp() {
   const backButton =
     step !== "welcome" && step !== "done" && busyAction === null ? (
       <Button size="sm" variant="outline" onClick={back}>
-        <ChevronLeft className="size-4" aria-hidden />
+        <CaretLeft className="size-4" aria-hidden />
         Back
       </Button>
     ) : undefined

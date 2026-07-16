@@ -12,6 +12,7 @@ import {
   DEFAULT_OVERVIEW_GRAPH_GROUP_BY,
   DEFAULT_OVERVIEW_GRAPH_STYLE,
   DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED,
+  DEFAULT_OVERVIEW_STRIP_METRIC,
   DEFAULT_PACE_NOTIFICATION_SETTINGS,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
@@ -33,6 +34,7 @@ import {
   loadOverviewGraphGroupBy,
   loadOverviewGraphStyle,
   loadOverviewSpendStripEnabled,
+  loadOverviewStripMetric,
   loadPaceNotificationSettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
@@ -58,6 +60,7 @@ import {
   saveOnboardingCompleted,
   saveOverviewGraphGroupBy,
   saveOverviewSpendStripEnabled,
+  saveOverviewStripMetric,
   saveOverviewGraphStyle,
   savePaceNotificationSettings,
   savePluginSettings,
@@ -470,6 +473,20 @@ describe("settings", () => {
     await expect(loadOverviewGraphStyle()).resolves.toBe(DEFAULT_OVERVIEW_GRAPH_STYLE);
   });
 
+  it("loads default overview strip metric when missing", async () => {
+    await expect(loadOverviewStripMetric()).resolves.toBe(DEFAULT_OVERVIEW_STRIP_METRIC);
+  });
+
+  it("saves overview strip metric", async () => {
+    await saveOverviewStripMetric("usage");
+    await expect(loadOverviewStripMetric()).resolves.toBe("usage");
+  });
+
+  it("falls back to default for invalid overview strip metric", async () => {
+    storeState.set("overviewStripMetric", "mtok");
+    await expect(loadOverviewStripMetric()).resolves.toBe(DEFAULT_OVERVIEW_STRIP_METRIC);
+  });
+
   it("loads default overview graph group by when missing", async () => {
     await expect(loadOverviewGraphGroupBy()).resolves.toBe(DEFAULT_OVERVIEW_GRAPH_GROUP_BY);
   });
@@ -681,6 +698,7 @@ describe("settings", () => {
       checkedLabels: ["Session", "Sonnet"], // non-strings dropped
       theme: "light",
       showPlan: true, // missing -> default
+      showTokens: true, // missing -> default
       graphStyle: "bar", // missing -> default
       graphGroupBy: "provider", // missing -> default
       graphShowBreakdown: true, // missing -> default
@@ -703,6 +721,7 @@ describe("settings", () => {
       checkedLabels: ["Session", "claude-sonnet-5"],
       theme: "dark" as const,
       showPlan: false,
+      showTokens: false,
       graphStyle: "bar" as const,
       graphGroupBy: "provider" as const,
       graphShowBreakdown: true,
@@ -725,6 +744,7 @@ describe("settings", () => {
       checkedLabels: ["Session", "claude-sonnet-5"],
       theme: "dark" as const,
       showPlan: false,
+      showTokens: false,
       graphStyle: "bar" as const,
       graphGroupBy: "provider" as const,
       graphShowBreakdown: true,

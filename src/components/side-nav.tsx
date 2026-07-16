@@ -1,5 +1,6 @@
 import { useCallback } from "react"
-import { Settings, Share2 } from "lucide-react"
+import { Gear } from "@phosphor-icons/react"
+import { ExportIcon } from "@/components/export-icon"
 import { invoke } from "@tauri-apps/api/core"
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu"
 import {
@@ -19,7 +20,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 
 import { cn } from "@/lib/utils"
-import { getRelativeLuminance } from "@/lib/color"
+import { getProviderIconColor } from "@/lib/color"
 import { useDarkMode } from "@/hooks/use-dark-mode"
 import { Logo } from "@/components/logo"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
@@ -73,14 +74,6 @@ function NavButton({ isActive, onClick, onContextMenu, children, "aria-label": a
   )
 }
 
-function getIconColor(brandColor: string | undefined, isDark: boolean): string {
-  if (!brandColor) return "currentColor"
-  const luminance = getRelativeLuminance(brandColor)
-  if (isDark && luminance < 0.15) return "#ffffff"
-  if (!isDark && luminance > 0.85) return "currentColor"
-  return brandColor
-}
-
 interface SortableNavPluginProps {
   plugin: NavPlugin
   isActive: boolean
@@ -117,7 +110,7 @@ function SortableNavPlugin({ plugin, isActive, isDark, onClick, onContextMenu }:
           iconUrl={plugin.iconUrl}
           pluginId={plugin.id}
           sizePx={24}
-          style={{ backgroundColor: getIconColor(plugin.brandColor, isDark) }}
+          style={{ backgroundColor: getProviderIconColor(plugin.brandColor, isDark) }}
         />
       </NavButton>
     </div>
@@ -242,7 +235,7 @@ export function SideNav({
         onClick={() => onShareClick?.()}
         aria-label="Share"
       >
-        <Share2 className="size-6" />
+        <ExportIcon className="size-6" />
       </NavButton>
 
       {/* Settings */}
@@ -251,7 +244,7 @@ export function SideNav({
         onClick={() => onViewChange("settings")}
         aria-label="Settings"
       >
-        <Settings className="size-6" />
+        <Gear className="size-6" />
       </NavButton>
     </nav>
   )

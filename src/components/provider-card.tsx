@@ -1,5 +1,5 @@
 import { Fragment, useMemo } from "react"
-import { AlertCircle, ExternalLink, Flame, Hourglass, RefreshCw } from "lucide-react"
+import { ArrowSquareOut, ArrowsClockwise, Fire, Hourglass, WarningCircle } from "@phosphor-icons/react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { SkeletonLines } from "@/components/skeleton-lines"
 import { UsageSparkline } from "@/components/usage-sparkline"
 import { PluginError } from "@/components/plugin-error"
+import { ProviderIconMask } from "@/components/provider-icon-mask"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode, type TimeFormatMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
@@ -20,7 +21,7 @@ import {
 } from "@/lib/today-models"
 import { groupLinesByType } from "@/lib/group-lines-by-type"
 import { selectEscalatedLine } from "@/lib/metric-escalation"
-import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
+import { clamp01, cn, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
 import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
 import { buildPaceDetailText, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
 import {
@@ -37,6 +38,11 @@ interface ProviderCardProps {
   plan?: string
   links?: PluginLink[]
   showSeparator?: boolean
+  /** Card layout: logo + name + plan sit above a bordered body. Used on the
+   * Overview page; the detail view keeps the flat separator layout. */
+  asCard?: boolean
+  iconUrl?: string
+  pluginId?: string
   loading?: boolean
   error?: string | null
   lines?: MetricLine[]
@@ -82,7 +88,7 @@ function PaceIndicator({
         render={(props) =>
           isBehind ? (
             <span {...props} data-pace-status={status} className="inline-flex items-center" aria-label={statusText}>
-              <Flame className="h-3.5 w-3.5 text-red-500" />
+              <Fire weight="duotone" className="h-3.5 w-3.5 text-red-500" />
             </span>
           ) : (
             <span
@@ -118,6 +124,9 @@ export function ProviderCard({
   plan,
   links = [],
   showSeparator = true,
+  asCard = false,
+  iconUrl,
+  pluginId,
   loading = false,
   error = null,
   lines = [],
@@ -224,27 +233,36 @@ export function ProviderCard({
 
   return (
     <div>
-      <div className="py-3">
+      <div className={asCard ? "pb-1 pt-2" : "py-3"}>
         <div className="flex items-center justify-between mb-2">
           <div className="relative flex items-center">
+            {asCard && iconUrl && (
+              <ProviderIconMask
+                iconUrl={iconUrl}
+                pluginId={pluginId}
+                sizePx={18}
+                className="mr-1.5 text-muted-foreground"
+                style={{ backgroundColor: "currentColor" }}
+              />
+            )}
             <h2 className="text-lg font-semibold" style={{ transform: "translateZ(0)" }}>{name}</h2>
             {onRetry && (
               loading ? (
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  className="ml-1 pointer-events-none opacity-50"
+                  className="ml-0.5 size-5 pointer-events-none opacity-50"
                   style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
                   tabIndex={-1}
                 >
-                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  <ArrowsClockwise className="h-3 w-3 animate-spin" />
                 </Button>
               ) : inCooldown ? (
                 <Tooltip>
                   <TooltipTrigger
-                    className="ml-1"
+                    className="ml-0.5"
                     render={(props) => (
-                      <span {...props} className={props.className}>
+                      <span {...props} className={cn("inline-flex items-center", props.className)}>
                         <Button
                           variant="ghost"
                           size="icon-xs"
@@ -252,7 +270,7 @@ export function ProviderCard({
                           style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
                           tabIndex={-1}
                         >
-                          <Hourglass className="h-3 w-3" />
+                          <Hourglass weight="duotone" className="h-3 w-3" />
                         </Button>
                       </span>
                     )}
@@ -264,7 +282,7 @@ export function ProviderCard({
               ) : (
                 <Tooltip>
                   <TooltipTrigger
-                    className="ml-1"
+                    className="ml-0.5"
                     render={(props) => (
                       <Button
                         {...props}
@@ -275,10 +293,10 @@ export function ProviderCard({
                           e.currentTarget.blur()
                           onRetry()
                         }}
-                        className="opacity-0 hover:opacity-100 focus-visible:opacity-100"
+                        className="ml-0.5 size-5 opacity-0 hover:opacity-100 focus-visible:opacity-100"
                         style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
                       >
-                        <RefreshCw className="h-3 w-3" />
+                        <ArrowsClockwise className="h-3 w-3" />
                       </Button>
                     )}
                   />
@@ -301,6 +319,7 @@ export function ProviderCard({
             </Badge>
           )}
         </div>
+        <div data-testid="provider-card-body" className={asCard ? "rounded-xl border p-3" : undefined}>
         {visibleLinks.length > 0 && (
           <div className="mb-2 -mt-0.5 flex flex-wrap gap-1.5">
             {visibleLinks.map((link) => (
@@ -314,7 +333,7 @@ export function ProviderCard({
                 }}
               >
                 <span className="truncate">{link.label}</span>
-                <ExternalLink className="size-3 opacity-70" />
+                <ArrowSquareOut className="size-3 opacity-70" />
               </Button>
             ))}
           </div>
@@ -329,7 +348,7 @@ export function ProviderCard({
                   {...props}
                   className="flex items-center gap-1.5 mb-2 text-xs text-destructive"
                 >
-                  <AlertCircle className="h-3 w-3 flex-shrink-0" />
+                  <WarningCircle className="h-3 w-3 flex-shrink-0" />
                   <span className="truncate">{error}</span>
                 </div>
               )}
@@ -349,21 +368,35 @@ export function ProviderCard({
             {groupLinesByType(displayLines).map((group, gi) =>
               group.kind === "text" ? (
                 <div key={gi} className="space-y-1">
-                  {group.lines.map((line, li) => (
-                    <MetricLineRenderer
-                      key={`${line.label}-${gi}-${li}`}
-                      line={line}
-                      isModelBreakdown={!manifestLabels.has(line.label)}
-                      modelCostBasis={modelCostBasis}
-                      displayMode={displayMode}
-                      resetTimerDisplayMode={resetTimerDisplayMode}
-                      timeFormatMode={timeFormatMode}
-                      onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
-                      onUsageValueToggle={onUsageValueToggle}
-                      now={now}
-                      refreshing={isRefreshingWithData}
-                    />
-                  ))}
+                  {/* Detail view: set the deeper stats (Today, 30d, models…) off
+                      from the progress bars above. */}
+                  {!isOverview && gi > 0 && <Separator className="mb-3" />}
+                  {(() => {
+                    const renderLine = (line: MetricLine, li: number) => (
+                      <MetricLineRenderer
+                        key={`${line.label}-${gi}-${li}`}
+                        line={line}
+                        isModelBreakdown={!manifestLabels.has(line.label)}
+                        modelCostBasis={modelCostBasis}
+                        displayMode={displayMode}
+                        resetTimerDisplayMode={resetTimerDisplayMode}
+                        timeFormatMode={timeFormatMode}
+                        onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+                        onUsageValueToggle={onUsageValueToggle}
+                        now={now}
+                        refreshing={isRefreshingWithData}
+                      />
+                    )
+                    if (isOverview) return group.lines.map(renderLine)
+                    const detailLines = group.lines.filter((line) => manifestLabels.has(line.label))
+                    const modelLines = group.lines.filter((line) => !manifestLabels.has(line.label))
+                    return (
+                      <>
+                        {detailLines.map(renderLine)}
+                        {modelLines.map(renderLine)}
+                      </>
+                    )
+                  })()}
                 </div>
               ) : (
                 <Fragment key={gi}>
@@ -388,8 +421,9 @@ export function ProviderCard({
           </div>
         )}
 
+        </div>
       </div>
-      {showSeparator && <Separator />}
+      {showSeparator && !asCard && <Separator />}
     </div>
   )
 }
