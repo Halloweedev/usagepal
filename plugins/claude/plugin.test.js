@@ -154,7 +154,7 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
-    expect(ctx.host.fs.readText).not.toHaveBeenCalled()
+    expect(ctx.host.fs.readText).not.toHaveBeenCalledWith(expect.stringContaining(".credentials.json"))
     expect(ctx.host.http.request).toHaveBeenCalledWith(
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer keychain-token" }),
@@ -514,23 +514,23 @@ describe("claude plugin", () => {
     expect(result.lines.find((line) => line.label === "Note")).toBeTruthy()
   })
 
-  it("clamps a long Retry-After to the min poll interval", async () => {
+  it("honors a long Retry-After instead of clamping it", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
     ctx.host.http.request.mockReturnValue({
       status: 429,
       bodyText: "",
-      headers: { "Retry-After": "600" }, // 10 minutes — should clamp to the 5-minute cap
+      headers: { "Retry-After": "600" }, // 10 minutes — honored as-is
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     const statusLine = result.lines.find((line) => line.label === "Status")
     expect(statusLine).toBeTruthy()
-    expect(statusLine.text).toContain("5m")
+    expect(statusLine.text).toContain("10m")
     const noteLine = result.lines.find((line) => line.label === "Note")
     expect(noteLine).toBeTruthy()
-    expect(noteLine.value).toContain("5m")
+    expect(noteLine.value).toContain("10m")
   })
 
   it("shows generic unavailable message when Retry-After is missing", async () => {
@@ -1871,17 +1871,17 @@ describe("claude plugin", () => {
       ctx.host.http.request.mockReturnValue({
         status: 429,
         bodyText: '{"error":"rate limited"}',
-        headers: { "Retry-After": "1200" }, // 20 minutes — clamped to the 5-minute cap
+        headers: { "Retry-After": "1200" }, // 20 minutes — honored as-is
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
       expect(result.lines.find((line) => line.label === "Today")).toBeTruthy()
       const statusLine = result.lines.find((line) => line.label === "Status")
       expect(statusLine).toBeTruthy()
-      expect(statusLine.text).toContain("5m")
+      expect(statusLine.text).toContain("20m")
       const noteLine = result.lines.find((line) => line.label === "Note")
       expect(noteLine).toBeTruthy()
-      expect(noteLine.value).toContain("5m")
+      expect(noteLine.value).toContain("20m")
     })
   })
 
@@ -1905,7 +1905,7 @@ describe("claude plugin", () => {
         const result = plugin.probe(ctx)
         const noteLine = result.lines.find((line) => line.label === "Note")
         expect(noteLine).toBeTruthy()
-        expect(noteLine.value).toBe("Live usage check throttled — retry in ~5m (showing cached data)")
+        expect(noteLine.value).toBe("Live usage check throttled — retry in ~15m (showing cached data)")
       } finally {
         vi.useRealTimers()
       }
@@ -2050,6 +2050,282 @@ describe("claude plugin", () => {
         vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
         plugin.probe(ctx)
         expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
+  describe("persistent rate-limit state (fresh runtime per probe)", () => {
+    const CREDS_PATH = "~/.claude/.credentials.json"
+    const seedCreds = (ctx) => {
+      ctx.host.fs.writeText(CREDS_PATH, JSON.stringify({ claudeAiOauth: { accessToken: "token" } }))
+      ctx.host.fs.writeText.mockClear()
+    }
+
+    it("persists 429 backoff across fresh plugin runtimes", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        seedCreds(ctx)
+        ctx.host.http.request.mockReturnValue({
+          status: 429,
+          bodyText: "",
+          headers: { "Retry-After": "600" },
+        })
+        const plugin = await loadPlugin()
+
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // Simulate a fresh QuickJS runtime: module state is wiped, but the
+        // persisted state file (in ctx's fake fs) survives.
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
+        const result2 = plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1) // no new request
+        const statusLine = result2.lines.find((l) => l.label === "Status")
+        expect(statusLine).toBeTruthy()
+        expect(statusLine.text).toContain("Usage temporarily unavailable")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("honors the server Retry-After beyond the old 5-minute clamp", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        seedCreds(ctx)
+        ctx.host.http.request
+          .mockReturnValueOnce({ status: 429, bodyText: "", headers: { "Retry-After": "2700" } })
+          .mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
+        const plugin = await loadPlugin()
+
+        const result1 = plugin.probe(ctx)
+        const noteLine = result1.lines.find((l) => l.label === "Note")
+        expect(noteLine.value).toContain("45m")
+
+        // 20 minutes later, fresh runtime — still inside the 45-min window.
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T10:20:00.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // 46 minutes later — window expired, fetch resumes.
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T10:46:00.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("caps an absurd Retry-After at six hours", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        seedCreds(ctx)
+        ctx.host.http.request
+          .mockReturnValueOnce({ status: 429, bodyText: "", headers: { "Retry-After": "999999" } })
+          .mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
+        const plugin = await loadPlugin()
+
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // Just past the 6-hour cap — fetch resumes even though the header
+        // asked for ~11.5 days.
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T16:00:01.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("persists cached usage bars across fresh plugin runtimes", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        seedCreds(ctx)
+        ctx.host.http.request.mockReturnValue({
+          status: 200,
+          bodyText: JSON.stringify({ five_hour: { utilization: 42, resets_at: null } }),
+          headers: {},
+        })
+        const plugin = await loadPlugin()
+
+        const result1 = plugin.probe(ctx)
+        expect(result1.lines.find((l) => l.label === "Session")).toBeTruthy()
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // Fresh runtime 60 s later — min interval not elapsed: no new request,
+        // but the persisted cache still fills the Session bar.
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
+        const result2 = plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+        expect(result2.lines.find((l) => l.label === "Session")).toBeTruthy()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("persists the min-fetch-interval guard across fresh runtimes", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        seedCreds(ctx)
+        ctx.host.http.request.mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
+        const plugin = await loadPlugin()
+
+        plugin.probe(ctx)
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T10:00:01.000Z"))
+        plugin.probe(ctx) // double-probe one second later (e.g. panel open + scheduler)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
+  describe("refresh-on-429 (per-token rate limit bypass)", () => {
+    const CREDS_PATH = "~/.claude/.credentials.json"
+    const seedCreds = (ctx) => {
+      ctx.host.fs.writeText(
+        CREDS_PATH,
+        JSON.stringify({
+          claudeAiOauth: {
+            accessToken: "old-token",
+            refreshToken: "refresh-1",
+            // Far in the future so the proactive expiry refresh never fires —
+            // these tests exercise the 429-triggered refresh only.
+            expiresAt: Date.parse("2026-04-20T00:00:00.000Z"),
+          },
+        })
+      )
+      ctx.host.fs.writeText.mockClear()
+    }
+    const usageBody = JSON.stringify({ five_hour: { utilization: 42, resets_at: null } })
+
+    it("refreshes the token on 429 and retries with the new token", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        seedCreds(ctx)
+        ctx.host.http.request.mockImplementation((opts) => {
+          if (String(opts.url).includes("/oauth/token")) {
+            return {
+              status: 200,
+              bodyText: JSON.stringify({
+                access_token: "fresh-token",
+                refresh_token: "refresh-2",
+                expires_in: 3600,
+              }),
+              headers: {},
+            }
+          }
+          const auth = opts.headers && opts.headers.Authorization
+          if (auth === "Bearer fresh-token") {
+            return { status: 200, bodyText: usageBody, headers: {} }
+          }
+          return { status: 429, bodyText: "", headers: { "Retry-After": "2700" } }
+        })
+        const plugin = await loadPlugin()
+
+        const result = plugin.probe(ctx)
+        // Live data shown, no rate-limited badge
+        expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+        expect(result.lines.find((l) => l.label === "Status" && l.color === "#f59e0b")).toBeUndefined()
+        // New refresh token persisted back for Claude Code
+        expect(ctx.host.fs.readText(CREDS_PATH)).toContain("refresh-2")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("backs off normally when the retry after refresh is also rate-limited", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        seedCreds(ctx)
+        let refreshCalls = 0
+        ctx.host.http.request.mockImplementation((opts) => {
+          if (String(opts.url).includes("/oauth/token")) {
+            refreshCalls++
+            return {
+              status: 200,
+              bodyText: JSON.stringify({ access_token: "fresh-token", refresh_token: "refresh-2" }),
+              headers: {},
+            }
+          }
+          return { status: 429, bodyText: "", headers: { "Retry-After": "2700" } }
+        })
+        const plugin = await loadPlugin()
+
+        const result = plugin.probe(ctx)
+        expect(refreshCalls).toBe(1)
+        const statusLine = result.lines.find((l) => l.label === "Status")
+        expect(statusLine).toBeTruthy()
+        expect(statusLine.text).toContain("Usage temporarily unavailable")
+
+        // A fresh runtime probing again inside the window must not refresh again.
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T10:10:00.000Z"))
+        plugin.probe(ctx)
+        expect(refreshCalls).toBe(1)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("does not attempt a second refresh-on-429 within 30 minutes", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        seedCreds(ctx)
+        let refreshCalls = 0
+        ctx.host.http.request.mockImplementation((opts) => {
+          if (String(opts.url).includes("/oauth/token")) {
+            refreshCalls++
+            return {
+              status: 200,
+              bodyText: JSON.stringify({ access_token: "fresh-" + refreshCalls, refresh_token: "r" + refreshCalls }),
+              headers: {},
+            }
+          }
+          // Usage always 429s with a short window so probes keep re-fetching
+          return { status: 429, bodyText: "", headers: { "Retry-After": "60" } }
+        })
+        const plugin = await loadPlugin()
+
+        plugin.probe(ctx) // 429 → refresh → still 429
+        expect(refreshCalls).toBe(1)
+
+        // Window (60 s) expires; next probe re-fetches, 429s again — but the
+        // refresh cooldown (30 min) has not elapsed, so no second refresh.
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T10:02:00.000Z"))
+        plugin.probe(ctx)
+        expect(refreshCalls).toBe(1)
+
+        // 31 minutes after the first refresh — allowed again.
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T10:31:00.000Z"))
+        plugin.probe(ctx)
+        expect(refreshCalls).toBe(2)
       } finally {
         vi.useRealTimers()
       }

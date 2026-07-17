@@ -10,14 +10,70 @@
     "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
-  // Rate-limit state for within a single probe runtime. Each probe spins up a
-  // fresh QuickJS context, so this does not survive across scheduled refreshes;
-  // the app preserves last-known progress lines when rate-limited instead.
+  // Rate-limit state. Each probe spins up a fresh QuickJS context, so these
+  // module vars alone don't survive across scheduled refreshes — they are
+  // hydrated from / persisted to a JSON file in the plugin data dir, otherwise
+  // the min-interval guard and Retry-After backoff would be no-ops and every
+  // probe would hit the (aggressively rate-limited) usage endpoint.
   const MIN_USAGE_FETCH_INTERVAL_MS = 5 * 60 * 1000  // never poll more than once per 5 min
   const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000 // fallback when no Retry-After header
+  const MAX_RATE_LIMIT_BACKOFF_MS = 6 * 60 * 60 * 1000 // cap absurd Retry-After values
+  // The usage endpoint's rate-limit budget is per-access-token, so refreshing
+  // the token grants a fresh window. Refreshing also rotates the (single-use)
+  // refresh token, so throttle how often a 429 may trigger one.
+  const RATE_LIMIT_REFRESH_COOLDOWN_MS = 30 * 60 * 1000
+  const USAGE_STATE_FILE_NAME = "usage-state.json"
   let rateLimitedUntilMs = 0  // epoch ms; 0 = not rate-limited
   let lastUsageFetchMs = 0    // epoch ms of the most-recent API attempt
+  let lastRateLimitRefreshMs = 0 // epoch ms of the last 429-triggered token refresh
   let cachedUsageData = null  // last successful API response body (parsed JSON)
+
+  function usageStatePath(ctx) {
+    const dir = ctx.app && ctx.app.pluginDataDir
+    if (!dir) return null
+    return dir + "/" + USAGE_STATE_FILE_NAME
+  }
+
+  function hydrateUsageState(ctx) {
+    // Only hydrate a cold runtime; warm in-memory state is always fresher.
+    if (rateLimitedUntilMs !== 0 || lastUsageFetchMs !== 0 || cachedUsageData !== null) return
+    const path = usageStatePath(ctx)
+    if (!path) return
+    try {
+      if (!ctx.host.fs.exists(path)) return
+      const state = JSON.parse(ctx.host.fs.readText(path))
+      if (!state || typeof state !== "object") return
+      if (typeof state.rateLimitedUntilMs === "number" && isFinite(state.rateLimitedUntilMs)) {
+        rateLimitedUntilMs = state.rateLimitedUntilMs
+      }
+      if (typeof state.lastUsageFetchMs === "number" && isFinite(state.lastUsageFetchMs)) {
+        lastUsageFetchMs = state.lastUsageFetchMs
+      }
+      if (typeof state.lastRateLimitRefreshMs === "number" && isFinite(state.lastRateLimitRefreshMs)) {
+        lastRateLimitRefreshMs = state.lastRateLimitRefreshMs
+      }
+      if (state.cachedUsageData && typeof state.cachedUsageData === "object") {
+        cachedUsageData = state.cachedUsageData
+      }
+    } catch (e) {
+      ctx.host.log.warn("failed to load usage state: " + String(e))
+    }
+  }
+
+  function persistUsageState(ctx) {
+    const path = usageStatePath(ctx)
+    if (!path) return
+    try {
+      ctx.host.fs.writeText(path, JSON.stringify({
+        rateLimitedUntilMs: rateLimitedUntilMs,
+        lastUsageFetchMs: lastUsageFetchMs,
+        lastRateLimitRefreshMs: lastRateLimitRefreshMs,
+        cachedUsageData: cachedUsageData,
+      }))
+    } catch (e) {
+      ctx.host.log.warn("failed to persist usage state: " + String(e))
+    }
+  }
 
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
@@ -849,6 +905,7 @@
     let rateLimited = false
     let retryAfterSeconds = null
     if (canFetchLiveUsage) {
+      hydrateUsageState(ctx)
       if (nowMs < rateLimitedUntilMs) {
         // Still within a rate-limit window from a previous probe call — skip the
         // API request entirely and surface the remaining wait time to the user.
@@ -916,18 +973,51 @@
           throw "Token expired. Run `claude` to log in again."
         }
 
+        if (resp.status === 429 && creds.oauth.refreshToken &&
+            nowMs - lastRateLimitRefreshMs > RATE_LIMIT_REFRESH_COOLDOWN_MS) {
+          // The 429 budget is tied to the access token itself — a refreshed
+          // token starts with a clean window, so try that once per cooldown
+          // before resigning to the (potentially 45-minute) backoff.
+          lastRateLimitRefreshMs = nowMs
+          persistUsageState(ctx)
+          let refreshed = null
+          try {
+            refreshed = refreshToken(ctx, creds)
+          } catch (e) {
+            ctx.host.log.warn("refresh-on-429 failed: " + String(e))
+          }
+          if (refreshed) {
+            accessToken = refreshed
+            try {
+              const retryResp = fetchUsage(ctx, refreshed)
+              if (retryResp && typeof retryResp.status === "number") {
+                if (retryResp.status >= 200 && retryResp.status < 300) {
+                  ctx.host.log.info("usage fetch succeeded after refresh-on-429")
+                } else {
+                  ctx.host.log.warn("usage retry after refresh-on-429 still failed: status=" + retryResp.status)
+                }
+                resp = retryResp
+              }
+            } catch (e) {
+              ctx.host.log.warn("usage retry after refresh-on-429 threw: " + String(e))
+            }
+          }
+        }
+
         if (resp.status === 429) {
           rateLimited = true
           const rawRetryAfterSeconds = parseRetryAfterSeconds(resp.headers)
-          // Clamp so a large/misleading Retry-After can't pin the UI in a
-          // "throttled" state far longer than our own poll cadence — cap at
-          // MIN_USAGE_FETCH_INTERVAL_MS, we'll just re-check on the next poll.
+          // Honor the server's Retry-After: the endpoint's per-token budget is
+          // tiny and the penalty window long (45+ min observed) — retrying
+          // sooner just re-arms the rate limit indefinitely. Only cap truly
+          // absurd values.
           const backoffMs = rawRetryAfterSeconds !== null
-            ? Math.min(rawRetryAfterSeconds * 1000, MIN_USAGE_FETCH_INTERVAL_MS)
+            ? Math.min(rawRetryAfterSeconds * 1000, MAX_RATE_LIMIT_BACKOFF_MS)
             : DEFAULT_RATE_LIMIT_BACKOFF_MS
           retryAfterSeconds = rawRetryAfterSeconds !== null ? Math.round(backoffMs / 1000) : null
           rateLimitedUntilMs = nowMs + backoffMs
           data = cachedUsageData
+          persistUsageState(ctx)
           ctx.host.log.warn(
             "usage endpoint returned 429, backing off for " +
             Math.round(backoffMs / 1000) + "s; retry-after=" + String(rawRetryAfterSeconds) +
@@ -945,6 +1035,7 @@
           }
           cachedUsageData = data
           rateLimitedUntilMs = 0
+          persistUsageState(ctx)
         }
         } // end fetch else-branch
       }
@@ -1117,6 +1208,7 @@
   function _resetState() {
     rateLimitedUntilMs = 0
     lastUsageFetchMs = 0
+    lastRateLimitRefreshMs = 0
     cachedUsageData = null
   }
 
