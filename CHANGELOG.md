@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.50-beta.1
+
+### Bug Fixes
+- Claude's usage check no longer shows a false "Rate limited" account status when only the usage-check endpoint itself is being throttled — relabeled to "Usage temporarily unavailable," with a capped backoff and 429 diagnostics logging by @Halloweedev
+
+---
+
 ## v0.7.41
 
 ### Improvements

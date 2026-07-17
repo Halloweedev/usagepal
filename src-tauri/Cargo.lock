@@ -6543,7 +6543,7 @@ dependencies = [
 
 [[package]]
 name = "usagepal"
-version = "0.7.41"
+version = "0.7.50-beta.1"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
