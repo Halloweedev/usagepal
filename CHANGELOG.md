@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.41
+
+### Improvements
+- Updated the Keylight SDK to 0.3.3 across the app — Rust crates and JS bindings now share the same version by @Halloweedev
+
 ## v0.7.40
 
 Stable release rolling up the 0.7.35 betas: the native token & pricing engine, token counts across the Overview and Share pages, per-provider cards on the home page, and the Phosphor icon set.
