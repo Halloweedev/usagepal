@@ -5,7 +5,7 @@ export function isRateLimitedProbeOutput(output: PluginOutput): boolean {
     (line) =>
       line.type === "badge" &&
       line.label === "Status" &&
-      line.text.toLowerCase().includes("rate limited")
+      line.text.toLowerCase().includes("temporarily unavailable")
   )
 }
 

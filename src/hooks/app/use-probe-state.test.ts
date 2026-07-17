@@ -13,10 +13,10 @@ function rateLimitedClaudeOutput(): PluginOutput {
       {
         type: "badge",
         label: "Status",
-        text: "Rate limited, retry in ~5m",
+        text: "Usage temporarily unavailable, retry in ~5m",
         color: "#f59e0b",
       },
-      { type: "text", label: "Note", value: "Live usage rate limited — retry in ~5m" },
+      { type: "text", label: "Note", value: "Live usage check throttled — retry in ~5m" },
     ],
   }
 }

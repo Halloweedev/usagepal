@@ -477,7 +477,7 @@
         Accept: "application/json",
         "Content-Type": "application/json",
         "anthropic-beta": "oauth-2025-04-20",
-        "User-Agent": "claude-code/2.1.69",
+        "User-Agent": "claude-code/2.1.212",
       },
       timeoutMs: 10000,
     })
@@ -918,15 +918,21 @@
 
         if (resp.status === 429) {
           rateLimited = true
-          retryAfterSeconds = parseRetryAfterSeconds(resp.headers)
-          const backoffMs = retryAfterSeconds !== null
-            ? retryAfterSeconds * 1000
+          const rawRetryAfterSeconds = parseRetryAfterSeconds(resp.headers)
+          // Clamp so a large/misleading Retry-After can't pin the UI in a
+          // "throttled" state far longer than our own poll cadence — cap at
+          // MIN_USAGE_FETCH_INTERVAL_MS, we'll just re-check on the next poll.
+          const backoffMs = rawRetryAfterSeconds !== null
+            ? Math.min(rawRetryAfterSeconds * 1000, MIN_USAGE_FETCH_INTERVAL_MS)
             : DEFAULT_RATE_LIMIT_BACKOFF_MS
+          retryAfterSeconds = rawRetryAfterSeconds !== null ? Math.round(backoffMs / 1000) : null
           rateLimitedUntilMs = nowMs + backoffMs
           data = cachedUsageData
           ctx.host.log.warn(
-            "usage rate limited (429), backing off for " +
-            Math.round(backoffMs / 1000) + "s"
+            "usage endpoint returned 429, backing off for " +
+            Math.round(backoffMs / 1000) + "s; retry-after=" + String(rawRetryAfterSeconds) +
+            " headers=" + JSON.stringify(resp.headers || {}) +
+            " body=" + String(resp.bodyText).slice(0, 500)
           )
         } else if (resp.status < 200 || resp.status >= 300) {
           ctx.host.log.error("usage returned error: status=" + resp.status)
@@ -1085,16 +1091,19 @@
     }
 
     if (rateLimited) {
+      // A 429 here means the usage-check endpoint itself is throttling polls,
+      // not that the account's Claude usage is rate-limited — don't conflate
+      // the two in the UI copy.
       const retryText = retryAfterSeconds !== null
         ? fmtRateLimitMinutes(retryAfterSeconds)
         : null
       const waitText = retryText
-        ? "Rate limited, retry in ~" + retryText
-        : "Rate limited, try again later"
+        ? "Usage temporarily unavailable, retry in ~" + retryText
+        : "Usage temporarily unavailable"
       lines.unshift(ctx.line.badge({ label: "Status", text: waitText, color: "#f59e0b" }))
       const noteText = retryText
-        ? "Live usage rate limited — retry in ~" + retryText
-        : "Live usage rate limited — data may be stale"
+        ? "Live usage check throttled — retry in ~" + retryText + " (showing cached data)"
+        : "Live usage check throttled — showing cached data"
       lines.push(ctx.line.text({ label: "Note", value: noteText }))
     } else if (lines.length === 0) {
       lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))

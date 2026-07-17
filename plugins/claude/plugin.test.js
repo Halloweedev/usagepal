@@ -510,30 +510,30 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
     const statusLine = result.lines.find((line) => line.label === "Status")
     expect(statusLine).toBeTruthy()
-    expect(statusLine.text).toContain("Rate limited")
+    expect(statusLine.text).toContain("Usage temporarily unavailable")
     expect(result.lines.find((line) => line.label === "Note")).toBeTruthy()
   })
 
-  it("shows Retry-After info on 429 when header is present", async () => {
+  it("clamps a long Retry-After to the min poll interval", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
     ctx.host.http.request.mockReturnValue({
       status: 429,
       bodyText: "",
-      headers: { "Retry-After": "600" }, // 10 minutes
+      headers: { "Retry-After": "600" }, // 10 minutes — should clamp to the 5-minute cap
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     const statusLine = result.lines.find((line) => line.label === "Status")
     expect(statusLine).toBeTruthy()
-    expect(statusLine.text).toContain("10m")
+    expect(statusLine.text).toContain("5m")
     const noteLine = result.lines.find((line) => line.label === "Note")
     expect(noteLine).toBeTruthy()
-    expect(noteLine.value).toContain("10m")
+    expect(noteLine.value).toContain("5m")
   })
 
-  it("shows generic rate limited message when Retry-After is missing", async () => {
+  it("shows generic unavailable message when Retry-After is missing", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
@@ -542,7 +542,7 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
     const statusLine = result.lines.find((line) => line.label === "Status")
     expect(statusLine).toBeTruthy()
-    expect(statusLine.text).toContain("try again later")
+    expect(statusLine.text).toBe("Usage temporarily unavailable")
   })
 
   it("shows retry-now when Retry-After: 0", async () => {
@@ -1076,7 +1076,7 @@ describe("claude plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(usageCalls).toBe(2)
-    expect(firstUsageHeaders["User-Agent"]).toBe("claude-code/2.1.69")
+    expect(firstUsageHeaders["User-Agent"]).toBe("claude-code/2.1.212")
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
   })
 
@@ -1871,17 +1871,17 @@ describe("claude plugin", () => {
       ctx.host.http.request.mockReturnValue({
         status: 429,
         bodyText: '{"error":"rate limited"}',
-        headers: { "Retry-After": "1200" }, // 20 minutes
+        headers: { "Retry-After": "1200" }, // 20 minutes — clamped to the 5-minute cap
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
       expect(result.lines.find((line) => line.label === "Today")).toBeTruthy()
       const statusLine = result.lines.find((line) => line.label === "Status")
       expect(statusLine).toBeTruthy()
-      expect(statusLine.text).toContain("20m")
+      expect(statusLine.text).toContain("5m")
       const noteLine = result.lines.find((line) => line.label === "Note")
       expect(noteLine).toBeTruthy()
-      expect(noteLine.value).toContain("20m")
+      expect(noteLine.value).toContain("5m")
     })
   })
 
@@ -1905,7 +1905,7 @@ describe("claude plugin", () => {
         const result = plugin.probe(ctx)
         const noteLine = result.lines.find((line) => line.label === "Note")
         expect(noteLine).toBeTruthy()
-        expect(noteLine.value).toBe("Live usage rate limited — retry in ~15m")
+        expect(noteLine.value).toBe("Live usage check throttled — retry in ~5m (showing cached data)")
       } finally {
         vi.useRealTimers()
       }
