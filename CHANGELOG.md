@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.50-beta.2
+
+### Bug Fixes
+- Onboarding no longer re-runs after a quit/relaunch when the settings file was reset or corrupted — setup completion is now also recorded in a store-independent marker file, backfilled automatically for existing installs by @Halloweedev
+
+---
+
 ## v0.7.50-beta.1
 
 ### Bug Fixes
