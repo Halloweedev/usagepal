@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.7.50
+
+Stable release rolling up the 0.7.50 betas: Claude live usage works again under Anthropic's much stricter usage-endpoint rate limiting, and onboarding no longer re-runs after a corrupted settings file.
+
+### Bug Fixes
+- Claude live usage recovers from Anthropic's aggressive usage-endpoint rate limiting — the app now remembers its throttle state between polls instead of resetting it every probe, waits out the server's full penalty window instead of retrying into it, and refreshes the OAuth token on a rate limit (its budget is per-token) so usage comes back immediately rather than after a 45-minute wait by @Halloweedev
+- The Claude card shows your last-known usage bars with a retry countdown during a throttle window instead of going empty by @Halloweedev
+- Claude's usage check no longer shows a false "Rate limited" account status when only the usage-check endpoint itself is being throttled — relabeled to "Usage temporarily unavailable," with 429 diagnostics logging by @Halloweedev
+- Onboarding no longer re-runs after a quit/relaunch when the settings file was reset or corrupted — setup completion is now also recorded in a store-independent marker file, backfilled automatically for existing installs by @Halloweedev
+
+---
+
 ## v0.7.50-beta.2
 
 ### Bug Fixes
