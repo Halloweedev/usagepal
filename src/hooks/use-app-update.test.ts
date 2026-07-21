@@ -1,12 +1,11 @@
 import { renderHook, act } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach, afterAll } from "vitest"
 
-const { checkMock, invokeMock, listenMock, progressHandlers, relaunchMock } = vi.hoisted(() => ({
+const { checkMock, invokeMock, listenMock, progressHandlers } = vi.hoisted(() => ({
   checkMock: vi.fn(),
   invokeMock: vi.fn(),
   listenMock: vi.fn(),
   progressHandlers: [] as Array<(event: any) => void>,
-  relaunchMock: vi.fn(),
 }))
 
 vi.mock("@tauri-apps/api/core", async () => {
@@ -23,10 +22,6 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 vi.mock("@tauri-apps/plugin-updater", () => ({
   check: checkMock,
-}))
-
-vi.mock("@tauri-apps/plugin-process", () => ({
-  relaunch: relaunchMock,
 }))
 
 import { useAppUpdate } from "@/hooks/use-app-update"
@@ -51,7 +46,6 @@ describe("useAppUpdate", () => {
       progressHandlers.push(handler)
       return vi.fn()
     })
-    relaunchMock.mockReset()
     // `@tauri-apps/api/core` considers `globalThis.isTauri` the runtime flag.
     globalThis.isTauri = true
     globalThis.__USAGEPAL_ENABLE_UPDATES__ = true
@@ -182,7 +176,6 @@ describe("useAppUpdate", () => {
       if (command === "install_beta_update") return undefined
       return undefined
     })
-    relaunchMock.mockResolvedValue(undefined)
 
     const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
     await act(() => Promise.resolve())
@@ -194,7 +187,7 @@ describe("useAppUpdate", () => {
     await act(() => result.current.triggerInstall())
     expect(installMock).toHaveBeenCalled()
     expect(invokeMock).not.toHaveBeenCalledWith("install_beta_update")
-    expect(relaunchMock).toHaveBeenCalled()
+    expect(invokeMock).toHaveBeenCalledWith("relaunch_app")
   })
 
   it("downloads the selected beta update when both channels are available", async () => {
@@ -225,7 +218,6 @@ describe("useAppUpdate", () => {
       if (command === "install_beta_update") return undefined
       return undefined
     })
-    relaunchMock.mockResolvedValue(undefined)
 
     const { result } = renderHook(() => useAppUpdate({ betaUpdatesEnabled: true }))
     await act(() => Promise.resolve())
@@ -234,7 +226,7 @@ describe("useAppUpdate", () => {
     await act(() => result.current.triggerInstall())
 
     expect(invokeMock).toHaveBeenCalledWith("install_beta_update")
-    expect(relaunchMock).toHaveBeenCalled()
+    expect(invokeMock).toHaveBeenCalledWith("relaunch_app")
   })
 
   it("shows up-to-date then returns to idle when a beta check returns null", async () => {
@@ -404,7 +396,7 @@ describe("useAppUpdate", () => {
     await act(() => result.current.triggerInstall())
 
     expect(invokeMock).not.toHaveBeenCalled()
-    expect(relaunchMock).not.toHaveBeenCalled()
+    expect(invokeMock).not.toHaveBeenCalledWith("relaunch_app")
   })
 
   it("resets stale ready state when beta updates are disabled", async () => {
@@ -600,7 +592,6 @@ describe("useAppUpdate", () => {
     const downloadMock = vi.fn(async (onEvent: (event: any) => void) => {
       onEvent({ event: "Finished", data: {} })
     })
-    relaunchMock.mockResolvedValue(undefined)
     checkMock.mockResolvedValue({ version: "1.0.0", download: downloadMock, install: installMock })
 
     const { result } = renderHook(() => useAppUpdate())
@@ -610,7 +601,7 @@ describe("useAppUpdate", () => {
 
     await act(() => result.current.triggerInstall())
     expect(installMock).toHaveBeenCalled()
-    expect(relaunchMock).toHaveBeenCalled()
+    expect(invokeMock).toHaveBeenCalledWith("relaunch_app")
     expect(result.current.updateStatus).toEqual({ status: "idle" })
   })
 
@@ -715,7 +706,6 @@ describe("useAppUpdate", () => {
     const downloadMock = vi.fn(async (onEvent: (event: any) => void) => {
       onEvent({ event: "Finished", data: {} })
     })
-    relaunchMock.mockResolvedValue(undefined)
     checkMock.mockResolvedValue({ version: "1.0.0", download: downloadMock, install: installMock })
 
     const { result } = renderHook(() => useAppUpdate())

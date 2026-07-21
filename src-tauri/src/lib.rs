@@ -237,6 +237,50 @@ fn quit_app(app_handle: tauri::AppHandle) {
     app_handle.exit(0);
 }
 
+/// Derive the macOS `.app` bundle path from the running executable, which lives
+/// at `<Name>.app/Contents/MacOS/<bin>` — three ancestors up. Returns `None`
+/// for a non-bundle layout (e.g. a bare `cargo run` binary).
+fn macos_bundle_path(exe: &std::path::Path) -> Option<std::path::PathBuf> {
+    let bundle = exe.ancestors().nth(3)?;
+    if bundle.extension().and_then(|ext| ext.to_str()) == Some("app") {
+        Some(bundle.to_path_buf())
+    } else {
+        None
+    }
+}
+
+/// Relaunch the app after an in-place update.
+///
+/// Tauri's built-in `relaunch()` spawns the inner Mach-O binary directly and
+/// then exits. On macOS that does not reliably relaunch a *just-updated* `.app`
+/// — LaunchServices/Gatekeeper expects an `open`-style launch of the swapped
+/// bundle — so the app simply quits and never comes back. Instead we hand off
+/// to LaunchServices: a detached shell waits for this process to fully exit,
+/// then `open`s the bundle, yielding a single clean instance. If the bundle
+/// path can't be resolved we fall back to a plain exit (matching the old
+/// failure mode rather than risking a stuck process).
+#[tauri::command]
+#[specta::specta]
+fn relaunch_app(app_handle: tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(bundle) = macos_bundle_path(&exe) {
+                let pid = std::process::id();
+                let script = format!(
+                    "while /bin/kill -0 {pid} 2>/dev/null; do sleep 0.1; done; exec /usr/bin/open \"{}\"",
+                    bundle.display()
+                );
+                let _ = std::process::Command::new("/bin/sh")
+                    .arg("-c")
+                    .arg(script)
+                    .spawn();
+            }
+        }
+    }
+    app_handle.exit(0);
+}
+
 #[tauri::command]
 #[specta::specta]
 async fn start_probe_batch(
@@ -810,6 +854,7 @@ pub fn run() {
             set_log_level,
             copy_log_path,
             quit_app,
+            relaunch_app,
             start_probe_batch,
             list_plugins,
             get_log_path,
@@ -1022,6 +1067,7 @@ fn export_bindings() {
             set_log_level,
             copy_log_path,
             quit_app,
+            relaunch_app,
             start_probe_batch,
             list_plugins,
             get_log_path,
@@ -1071,6 +1117,27 @@ mod tests {
         MAX_CONCURRENT_PROBES, SchedulerAction, probe_worker_count, scheduler_step,
         woke_from_suspend,
     };
+
+    #[test]
+    fn derives_macos_bundle_from_app_executable() {
+        use std::path::{Path, PathBuf};
+        // The inner executable lives three levels below the .app bundle.
+        assert_eq!(
+            super::macos_bundle_path(Path::new(
+                "/Applications/UsagePal.app/Contents/MacOS/UsagePal"
+            )),
+            Some(PathBuf::from("/Applications/UsagePal.app"))
+        );
+    }
+
+    #[test]
+    fn no_bundle_for_non_app_layout() {
+        use std::path::Path;
+        // Too shallow to have a third ancestor.
+        assert_eq!(super::macos_bundle_path(Path::new("/usr/bin/usagepal")), None);
+        // Deep enough, but the resolved ancestor isn't a `.app`.
+        assert_eq!(super::macos_bundle_path(Path::new("/a/b/c/d/usagepal")), None);
+    }
 
     #[test]
     fn probe_worker_count_is_bounded() {

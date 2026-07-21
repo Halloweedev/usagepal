@@ -12,6 +12,19 @@ export const commands = {
 	setLogLevel: (level: string) => typedError<null, string>(__TAURI_INVOKE("set_log_level", { level })),
 	copyLogPath: () => typedError<null, string>(__TAURI_INVOKE("copy_log_path")),
 	quitApp: () => __TAURI_INVOKE<void>("quit_app"),
+	/**
+	 *  Relaunch the app after an in-place update.
+	 * 
+	 *  Tauri's built-in `relaunch()` spawns the inner Mach-O binary directly and
+	 *  then exits. On macOS that does not reliably relaunch a *just-updated* `.app`
+	 *  — LaunchServices/Gatekeeper expects an `open`-style launch of the swapped
+	 *  bundle — so the app simply quits and never comes back. Instead we hand off
+	 *  to LaunchServices: a detached shell waits for this process to fully exit,
+	 *  then `open`s the bundle, yielding a single clean instance. If the bundle
+	 *  path can't be resolved we fall back to a plain exit (matching the old
+	 *  failure mode rather than risking a stuck process).
+	 */
+	relaunchApp: () => __TAURI_INVOKE<void>("relaunch_app"),
 	startProbeBatch: (batchId: string | null, pluginIds: string[] | null) => typedError<ProbeBatchStarted, string>(__TAURI_INVOKE("start_probe_batch", { batchId, pluginIds })),
 	listPlugins: () => __TAURI_INVOKE<PluginMeta[]>("list_plugins"),
 	getLogPath: () => typedError<string, string>(__TAURI_INVOKE("get_log_path")),

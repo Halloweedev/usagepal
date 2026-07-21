@@ -2,8 +2,13 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import { check, type Update } from "@tauri-apps/plugin-updater"
-import { relaunch } from "@tauri-apps/plugin-process"
 import type { BetaUpdateInfo, BetaUpdateProgress } from "@/bindings"
+
+// Relaunch through our own command, not the process plugin's `relaunch()`.
+// That plugin spawns the inner Mach-O binary directly, which recent macOS no
+// longer launches after the updater has swapped the .app bundle — the app just
+// quits. `relaunch_app` hands off to LaunchServices (`open`) instead.
+const RELAUNCH_COMMAND = "relaunch_app"
 
 export type UpdateChannel = "stable" | "beta"
 
@@ -309,7 +314,7 @@ export function useAppUpdate({ betaUpdatesEnabled = false }: UseAppUpdateOptions
         inFlightRef.current.installing = true
         setStatus({ status: "installing" })
         await invoke("install_beta_update")
-        await relaunch()
+        await invoke(RELAUNCH_COMMAND)
         betaUpdateReadyRef.current = false
         setStatus({ status: "idle" })
       } catch (err) {
@@ -330,7 +335,7 @@ export function useAppUpdate({ betaUpdatesEnabled = false }: UseAppUpdateOptions
       inFlightRef.current.installing = true
       setStatus({ status: "installing" })
       await update.install()
-      await relaunch()
+      await invoke(RELAUNCH_COMMAND)
       setStatus({ status: "idle" })
     } catch (err) {
       console.error("Update install failed:", err)

@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.61
+
+Fixes the auto-updater leaving the app closed instead of relaunching it after installing an update on recent macOS.
+
+### Bug Fixes
+- Auto-update now relaunches the app after installing on recent macOS — the old relaunch spawned the app's binary directly, which newer macOS no longer allows for a just-swapped bundle, so the app quit without coming back and had to be reopened by hand; it now relaunches through macOS LaunchServices. Because the fix ships inside the app, updating *onto* this version may still need one manual reopen; updates after it restart automatically by @Halloweedev
+
+---
+
 ## v0.7.60
 
 OpenCode Go usage now reflects real quota consumption instead of raw dollar spend, with support for the newest models, plus cleaner model costs on the shared cards.
