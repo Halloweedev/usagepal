@@ -406,8 +406,20 @@
   }
 
   function readNumber(value) {
+    if (value == null || (typeof value === "string" && !value.trim())) return null
     const n = Number(value)
     return Number.isFinite(n) ? n : null
+  }
+
+  function readMonthlyCreditLimit(data) {
+    const individualLimit = data?.spend_control?.individual_limit
+    if (!individualLimit || typeof individualLimit !== "object") return null
+
+    const limit = readNumber(individualLimit.limit)
+    const used = readNumber(individualLimit.used)
+    if (limit === null || limit <= 0 || used === null || used < 0) return null
+
+    return { limit: limit, used: used, window: individualLimit }
   }
 
   function readCreditsRemaining(resp, data) {
@@ -986,6 +998,17 @@
         lines.push(ctx.line.text({
           label: "Credits",
           value: "$" + usdValue + " · " + remaining + " credits",
+        }))
+      }
+
+      const monthlyCreditLimit = readMonthlyCreditLimit(data)
+      if (monthlyCreditLimit) {
+        lines.push(ctx.line.progress({
+          label: "Monthly Credit Limit",
+          used: monthlyCreditLimit.used,
+          limit: monthlyCreditLimit.limit,
+          format: { kind: "count", suffix: "credits" },
+          resetsAt: getResetsAtIso(ctx, nowSec, monthlyCreditLimit.window),
         }))
       }
 
