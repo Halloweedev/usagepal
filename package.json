@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "build:release": "./scripts/build-release.sh",
     "ccusage:bump": "bun ./scripts/bump-ccusage-version.mjs",
+    "version:bump": "bun ./scripts/bump-version.mjs",
     "bundle:plugins": "bun copy-bundled.cjs",
     "preview": "vite preview",
     "test": "vitest",
