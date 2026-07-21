@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.60
+
+OpenCode Go usage now reflects real quota consumption instead of raw dollar spend, with support for the newest models, plus cleaner model costs on the shared cards.
+
+### Improvements
+- OpenCode Go usage bars now track your actual quota, not raw dollar cost — each model's spend is weighted by its usage allowance, so models with a smaller allowance (e.g. grok-4.5, kimi-k3, deepseek-v4-pro) draw down the shared monthly pool proportionally faster, and the session, weekly, and monthly bars reflect how close you really are to the limit by @Halloweedev
+- Added OpenCode Go support for the new grok-4.5 and kimi-k3 models by @Halloweedev
+- Model costs on shared cards now round to whole dollars, dropping the cents for a cleaner shared image by @Halloweedev
+
+---
+
 ## v0.7.50
 
 Stable release rolling up the 0.7.50 betas: Claude live usage works again under Anthropic's much stricter usage-endpoint rate limiting, and onboarding no longer re-runs after a corrupted settings file.

@@ -11,6 +11,31 @@
     monthly: 60,
   };
 
+  // Shared monthly pool size. Models with a lower "Usage" allowance in the
+  // OpenCode Go docs burn this pool faster: multiplier = BASELINE / allowance.
+  const QUOTA_BASELINE_USD = 60;
+
+  // Per-model usage allowance (USD) from https://opencode.ai/docs/go/.
+  // kimi-k3 is $15 base; temporary "2× usage limits" promo → $30 effective.
+  const USAGE_ALLOWANCE_USD = {
+    "grok-4.5": 15,
+    "glm-5.2": 60,
+    "glm-5.1": 60,
+    "kimi-k3": 30,
+    "kimi-k2.7-code": 60,
+    "kimi-k2.6": 60,
+    "mimo-v2.5": 60,
+    "mimo-v2.5-pro": 15,
+    "minimax-m3": 60,
+    "minimax-m2.7": 60,
+    "minimax-m2.5": 60,
+    "qwen3.7-max": 60,
+    "qwen3.7-plus": 60,
+    "qwen3.6-plus": 60,
+    "deepseek-v4-pro": 15,
+    "deepseek-v4-flash": 60,
+  };
+
   // Per-million USD token rates from https://opencode.ai/docs/go/
   const OPENCODE_GO_PRICING = {
     retrieved_at: "2026-07-01",
@@ -33,8 +58,10 @@
     alias_rules: [
       { pattern: "^glm-5\\.2", canonical: "glm-5.2" },
       { pattern: "^glm-5\\.1", canonical: "glm-5.1" },
+      { pattern: "^kimi-k3", canonical: "kimi-k3" },
       { pattern: "^kimi-k2\\.7", canonical: "kimi-k2.7-code" },
       { pattern: "^kimi-k2\\.6", canonical: "kimi-k2.6" },
+      { pattern: "^grok-4\\.5", canonical: "grok-4.5" },
       { pattern: "^mimo-v2\\.5-pro", canonical: "mimo-v2.5-pro" },
       { pattern: "^mimo-v2\\.5", canonical: "mimo-v2.5" },
       { pattern: "^minimax-m3(?![\\d.])", canonical: "minimax-m3" },
@@ -207,12 +234,13 @@
     };
   }
 
-  function sumRange(rows, startMs, endMs) {
+  function sumRange(rows, startMs, endMs, options) {
+    const useQuota = !!(options && options.quota);
     let total = 0;
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
       if (row.createdMs < startMs || row.createdMs >= endMs) continue;
-      total += row.cost;
+      total += useQuota ? row.quotaCost : row.cost;
     }
     return Math.round(total * 10000) / 10000;
   }
@@ -294,20 +322,32 @@
       .join(" ");
   }
 
-  function resolveModelRates(slug) {
+  function resolveCanonicalModel(slug) {
     const s = String(slug || "").trim().toLowerCase();
     if (!s) return null;
     for (let i = 0; i < OPENCODE_GO_PRICING.alias_rules.length; i += 1) {
       const rule = OPENCODE_GO_PRICING.alias_rules[i];
       try {
-        if (new RegExp(rule.pattern).test(s)) {
-          return OPENCODE_GO_PRICING.models[rule.canonical] || null;
-        }
+        if (new RegExp(rule.pattern).test(s)) return rule.canonical;
       } catch (e) {
         continue;
       }
     }
     return null;
+  }
+
+  function resolveModelRates(slug) {
+    const canonical = resolveCanonicalModel(slug);
+    if (!canonical) return null;
+    return OPENCODE_GO_PRICING.models[canonical] || null;
+  }
+
+  function quotaMultiplier(slug) {
+    const canonical = resolveCanonicalModel(slug);
+    if (!canonical) return 1;
+    const allowance = USAGE_ALLOWANCE_USD[canonical];
+    if (!Number.isFinite(allowance) || allowance <= 0) return 1;
+    return QUOTA_BASELINE_USD / allowance;
   }
 
   function estimatedCostDollars(modelID, input, cacheRead, cacheWrite, output, reasoning) {
@@ -673,7 +713,8 @@
       const tokens =
         tokensRaw !== null && tokensRaw > 0 ? Math.round(tokensRaw) : 0;
       if (cost <= 0 && tokens <= 0) continue;
-      rows.push({ createdMs, cost, modelID, tokens });
+      const quotaCost = cost * quotaMultiplier(modelID);
+      rows.push({ createdMs, cost, quotaCost, modelID, tokens });
     }
 
     return { ok: true, rows };
@@ -693,9 +734,11 @@
     const monthlyStartMs = monthBounds.startMs;
     const monthlyEndMs = monthBounds.endMs;
 
-    const sessionCost = sumRange(rows, sessionStartMs, nowMs);
-    const weeklyCost = sumRange(rows, weeklyStartMs, weeklyEndMs);
-    const monthlyCost = sumRange(rows, monthlyStartMs, monthlyEndMs);
+    const sessionCost = sumRange(rows, sessionStartMs, nowMs, { quota: true });
+    const weeklyCost = sumRange(rows, weeklyStartMs, weeklyEndMs, { quota: true });
+    const monthlyCost = sumRange(rows, monthlyStartMs, monthlyEndMs, {
+      quota: true,
+    });
 
     const lines = [
       ctx.line.progress({
@@ -777,7 +820,9 @@
       pushModelUsageLines,
       estimatedCostDollars,
       rowCostUsd,
+      quotaMultiplier,
       OPENCODE_GO_PRICING,
+      USAGE_ALLOWANCE_USD,
     },
   };
 })();

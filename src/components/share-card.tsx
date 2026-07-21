@@ -121,6 +121,19 @@ type ModelColumn = {
 }
 
 /**
+ * Drops the cents from a model cost cell ("$11.44" → "$11") so shared images
+ * read cleanly. Rounds to the nearest dollar and leaves any non-currency text
+ * (e.g. the percent share) untouched.
+ */
+function stripCostCents(value: string | undefined): string | undefined {
+  if (value == null) return value
+  return value.replace(/\$[\d,]+\.\d+/g, (match) => {
+    const amount = Number(match.replace(/[$,]/g, ""))
+    return `$${Math.round(amount).toLocaleString("en-US")}`
+  })
+}
+
+/**
  * Model breakdown as an aligned table — one row per model, one right-aligned
  * column per enabled metric — instead of a per-model blurb line, so values
  * are comparable at a glance.
@@ -136,9 +149,9 @@ function ModelBreakdownTable({
 }) {
   const columns: ModelColumn[] = [
     modelDisplay.showPercent && { key: "percent", header: "%", value: (parsed: ModelBreakdownParsed) => parsed.percent },
-    modelDisplay.showToday && { key: "today", header: "Today", value: (parsed: ModelBreakdownParsed) => parsed.today },
-    modelDisplay.showSevenDay && { key: "sevenDay", header: "7d", value: (parsed: ModelBreakdownParsed) => parsed.sevenDay },
-    modelDisplay.showThirtyDay && { key: "thirtyDay", header: "30d", value: (parsed: ModelBreakdownParsed) => parsed.thirtyDay },
+    modelDisplay.showToday && { key: "today", header: "Today", value: (parsed: ModelBreakdownParsed) => stripCostCents(parsed.today) },
+    modelDisplay.showSevenDay && { key: "sevenDay", header: "7d", value: (parsed: ModelBreakdownParsed) => stripCostCents(parsed.sevenDay) },
+    modelDisplay.showThirtyDay && { key: "thirtyDay", header: "30d", value: (parsed: ModelBreakdownParsed) => stripCostCents(parsed.thirtyDay) },
   ].filter((column): column is ModelColumn => Boolean(column))
 
   return (

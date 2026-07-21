@@ -526,3 +526,72 @@ describe("opencode-go pricing fallthrough", () => {
     expect(plugin.__test.estimatedCostDollars("minimax-m2.5", 1_000_000, 0, 0, 0, 0)).toBeGreaterThan(0);
   });
 });
+
+describe("opencode-go quota multipliers", () => {
+  beforeEach(() => {
+    delete globalThis.__openusage_plugin;
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("applies 1x for $60-usage models and 4x for $15-usage models", async () => {
+    const plugin = await loadPlugin();
+    expect(plugin.__test.quotaMultiplier("glm-5.2")).toBe(1);
+    expect(plugin.__test.quotaMultiplier("kimi-k2.7-code")).toBe(1);
+    expect(plugin.__test.quotaMultiplier("deepseek-v4-flash")).toBe(1);
+    // $15 usage allowance → burn 4x toward the shared $60 pool
+    expect(plugin.__test.quotaMultiplier("grok-4.5")).toBe(4);
+    expect(plugin.__test.quotaMultiplier("mimo-v2.5-pro")).toBe(4);
+    expect(plugin.__test.quotaMultiplier("deepseek-v4-pro")).toBe(4);
+  });
+
+  it("applies 2x for kimi-k3 while the 2x usage promo is active", async () => {
+    const plugin = await loadPlugin();
+    // Base allowance is $15 (4x). Temporary 2x usage limits → $30 effective (2x).
+    expect(plugin.__test.quotaMultiplier("kimi-k3")).toBe(2);
+  });
+
+  it("weights session progress by quota multiplier, not raw cost", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-06T12:00:00.000Z"));
+
+    const ctx = makeCtx();
+    // $6 raw of kimi-k3 → $12 quota (2x) → 100% of the $12 session limit
+    setHistoryQuery(ctx, [
+      {
+        createdMs: Date.parse("2026-03-06T11:00:00.000Z"),
+        cost: 6,
+        modelID: "kimi-k3",
+        tokensTotal: 1000,
+      },
+    ]);
+
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines[0].used).toBe(100);
+  });
+
+  it("does not weight share-graph spend lines by quota multiplier", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-06T12:00:00.000Z"));
+
+    const ctx = makeCtx();
+    setHistoryQuery(ctx, [
+      {
+        createdMs: Date.parse("2026-03-06T11:00:00.000Z"),
+        cost: 6,
+        modelID: "kimi-k3",
+        tokensTotal: 1_000_000,
+      },
+    ]);
+
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    const today = result.lines.find((line) => line.label === "Today");
+    expect(today.value).toContain("$6.00");
+  });
+});

@@ -175,10 +175,37 @@ describe("ShareCard", () => {
     expect(screen.getByText("Model")).toBeInTheDocument()
     expect(screen.getByText("Haiku 4.5")).toBeInTheDocument()
     expect(screen.getByText("85.2%")).toBeInTheDocument()
-    expect(screen.getByText("$11.44")).toBeInTheDocument()
+    expect(screen.getByText("$11")).toBeInTheDocument()
     // Disabled columns render neither header nor values.
     expect(screen.queryByText("7d")).not.toBeInTheDocument()
     expect(screen.queryByText("$1431")).not.toBeInTheDocument()
+  })
+
+  it("drops the cents from model cost columns, keeping the percent share precise", () => {
+    const modelLine: MetricLine = {
+      type: "text",
+      label: "Haiku 4.5",
+      value: "85.2% · Today $11.44 · 30d $468.56",
+    }
+
+    render(
+      <ShareCard
+        providerName="Claude"
+        providerIconUrl="/claude.svg"
+        lines={[modelLine]}
+        theme="dark"
+        showWatermark={false}
+        modelBreakdownLabels={new Set(["Haiku 4.5"])}
+        modelDisplay={{ showPercent: true, showToday: true, showSevenDay: false, showThirtyDay: true }}
+      />
+    )
+
+    // Costs render as whole dollars (rounded); the percent share is untouched.
+    expect(screen.getByText("85.2%")).toBeInTheDocument()
+    expect(screen.getByText("$11")).toBeInTheDocument()
+    expect(screen.getByText("$469")).toBeInTheDocument()
+    expect(screen.queryByText("$11.44")).not.toBeInTheDocument()
+    expect(screen.queryByText("$468.56")).not.toBeInTheDocument()
   })
 
   it("renders a muted dash for metrics a model has no value for", () => {
@@ -201,7 +228,7 @@ describe("ShareCard", () => {
     )
 
     expect(screen.getByText("–")).toBeInTheDocument()
-    expect(screen.getByText("$468.56")).toBeInTheDocument()
+    expect(screen.getByText("$469")).toBeInTheDocument()
   })
 
   it("renders the model section without a divider", () => {

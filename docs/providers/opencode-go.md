@@ -74,6 +74,15 @@ UsagePal uses the current published OpenCode Go plan limits from the official do
 
 Bars show observed local spend as a percentage of those fixed limits and clamp at `100%`.
 
+### Per-model quota multipliers
+
+OpenCode Go’s docs give some models a lower “Usage” allowance than the shared `$60` monthly pool (for example `$15` for Grok 4.5, MiMo V2.5 Pro, and DeepSeek V4 Pro). Those models burn the shared Session / Weekly / Monthly bars faster:
+
+`quota cost = raw cost × ($60 / model usage allowance)`
+
+So a `$15`-allowance model counts at **4×** toward the bars. Kimi K3’s base allowance is `$15`, but OpenCode’s temporary “2× usage limits” promo raises its effective allowance to `$30`, so it currently counts at **2×**.
+
+Share-graph lines (Today / Yesterday / Last 30 Days / per-model spend) still show raw local dollar cost, not quota-weighted cost.
 ## Window Rules
 
 - `5h`: rolling last 5 hours from now
