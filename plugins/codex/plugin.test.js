@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { readFileSync } from "node:fs"
 import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
@@ -45,6 +46,15 @@ describe("codex plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
   }
+
+  it("declares the monthly credit limit as an overview primary metric", () => {
+    const manifest = JSON.parse(readFileSync("plugins/codex/plugin.json", "utf8"))
+    expect(manifest.lines.find((line) => line.label === "Monthly Credit Limit")).toMatchObject({
+      type: "progress",
+      scope: "overview",
+      primaryOrder: 2,
+    })
+  })
 
   it("throws when auth missing", async () => {
     const ctx = makeCtx()
@@ -354,7 +364,7 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Monthly Credit Limit")).toEqual({
       type: "progress",
       label: "Monthly Credit Limit",
-      used: 3831.746052503586,
+      used: 3832,
       limit: 15000,
       format: { kind: "count", suffix: "credits" },
       resetsAt: new Date(1785542400 * 1000).toISOString(),

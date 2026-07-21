@@ -80,7 +80,8 @@ equivalent at `$0.04` per credit. For example, `820.6969075` renders as
 Business workspaces may hide the purchased-credit balance and return a monthly per-member limit
 under `spend_control.individual_limit` instead. UsagePal shows that allowance as a **Monthly Credit
 Limit** meter using the reported `used`, `limit`, and reset time, without treating a missing balance
-as zero credits.
+as zero credits. Credit amounts are rounded to whole credits. The meter appears in both the overview
+and Codex detail views.
 
 ### GET /backend-api/wham/rate-limit-reset-credits
 

@@ -23,7 +23,7 @@
     { "type": "progress", "label": "Reviews", "scope": "detail" },
     { "type": "text", "label": "Rate Limit Resets", "scope": "detail" },
     { "type": "text", "label": "Credits", "scope": "detail" },
-    { "type": "progress", "label": "Monthly Credit Limit", "scope": "detail" },
+    { "type": "progress", "label": "Monthly Credit Limit", "scope": "overview", "primaryOrder": 2 },
     { "type": "text", "label": "Today", "scope": "detail" },
     { "type": "text", "label": "Yesterday", "scope": "detail" },
     { "type": "text", "label": "Last 30 Days", "scope": "detail" },

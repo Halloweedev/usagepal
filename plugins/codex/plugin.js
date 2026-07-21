@@ -419,7 +419,7 @@
     const used = readNumber(individualLimit.used)
     if (limit === null || limit <= 0 || used === null || used < 0) return null
 
-    return { limit: limit, used: used, window: individualLimit }
+    return { limit: Math.round(limit), used: Math.round(used), window: individualLimit }
   }
 
   function readCreditsRemaining(resp, data) {
