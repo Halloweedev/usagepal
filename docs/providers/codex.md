@@ -55,6 +55,16 @@ Returns rate limit windows and optional credits.
     "unlimited": false,
     "balance": 820.6969075                 // remaining credits
   },
+  "spend_control": {                       // Business workspace limit (optional)
+    "individual_limit": {
+      "limit": "15000",                   // monthly credit allowance
+      "used": "3831.746052503586",
+      "remaining": "11168.253947496414",
+      "used_percent": 26,
+      "remaining_percent": 74,
+      "reset_at": 1785542400
+    }
+  },
   "rate_limit_reset_credits": {            // on-demand resets count only (optional)
     "available_count": 1
   }
@@ -66,6 +76,12 @@ Both rate_limit windows are enforced simultaneously — hitting either limit thr
 UsagePal floors the remaining credit balance to a whole number and displays its fixed USD
 equivalent at `$0.04` per credit. For example, `820.6969075` renders as
 `$32.80 · 820 credits`. The credit balance is unbounded; the API does not provide a maximum.
+
+Business workspaces may hide the purchased-credit balance and return a monthly per-member limit
+under `spend_control.individual_limit` instead. UsagePal shows that allowance as a **Monthly Credit
+Limit** meter using the reported `used`, `limit`, and reset time, without treating a missing balance
+as zero credits. Credit amounts are rounded to whole credits. The meter appears in both the overview
+and Codex detail views.
 
 ### GET /backend-api/wham/rate-limit-reset-credits
 

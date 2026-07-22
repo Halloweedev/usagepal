@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { readFileSync } from "node:fs"
 import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
@@ -45,6 +46,15 @@ describe("codex plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
   }
+
+  it("declares the monthly credit limit as an overview primary metric", () => {
+    const manifest = JSON.parse(readFileSync("plugins/codex/plugin.json", "utf8"))
+    expect(manifest.lines.find((line) => line.label === "Monthly Credit Limit")).toMatchObject({
+      type: "progress",
+      scope: "overview",
+      primaryOrder: 2,
+    })
+  })
 
   it("throws when auth missing", async () => {
     const ctx = makeCtx()
@@ -312,6 +322,53 @@ describe("codex plugin", () => {
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
     expect(credits.value).toBe("$0.00 · 0 credits")
+  })
+
+  it("shows the monthly credit limit for business accounts with a hidden balance", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-credits-balance": "" },
+      bodyText: JSON.stringify({
+        plan_type: "business",
+        credits: {
+          has_credits: true,
+          unlimited: false,
+          balance: null,
+        },
+        spend_control: {
+          reached: false,
+          individual_limit: {
+            source: "workspace_spend_controls",
+            limit: "15000",
+            used: "3831.746052503586",
+            remaining: "11168.253947496414",
+            used_percent: 26,
+            remaining_percent: 74,
+            reset_after_seconds: 920777,
+            reset_at: 1785542400,
+          },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Business")
+    expect(result.lines.find((line) => line.label === "Credits")).toBeUndefined()
+    expect(result.lines.find((line) => line.label === "Monthly Credit Limit")).toEqual({
+      type: "progress",
+      label: "Monthly Credit Limit",
+      used: 3832,
+      limit: 15000,
+      format: { kind: "count", suffix: "credits" },
+      resetsAt: new Date(1785542400 * 1000).toISOString(),
+    })
   })
 
   it("shows credit balances above 1000 without a fake cap", async () => {
