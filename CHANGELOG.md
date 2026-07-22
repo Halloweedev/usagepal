@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.63
+
+Business Codex accounts now show the workspace monthly credit limit instead of a false “0 credits” reading.
+
+### Bug Fixes
+- Codex Business plans no longer show 0 credits when the API returns a null personal balance — UsagePal now reads the org monthly credit limit from spend control and shows used / limit with the reset time ([#28](https://github.com/Halloweedev/usagepal/pull/28)) by @divaltor
+
+---
+
 ## v0.7.62
 
 Share cards now show per-model dollar amounts for providers that only expose percentages, and Cursor pricing covers Auto plus newer Grok slug variants.
