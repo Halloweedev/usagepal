@@ -166,24 +166,39 @@ export function parseProviderPeriodTokens(lines: MetricLine[], label: string): n
 /** Provider-level period totals a percent-only model row is sized against. */
 export type ModelCostBasis = { today: number | null; thirtyDay: number | null }
 
+/** Fills missing Today/30d dollars on a model breakdown from provider totals ×
+ * this model's %. Rows that already carry per-model dollars are unchanged.
+ * Share's model table and Overview tooltips both use this so percent-only
+ * providers (Codex before cost splits, Cursor when a model has tokens but $0
+ * imputed cost, etc.) still show prices. 7d is not derived — plugins must
+ * embed it; there is no provider-level 7d summary line. */
+export function enrichModelBreakdownParsed(
+  parsed: ModelBreakdownParsed,
+  basis: ModelCostBasis
+): ModelBreakdownParsed {
+  const fraction = parsePercentFraction(parsed.percent)
+  const derive = (total: number | null) =>
+    total != null && fraction != null ? formatShareCost(total * fraction) : undefined
+  return {
+    ...parsed,
+    today: parsed.today ?? derive(basis.today),
+    thirtyDay: parsed.thirtyDay ?? derive(basis.thirtyDay),
+  }
+}
+
 /** Tooltip detail lines ("Today $X", "7 days $Y", "30 days $Z") for a model
  * breakdown row. Rows that already carry per-model dollars (Claude) pass them
- * through; percent-only rows (Codex) derive Today/30d as `provider total ×
- * this model's %`, so both providers get the same hover breakdown. A period
- * with no source (no per-model $, no provider total) is omitted. */
+ * through; percent-only rows derive Today/30d as `provider total × this
+ * model's %`. A period with no source is omitted. */
 export function modelBreakdownDetailLines(
   parsed: ModelBreakdownParsed,
   basis: ModelCostBasis
 ): string[] {
-  const fraction = parsePercentFraction(parsed.percent)
-  const derive = (total: number | null) =>
-    total != null && fraction != null ? formatShareCost(total * fraction) : undefined
-  const today = parsed.today ?? derive(basis.today)
-  const thirtyDay = parsed.thirtyDay ?? derive(basis.thirtyDay)
+  const enriched = enrichModelBreakdownParsed(parsed, basis)
   return [
-    today && `Today ${today}`,
-    parsed.sevenDay && `7 days ${parsed.sevenDay}`,
-    thirtyDay && `30 days ${thirtyDay}`,
+    enriched.today && `Today ${enriched.today}`,
+    enriched.sevenDay && `7 days ${enriched.sevenDay}`,
+    enriched.thirtyDay && `30 days ${enriched.thirtyDay}`,
   ].filter((detail): detail is string => Boolean(detail))
 }
 

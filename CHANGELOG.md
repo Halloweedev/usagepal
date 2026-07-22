@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.7.62
+
+Share cards now show per-model dollar amounts for providers that only expose percentages, and Cursor pricing covers Auto plus newer Grok slug variants.
+
+### Bug Fixes
+- Share’s model table now fills Today and 30d costs for percent-only rows (Codex, Cursor, and others) from the provider’s Today / Last 30 Days totals × each model’s share, so those columns no longer show dashes when Overview already has dollars by @Halloweedev
+- Codex and Claude local usage now split each day’s spend across models by token share when per-model costs are missing, so Share gets Today / 7d / 30d segments on the percentage lines by @Halloweedev
+- Cursor usage pricing recognizes Auto Cost rates and Cursor-prefixed Grok High / High Fast CSV slugs, and merges case-variant model names, so Today and 7d no longer stay at $0 while tokens still accumulate by @Halloweedev
+
+### Chores
+- Added a one-command version bump script by @Halloweedev
+
+---
+
 ## v0.7.61
 
 Fixes the auto-updater leaving the app closed instead of relaunching it after installing an update on recent macOS.

@@ -78,6 +78,69 @@ describe("codex plugin ccusage usage trend", () => {
     })
   })
 
+  it("splits day costUSD across models by token share when modelBreakdowns are absent", async () => {
+    // Real Codex ccusage shape: day-level costUSD + models token map, no
+    // modelBreakdowns[].cost. Share/overview need per-model $ on the % line.
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({
+      status: "ok",
+      data: {
+        daily: [
+          {
+            date: dayKey(0),
+            totalTokens: 100,
+            costUSD: 10,
+            models: {
+              "gpt-5.6-sol": { totalTokens: 80 },
+              "gpt-5.6-terra": { totalTokens: 20 },
+            },
+          },
+          {
+            date: dayKey(3),
+            totalTokens: 50,
+            costUSD: 5,
+            models: {
+              "gpt-5.6-sol": { totalTokens: 50 },
+            },
+          },
+          {
+            date: dayKey(10),
+            totalTokens: 50,
+            costUSD: 5,
+            models: {
+              "gpt-5.6-terra": { totalTokens: 50 },
+            },
+          },
+        ],
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // Tokens: sol=80+50=130, terra=20+50=70, total=200 → 65% / 35%.
+    // Sol cost: Today=8, 7d=8+5=13, 30d=13. Terra: Today=2, 7d=2, 30d=2+5=7.
+    const sol = result.lines.find((line) => line.label === "GPT-5.6 Sol")
+    const terra = result.lines.find((line) => line.label === "GPT-5.6 Terra")
+    expect(sol).toMatchObject({
+      type: "text",
+      value: "65% · Today $8.00 · 7d $13.00 · 30d $13.00",
+    })
+    expect(terra).toMatchObject({
+      type: "text",
+      value: "35% · Today $2.00 · 7d $2.00 · 30d $7.00",
+    })
+  })
+
   it("merges Today/7d/30d cost into each model's existing % line", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({

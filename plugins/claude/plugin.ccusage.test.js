@@ -89,6 +89,37 @@ describe("claude plugin ccusage usage trend", () => {
     })
   })
 
+  it("splits day costUSD across models by token share when modelBreakdowns are absent", async () => {
+    const todayKey = localDayKey(new Date())
+    const ctx = makeProbeCtx({
+      ccusageResult: okUsage([
+        {
+          date: todayKey,
+          totalTokens: 100,
+          costUSD: 10,
+          models: {
+            "claude-opus-4-8": { totalTokens: 80 },
+            "claude-sonnet-5": { totalTokens: 20 },
+          },
+        },
+      ]),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const opus = result.lines.find((line) => line.label === "Opus 4.8")
+    const sonnet = result.lines.find((line) => line.label === "Sonnet 5")
+    expect(opus).toMatchObject({
+      type: "text",
+      value: "80% · Today $8.00 · 7d $8.00 · 30d $8.00",
+    })
+    expect(sonnet).toMatchObject({
+      type: "text",
+      value: "20% · Today $2.00 · 7d $2.00 · 30d $2.00",
+    })
+  })
+
   it("merges Today/7d/30d cost into each model's existing % line", async () => {
     const todayKey = localDayKey(new Date())
     const threeDaysAgoKey = localDayKey(new Date(Date.now() - 3 * 24 * 60 * 60 * 1000))

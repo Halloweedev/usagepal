@@ -16,6 +16,7 @@ import {
   graphEntities,
   graphMetricHeading,
   modelBreakdownDetailLines,
+  enrichModelBreakdownParsed,
   parseDollarAmount,
   parseProviderPeriodTokens,
   parseProviderPeriodTotal,
@@ -497,6 +498,25 @@ describe("parseProviderPeriodTotal", () => {
     expect(parseProviderPeriodTotal(lines, "Today")).toBeCloseTo(458.16)
     expect(parseProviderPeriodTotal(lines, "Last 30 Days")).toBeCloseTo(774.65)
     expect(parseProviderPeriodTotal(lines, "Yesterday")).toBeNull()
+  })
+})
+
+describe("enrichModelBreakdownParsed", () => {
+  it("leaves embedded per-model dollars untouched", () => {
+    const parsed = { percent: "62%", today: "$12.40", sevenDay: "$80.00", thirtyDay: "$200.00" }
+    expect(enrichModelBreakdownParsed(parsed, { today: 999, thirtyDay: 999 })).toEqual(parsed)
+  })
+
+  it("fills missing Today/30d for percent-only rows from provider totals", () => {
+    expect(enrichModelBreakdownParsed({ percent: "99.7%" }, { today: 458.16, thirtyDay: 774.65 })).toEqual({
+      percent: "99.7%",
+      today: "$456.79",
+      thirtyDay: "$772.33",
+    })
+  })
+
+  it("does not invent a 7d value when the line omitted it", () => {
+    expect(enrichModelBreakdownParsed({ percent: "50%" }, { today: 10, thirtyDay: 100 }).sevenDay).toBeUndefined()
   })
 })
 

@@ -2,6 +2,7 @@ import { Fragment } from "react"
 import type { MetricLine } from "@/lib/plugin-types"
 import type { ModelBreakdownParsed, ModelDisplayOptions } from "@/lib/model-breakdown-format"
 import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
+import { enrichModelBreakdownParsed, type ModelCostBasis } from "@/lib/today-models"
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
 import { ShareWatermark } from "@/components/share-watermark"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
@@ -28,6 +29,8 @@ export type ShareCardProps = {
   showWatermark: boolean
   modelDisplay?: ModelDisplayOptions
   modelBreakdownLabels?: Set<string>
+  /** Provider Today / Last 30 Days totals for filling percent-only model rows. */
+  modelCostBasis?: ModelCostBasis
   /** Show token counts alongside costs in text rows (default on). */
   showTokens?: boolean
 }
@@ -232,6 +235,7 @@ export function ShareCard({
   showWatermark,
   modelDisplay,
   modelBreakdownLabels,
+  modelCostBasis,
   showTokens = true,
 }: ShareCardProps) {
   const styles = THEME_STYLES[theme]
@@ -241,16 +245,19 @@ export function ShareCard({
     showSevenDay: true,
     showThirtyDay: true,
   }
+  const costBasis: ModelCostBasis = modelCostBasis ?? { today: null, thirtyDay: null }
 
   // Model breakdown lines render together as a table after the other lines;
   // a model-classified line that doesn't parse falls back to a plain text row.
+  // Percent-only rows (no Today/30d segments) get dollars from costBasis so
+  // Share matches Overview for every provider.
   const modelRows: ModelRow[] = []
   const otherLines: MetricLine[] = []
   for (const line of lines) {
     if (line.type === "text" && modelBreakdownLabels?.has(line.label)) {
       const parsed = parseModelBreakdownValue(line.value)
       if (parsed) {
-        modelRows.push({ line, parsed })
+        modelRows.push({ line, parsed: enrichModelBreakdownParsed(parsed, costBasis) })
         continue
       }
     }

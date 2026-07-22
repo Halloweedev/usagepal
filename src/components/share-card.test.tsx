@@ -231,6 +231,36 @@ describe("ShareCard", () => {
     expect(screen.getByText("$469")).toBeInTheDocument()
   })
 
+  it("derives Today/30d dollars for percent-only model rows from provider period totals", () => {
+    const lines: MetricLine[] = [
+      { type: "text", label: "Today", value: "$40.00 · 10M" },
+      { type: "text", label: "Last 30 Days", value: "$100.00 · 40M" },
+      { type: "text", label: "Composer 2", value: "80%" },
+      { type: "text", label: "GPT-5.6 Sol", value: "20%" },
+    ]
+
+    render(
+      <ShareCard
+        providerName="Cursor"
+        providerIconUrl="/cursor.svg"
+        lines={lines}
+        theme="dark"
+        showWatermark={false}
+        modelBreakdownLabels={new Set(["Composer 2", "GPT-5.6 Sol"])}
+        modelCostBasis={{ today: 40, thirtyDay: 100 }}
+        modelDisplay={{ showPercent: true, showToday: true, showSevenDay: true, showThirtyDay: true }}
+      />
+    )
+
+    // 80% of $40 / $100 → $32 / $80; 20% → $8 / $20. Share rounds to whole dollars.
+    expect(screen.getByText("$32")).toBeInTheDocument()
+    expect(screen.getByText("$80")).toBeInTheDocument()
+    expect(screen.getByText("$8")).toBeInTheDocument()
+    expect(screen.getByText("$20")).toBeInTheDocument()
+    // 7d still dashes — no provider-level 7d total to derive from.
+    expect(screen.getAllByText("–")).toHaveLength(2)
+  })
+
   it("renders the model section without a divider", () => {
     const modelLine: MetricLine = {
       type: "text",

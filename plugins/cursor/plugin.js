@@ -20,8 +20,9 @@
   // cache_write === null means Cursor lists no separate cache-write rate ("—");
   // cache-write tokens are then priced at the input rate.
   const CURSOR_PRICING = {
-    retrieved_at: "2026-07-01",
+    retrieved_at: "2026-07-22",
     models: {
+      "auto-cost":            { input: 1.25, cache_write: 1.25,  cache_read: 0.25,  output: 6.0,   apply_max_mode_uplift: true },
       "claude-4-sonnet":      { input: 3.0,  cache_write: 3.75,  cache_read: 0.3,   output: 15.0,  apply_max_mode_uplift: true },
       "claude-4-sonnet-1m":   { input: 6.0,  cache_write: 7.5,   cache_read: 0.6,   output: 22.5,  apply_max_mode_uplift: true },
       "claude-4.5-haiku":     { input: 1.0,  cache_write: 1.25,  cache_read: 0.1,   output: 5.0,   apply_max_mode_uplift: true },
@@ -58,23 +59,23 @@
       "gpt-5.6-terra":        { input: 2.5,  cache_write: 3.125, cache_read: 0.25,  output: 15.0,  apply_max_mode_uplift: true },
       "grok-4.20":            { input: 2.0,  cache_write: null,  cache_read: 0.2,   output: 6.0,   apply_max_mode_uplift: true },
       "grok-4.3":             { input: 1.25, cache_write: null,  cache_read: 0.2,   output: 2.5,   apply_max_mode_uplift: true },
-      // Grok 4.5, per https://cursor.com/blog/grok-4-5 (2026-07-09). Cursor's "doubling usage
-      // for the first week" launch promo is an included-quota bonus, not a per-token discount —
-      // these are the standing list rates and don't need adjusting for it.
-      "grok-4.5":             { input: 2.0,  cache_write: null,  cache_read: 0.2,   output: 6.0,   apply_max_mode_uplift: true },
+      // Grok 4.5 list rates (cache read $0.5/M as of 2026-07-22 docs). Fast keeps 2x.
+      "grok-4.5":             { input: 2.0,  cache_write: null,  cache_read: 0.5,   output: 6.0,   apply_max_mode_uplift: true },
       "grok-4.5-fast":        { input: 4.0,  cache_write: null,  cache_read: 0.4,   output: 18.0,  apply_max_mode_uplift: true },
       "grok-build-0.1":       { input: 1.0,  cache_write: null,  cache_read: 0.2,   output: 2.0,   apply_max_mode_uplift: true },
       "kimi-k2.5":            { input: 0.6,  cache_write: null,  cache_read: 0.1,   output: 3.0,   apply_max_mode_uplift: true },
     },
     // Ordered regex rules mapping CSV model slugs -> canonical id. First match wins;
     // put more specific patterns first. Extend as new slugs are observed in the CSV.
+    // resolveModelRates strips a leading `cursor-` before matching.
     alias_rules: [
+      { pattern: "^auto(-cost)?$", canonical: "auto-cost" },
       { pattern: "^composer-2\\.5", canonical: "composer-2.5" },
       { pattern: "^composer-2(?![\\d.])", canonical: "composer-2" },
       { pattern: "^composer-1\\.5", canonical: "composer-1.5" },
       { pattern: "^composer-1(?![\\d.])", canonical: "composer-1" },
       { pattern: "^claude-sonnet-5", canonical: "claude-sonnet-5" },
-      { pattern: "^claude-opus-4\\.8", canonical: "claude-opus-4.8" },
+      { pattern: "^claude-opus-4[-.]8", canonical: "claude-opus-4.8" },
       { pattern: "^claude-opus-4\\.7.*fast", canonical: "claude-opus-4.7-fast" },
       { pattern: "^claude-4\\.7-opus", canonical: "claude-4.7-opus" },
       { pattern: "^claude-4\\.6-opus", canonical: "claude-4.6-opus" },
@@ -108,15 +109,22 @@
       { pattern: "^gemini-2\\.5-flash", canonical: "gemini-2.5-flash" },
       { pattern: "^grok-4\\.20", canonical: "grok-4.20" },
       { pattern: "^grok-4\\.3", canonical: "grok-4.3" },
-      { pattern: "^grok-4\\.5-fast", canonical: "grok-4.5-fast" },
+      // High / High Fast are reasoning-effort suffixes on Cursor Grok CSV slugs.
+      { pattern: "^grok-4\\.5.*(?:high-)?fast", canonical: "grok-4.5-fast" },
       { pattern: "^grok-4\\.5", canonical: "grok-4.5" },
       { pattern: "^grok-build-0\\.1", canonical: "grok-build-0.1" },
       { pattern: "^kimi-k2\\.5", canonical: "kimi-k2.5" },
     ],
   }
 
+  function normalizeCursorModelSlug(slug) {
+    var s = String(slug || "").trim().toLowerCase()
+    if (s.indexOf("cursor-") === 0) s = s.slice("cursor-".length)
+    return s
+  }
+
   function resolveModelRates(slug) {
-    const s = String(slug || "").trim().toLowerCase()
+    const s = normalizeCursorModelSlug(slug)
     if (!s) return null
     for (let i = 0; i < CURSOR_PRICING.alias_rules.length; i++) {
       const rule = CURSOR_PRICING.alias_rules[i]
@@ -291,11 +299,14 @@
   }
 
   function aggregateModelUsageFromCsvRows(ctx, rows, nowMs, isRequestBasedPlan) {
+    // CSV day keys come from the ISO Z date prefix — keep Today/Yesterday/7d in
+    // UTC too so local-offset users don't lose current-day spend from a window.
     var todayKey = new Date(nowMs).toISOString().slice(0, 10)
     var yesterdayKey = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    var recentKeys = recentDayKeys(new Date(nowMs), 7)
     var recentSet = {}
-    for (var i = 0; i < recentKeys.length; i++) recentSet[recentKeys[i]] = true
+    for (var i = 0; i < 7; i++) {
+      recentSet[new Date(nowMs - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)] = true
+    }
 
     var byModel = {}
     var cutoffMs = nowMs - 31 * 24 * 60 * 60 * 1000
@@ -306,7 +317,7 @@
       if (!Number.isFinite(ms) || ms < cutoffMs) continue
       var dayKey = dayKeyFromUsageDate(row.date)
       if (!dayKey) continue
-      var name = String(row.model || "").trim()
+      var name = String(row.model || "").trim().toLowerCase()
       if (!name) continue
 
       var rates = resolveModelRates(row.model)
@@ -347,7 +358,7 @@
         totalTokens30d > 0 ? (models[n].tokens["30d"] / totalTokens30d) * 100 : 0
     }
     models.sort(function (a, b) {
-      return b.tokens["30d"] - a.tokens["30d"]
+      return b.tokens["30d"] - a.tokens["30d"] || a.name.localeCompare(b.name)
     })
     return { models: models, totalTokens30d: totalTokens30d }
   }
@@ -364,7 +375,7 @@
   }
 
   function resolveCanonicalModelId(slug) {
-    var s = String(slug || "").trim().toLowerCase()
+    var s = normalizeCursorModelSlug(slug)
     if (!s) return s
     for (var i = 0; i < CURSOR_PRICING.alias_rules.length; i++) {
       var rule = CURSOR_PRICING.alias_rules[i]
@@ -379,6 +390,7 @@
 
   function prettifyCursorModelName(rawId) {
     var canonical = resolveCanonicalModelId(rawId)
+    if (canonical === "auto-cost") return "Auto"
     var parts = canonical.split("-")
     return parts
       .map(function (part) {

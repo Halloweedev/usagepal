@@ -118,3 +118,6 @@ Use below list to store and recall user notes when asked to do so.
 - Use this list when asked to remember things. Keep each list item concise.
 - Tauri IPC: JS must use camelCase (`{ batchId, pluginIds }`), Tauri auto-converts to Rust's snake_case. Never send snake_case from JS—params silently won't match. (Note: specta-generated `commands.foo()` wrappers handle this automatically, but we keep manual `invoke()` calls — see the IPC Types section above.)
 - tauri-action `latest.json`: Parallel matrix builds are safe—action fetches existing `latest.json`, merges platform entries, re-uploads. No `max-parallel: 1` needed.
+- Codex ccusage days expose `costUSD` + `models` tokens, not `modelBreakdowns[].cost`. Share only renders per-model $ from line segments — the Codex plugin must split day cost by token share onto each model `%` line (overview can derive; Share cannot).
+- Share model table: percent-only rows get Today/30d from `enrichModelBreakdownParsed` using the provider’s full probe Today / Last 30 Days totals (Models preset omits those detail lines from the card). 7d is never derived.
+- Cursor CSV pricing: strip leading `cursor-`, lowercase aggregation keys, map Auto → auto-cost rates, and Grok `*-high` / `*-high-fast` onto grok-4.5 / grok-4.5-fast — otherwise Today stays $0 while tokens still show.

@@ -806,19 +806,49 @@
     const totals = { Today: {}, "7d": {}, "30d": {} }
     for (let i = 0; i < daily.length; i++) {
       const day = daily[i]
-      const breakdowns = day && day.modelBreakdowns
-      if (!Array.isArray(breakdowns)) continue
       const dayKey = dayKeyFromUsageDate(day.date)
       const inToday = dayKey === todayKey
       const in7d = recentSet.has(dayKey)
-      for (let j = 0; j < breakdowns.length; j++) {
-        const breakdown = breakdowns[j]
-        const name = String(
-          (breakdown && (breakdown.modelName || breakdown.name || breakdown.model)) || ""
-        ).trim()
-        if (!name) continue
-        const cost = Number(breakdown && breakdown.cost)
-        if (!Number.isFinite(cost) || cost <= 0) continue
+      const breakdowns = day && day.modelBreakdowns
+      let usedBreakdownCosts = false
+      if (Array.isArray(breakdowns)) {
+        for (let j = 0; j < breakdowns.length; j++) {
+          const breakdown = breakdowns[j]
+          const name = String(
+            (breakdown && (breakdown.modelName || breakdown.name || breakdown.model)) || ""
+          ).trim()
+          if (!name) continue
+          const cost = Number(breakdown && breakdown.cost)
+          if (!Number.isFinite(cost) || cost <= 0) continue
+          usedBreakdownCosts = true
+          totals["30d"][name] = (totals["30d"][name] || 0) + cost
+          if (in7d) totals["7d"][name] = (totals["7d"][name] || 0) + cost
+          if (inToday) totals.Today[name] = (totals.Today[name] || 0) + cost
+        }
+      }
+      if (usedBreakdownCosts) continue
+
+      // Fallback when days only expose a day total (no modelBreakdowns[].cost):
+      // split usageCostUsd across models by that day's token share.
+      const dayCost = usageCostUsd(day)
+      if (dayCost == null || dayCost <= 0) continue
+      const models = day && day.models
+      if (!models || typeof models !== "object") continue
+      const names = Object.keys(models)
+      let dayTokens = 0
+      const tokenByName = {}
+      for (let j = 0; j < names.length; j++) {
+        const name = names[j]
+        const tokens = modelTokenCount(models[name])
+        if (tokens <= 0) continue
+        tokenByName[name] = tokens
+        dayTokens += tokens
+      }
+      if (dayTokens <= 0) continue
+      const modelNames = Object.keys(tokenByName)
+      for (let j = 0; j < modelNames.length; j++) {
+        const name = modelNames[j]
+        const cost = dayCost * (tokenByName[name] / dayTokens)
         totals["30d"][name] = (totals["30d"][name] || 0) + cost
         if (in7d) totals["7d"][name] = (totals["7d"][name] || 0) + cost
         if (inToday) totals.Today[name] = (totals.Today[name] || 0) + cost

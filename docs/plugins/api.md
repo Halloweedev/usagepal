@@ -593,6 +593,10 @@ Commonly observed fields include:
 | `totalTokens`        | `number`        | Present in current Claude/Codex outputs |
 | `totalCost`          | `number \| null`| Claude cost field |
 | `costUSD`            | `number`        | Codex cost field |
+| `modelBreakdowns`    | `array`         | Claude: `{ modelName, cost, … }` per model |
+| `models`             | `object`        | Codex: map of model id → token fields (no per-model cost) |
+
+Share’s model table only shows Today / 7d / 30d dollars that are embedded on each model percentage line. Claude days already carry `modelBreakdowns[].cost`. Codex days only carry day-level `costUSD` plus a `models` token map — plugins must split that day cost by token share and attach `Today $… · 7d $… · 30d $…` segments themselves (the Codex and Claude plugins do this). When a model line is still percent-only, Share derives Today / 30d from the provider’s Today and Last 30 Days totals × that model’s % (same idea as Overview). 7d is not derived.
 
 ### Example
 

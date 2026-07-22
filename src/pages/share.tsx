@@ -15,6 +15,7 @@ import {
   buildModelUsage,
   formatShareGraphDateLabel,
   graphEntities,
+  parseProviderPeriodTotal,
   selectGraphEntriesByMetric,
   type GraphGroupBy,
   type GraphMetric,
@@ -239,6 +240,18 @@ export function SharePage({ plugins }: SharePageProps) {
     () => new Set(shareableLines.filter((entry) => entry.scope === "modelBreakdown").map((entry) => entry.line.label)),
     [shareableLines]
   )
+
+  // Always read from the provider's full probe lines — not the checked card
+  // lines — so Models-preset cards (which omit detail-scoped Today / Last 30
+  // Days) still get dollars on percent-only model rows.
+  const modelCostBasis = useMemo(() => {
+    const lines = selected?.data?.lines
+    if (!lines) return { today: null, thirtyDay: null }
+    return {
+      today: parseProviderPeriodTotal(lines, "Today"),
+      thirtyDay: parseProviderPeriodTotal(lines, "Last 30 Days"),
+    }
+  }, [selected])
 
   const hasCheckedModels = useMemo(
     () => [...modelBreakdownLabels].some((label) => checkedLabels.has(label)),
@@ -658,6 +671,7 @@ export function SharePage({ plugins }: SharePageProps) {
                     showWatermark
                     modelDisplay={modelDisplay}
                     modelBreakdownLabels={modelBreakdownLabels}
+                    modelCostBasis={modelCostBasis}
                     showTokens={showTokens}
                   />
                 </div>

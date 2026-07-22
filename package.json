@@ -1,7 +1,7 @@
 {
   "name": "usagepal",
   "private": true,
-  "version": "0.7.61",
+  "version": "0.7.62",
   "type": "module",
   "scripts": {
     "dev": "vite",

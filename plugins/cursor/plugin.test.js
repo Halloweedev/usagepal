@@ -1840,6 +1840,21 @@ describe("cursor pricing", () => {
     expect(plugin.__test.resolveModelRates("gpt-5.6-sol-thinking").output).toBe(30.0)
   })
 
+  it("resolves Auto Cost and Cursor-prefixed Grok High variants", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.resolveModelRates("auto")).toEqual({
+      input: 1.25, cache_write: 1.25, cache_read: 0.25, output: 6.0, apply_max_mode_uplift: true,
+    })
+    expect(plugin.__test.resolveModelRates("Auto")).toEqual(
+      plugin.__test.resolveModelRates("auto-cost")
+    )
+    // CSV often prefixes Cursor first-party models and appends reasoning effort.
+    expect(plugin.__test.resolveModelRates("cursor-grok-4.5-high-fast").output).toBe(18.0)
+    expect(plugin.__test.resolveModelRates("cursor-grok-4.5-high").output).toBe(6.0)
+    expect(plugin.__test.resolveModelRates("grok-4.5-high-fast").output).toBe(18.0)
+    expect(plugin.__test.resolveModelRates("grok-4.5-high").output).toBe(6.0)
+  })
+
   it("returns null for an unknown slug", async () => {
     const plugin = await loadPlugin()
     expect(plugin.__test.resolveModelRates("totally-unknown-model")).toBeNull()
@@ -1990,6 +2005,21 @@ describe("cursor imputation + aggregation", () => {
     expect(result.models[0].costUSD.Today).toBeGreaterThan(0)
     expect(result.models[0].costUSD.Yesterday).toBeGreaterThan(0)
     expect(result.models[0].costUSD["30d"]).toBeGreaterThan(result.models[0].costUSD.Today)
+  })
+
+  it("merges case variants of the same model slug and prices cursor-grok rows", async () => {
+    const plugin = await loadPlugin()
+    const nowMs = Date.parse("2026-07-12T12:00:00.000Z")
+    const rows = [
+      { date: "2026-07-12T10:00:00.000Z", model: "cursor-grok-4.5-high-fast", maxMode: "No", cacheWrite: 0, input: 1_000_000, cacheRead: 0, output: 0, totalTokens: 1_000_000 },
+      { date: "2026-07-12T11:00:00.000Z", model: "Composer-2.5", maxMode: "No", cacheWrite: 0, input: 500_000, cacheRead: 0, output: 0, totalTokens: 500_000 },
+      { date: "2026-07-12T11:30:00.000Z", model: "composer-2.5", maxMode: "No", cacheWrite: 0, input: 500_000, cacheRead: 0, output: 0, totalTokens: 500_000 },
+    ]
+    const result = plugin.__test.aggregateModelUsageFromCsvRows(makeCtx(), rows, nowMs, false)
+    expect(result.models.map((m) => m.name)).toEqual(["composer-2.5", "cursor-grok-4.5-high-fast"])
+    expect(result.models[0].tokens["30d"]).toBe(1_000_000)
+    expect(result.models[0].costUSD.Today).toBeGreaterThan(0)
+    expect(result.models[1].costUSD.Today).toBeGreaterThan(0)
   })
 
   it("emits runtime model breakdown lines from CSV aggregation", async () => {

@@ -138,6 +138,10 @@ Expected auth payload shape (file or keychain JSON value):
 
 > Note: Codex also stores MCP OAuth tokens in `~/.codex/.credentials.json` (or keyring), but that is separate from ChatGPT CLI auth used by this plugin.
 
+## Share Graph
+
+Local Codex logs drive the Share graph (Today, Yesterday, Last 30 Days, and per-model lines). Day spend comes from ccusage’s `costUSD`. Codex does not publish per-model costs in that payload, so UsagePal splits each day’s spend across models by that day’s token share and writes Today / 7d / 30d dollar segments onto each model’s percentage line (same shape Share expects from Claude and Cursor).
+
 ### Token Refresh
 
 Access tokens are short-lived JWTs. Refreshed when `last_refresh` is older than 8 days, or on 401/403.
