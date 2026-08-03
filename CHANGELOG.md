@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.7.64
+
+Amp subscription plans (Megawatt / Gigawatt) now show their included usage, and progress bars no longer vanish on dark backgrounds for providers with black brand colors.
+
+### New Features
+- Amp subscription plans now show the plan name (e.g. Megawatt) plus separate progress bars for the included agent usage and orb usage, alongside the existing free tier and credits ([#31](https://github.com/Halloweedev/usagepal/pull/31)) by @divaltor
+
+### Bug Fixes
+- Progress bars and usage trend charts in the overview and share cards no longer disappear on dark mode for providers with black brand colors (Cursor, OpenCode Go, ClinePass, Grok) — near-black line colors now flip to white in dark mode, and near-white colors fall back to the theme text color in light mode by @Halloweedev
+
+---
+
 ## v0.7.63
 
 Business Codex accounts now show the workspace monthly credit limit instead of a false “0 credits” reading.
