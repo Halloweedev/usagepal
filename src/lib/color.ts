@@ -26,3 +26,16 @@ export function getProviderIconColor(brandColor: string | undefined, isDark: boo
   if (!isDark && luminance > 0.85) return "currentColor"
   return brandColor
 }
+
+/** Color for progress bars, sparkline bars and share-card bars, guarded the
+ * same way as {@link getProviderIconColor}: near-black line colors (Cursor,
+ * OpenCode Go, …) would vanish into dark backgrounds, so they flip to white in
+ * dark mode; near-white colors fall back to the surrounding text color in
+ * light mode. Returns `undefined` when the caller's default should be used. */
+export function getAdaptiveBarColor(color: string | null | undefined, isDark: boolean): string | undefined {
+  if (!color) return undefined
+  const luminance = getRelativeLuminance(color)
+  if (isDark && luminance < 0.15) return "#ffffff"
+  if (!isDark && luminance > 0.85) return undefined
+  return color
+}

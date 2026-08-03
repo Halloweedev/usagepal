@@ -11,6 +11,8 @@ import { UsageSparkline } from "@/components/usage-sparkline"
 import { PluginError } from "@/components/plugin-error"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
 import { useNowTicker } from "@/hooks/use-now-ticker"
+import { useDarkMode } from "@/hooks/use-dark-mode"
+import { getAdaptiveBarColor } from "@/lib/color"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode, type TimeFormatMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
 import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
@@ -141,6 +143,7 @@ export function ProviderCard({
   onResetTimerDisplayModeToggle,
   onUsageValueToggle,
 }: ProviderCardProps) {
+  const isDark = useDarkMode()
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
     const remaining = REFRESH_COOLDOWN_MS - (Date.now() - lastManualRefreshAt)
@@ -385,6 +388,7 @@ export function ProviderCard({
                         onUsageValueToggle={onUsageValueToggle}
                         now={now}
                         refreshing={isRefreshingWithData}
+                        isDark={isDark}
                       />
                     )
                     if (isOverview) return group.lines.map(renderLine)
@@ -413,6 +417,7 @@ export function ProviderCard({
                       onUsageValueToggle={onUsageValueToggle}
                       now={now}
                       refreshing={isRefreshingWithData}
+                      isDark={isDark}
                     />
                   ))}
                 </Fragment>
@@ -439,6 +444,7 @@ function MetricLineRenderer({
   onUsageValueToggle,
   now,
   refreshing,
+  isDark,
 }: {
   line: MetricLine
   isModelBreakdown?: boolean
@@ -450,6 +456,7 @@ function MetricLineRenderer({
   onUsageValueToggle?: () => void
   now: number
   refreshing?: boolean
+  isDark: boolean
 }) {
   if (line.type === "text") {
     // Per-model rows: percent only on the right; the cost breakdown moves
@@ -603,7 +610,7 @@ function MetricLineRenderer({
 
   if (line.type === "barChart") {
     return (
-      <UsageSparkline label={line.label} points={line.points} note={line.note ?? undefined} color={line.color ?? undefined} />
+      <UsageSparkline label={line.label} points={line.points} note={line.note ?? undefined} color={getAdaptiveBarColor(line.color, isDark)} />
     )
   }
 
@@ -712,7 +719,7 @@ function MetricLineRenderer({
         </div>
         <Progress
           value={percent}
-          indicatorColor={line.color ?? undefined}
+          indicatorColor={getAdaptiveBarColor(line.color, isDark)}
           markerValue={paceMarkerValue}
           markerTooltip={markerTooltip}
           refreshing={refreshing}

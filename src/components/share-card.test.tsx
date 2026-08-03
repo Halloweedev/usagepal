@@ -49,6 +49,63 @@ describe("ShareCard", () => {
     expect(screen.queryByText("Usage Trend")).not.toBeInTheDocument()
   })
 
+  it("flips a near-black brand color to white for dark themes so bars stay visible", () => {
+    render(
+      <ShareCard
+        providerName="Cursor"
+        providerIconUrl="/cursor.svg"
+        brandColor="#000000"
+        lines={[PROGRESS_LINE, BARCHART_LINE]}
+        theme="dark"
+        showWatermark={false}
+      />
+    )
+
+    const progressFill = screen
+      .getByTestId("share-card-line-progress")
+      .querySelector(".h-full")
+    expect(progressFill).toHaveStyle({ backgroundColor: "#ffffff" })
+
+    const firstBar = screen.getByTestId("share-card-line-barchart").firstElementChild
+    expect(firstBar).toHaveStyle({ backgroundColor: "#ffffff" })
+  })
+
+  it("keeps a near-black brand color in light themes", () => {
+    render(
+      <ShareCard
+        providerName="Cursor"
+        providerIconUrl="/cursor.svg"
+        brandColor="#000000"
+        lines={[PROGRESS_LINE]}
+        theme="light"
+        showWatermark={false}
+      />
+    )
+
+    const progressFill = screen
+      .getByTestId("share-card-line-progress")
+      .querySelector(".h-full")
+    expect(progressFill).toHaveStyle({ backgroundColor: "#000000" })
+  })
+
+  it("falls back to the theme text color for near-white brands in light themes", () => {
+    render(
+      <ShareCard
+        providerName="Figma"
+        providerIconUrl="/figma.svg"
+        brandColor="#ffffff"
+        lines={[PROGRESS_LINE]}
+        theme="light"
+        showWatermark={false}
+      />
+    )
+
+    const progressFill = screen
+      .getByTestId("share-card-line-progress")
+      .querySelector(".h-full")
+    expect(progressFill).not.toHaveStyle({ backgroundColor: "#ffffff" })
+  })
+
   it("splits cost · token values into aligned columns", () => {
     render(
       <ShareCard

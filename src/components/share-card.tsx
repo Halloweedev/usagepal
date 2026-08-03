@@ -4,6 +4,7 @@ import type { ModelBreakdownParsed, ModelDisplayOptions } from "@/lib/model-brea
 import { parseModelBreakdownValue } from "@/lib/model-breakdown-format"
 import { enrichModelBreakdownParsed, type ModelCostBasis } from "@/lib/today-models"
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
+import { getAdaptiveBarColor } from "@/lib/color"
 import { ShareWatermark } from "@/components/share-watermark"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
 import { THEME_STYLES } from "@/components/share-card-theme"
@@ -239,6 +240,9 @@ export function ShareCard({
   showTokens = true,
 }: ShareCardProps) {
   const styles = THEME_STYLES[theme]
+  // Near-black brands (Cursor, OpenCode Go, …) vanish on dark share themes;
+  // flip them so the bars stay visible, same as the app's own progress bars.
+  const barColor = getAdaptiveBarColor(brandColor, theme === "dark")
   const displayOptions = modelDisplay ?? {
     showPercent: true,
     showToday: true,
@@ -300,7 +304,7 @@ export function ShareCard({
           {otherLines.map((line, index) => {
             if (line.type === "progress") {
               if (!hasProgressValues(line)) return null
-              return <ProgressRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
+              return <ProgressRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={barColor} />
             }
             if (line.type === "text") {
               return (
@@ -313,7 +317,7 @@ export function ShareCard({
               )
             }
             if (line.type === "barChart") {
-              return <BarChartRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={brandColor} />
+              return <BarChartRow key={`${line.label}-${index}`} line={line} styles={styles} brandColor={barColor} />
             }
             if (line.type === "badge") {
               return <BadgeRow key={`${line.label}-${index}`} line={line} styles={styles} />

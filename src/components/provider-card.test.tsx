@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { ProviderCard } from "@/components/provider-card"
 import { groupLinesByType } from "@/lib/group-lines-by-type"
@@ -43,6 +43,10 @@ describe("ProviderCard", () => {
   beforeEach(() => {
     vi.useRealTimers()
     vi.mocked(openUrl).mockClear()
+  })
+
+  afterEach(() => {
+    document.documentElement.classList.remove("dark")
   })
 
   it("renders error state with retry", async () => {
@@ -121,6 +125,42 @@ describe("ProviderCard", () => {
     expect(screen.getByText("32%")).toBeInTheDocument()
     expect(screen.getByText("$12.34")).toBeInTheDocument()
     expect(screen.getByText("342 credits")).toBeInTheDocument()
+  })
+
+  it("flips near-black line colors to white in dark mode so bars stay visible", () => {
+    document.documentElement.classList.add("dark")
+    render(
+      <ProviderCard
+        name="Cursor"
+        displayMode="used"
+        lines={[
+          { type: "progress", label: "Usage", used: 40, limit: 100, format: { kind: "percent" }, color: "#000000" },
+          { type: "barChart", label: "Usage Trend", color: "#000000", points: [{ label: "7/1", value: 10 }] },
+        ]}
+      />
+    )
+
+    const indicator = screen.getByRole("progressbar").firstElementChild
+    expect(indicator).toHaveStyle({ backgroundColor: "#ffffff" })
+
+    const sparkBars = screen.getByRole("button", { name: /Usage Trend/ }).querySelectorAll(".bg-primary")
+    expect(sparkBars.length).toBeGreaterThan(0)
+    expect(sparkBars[0]).toHaveStyle({ backgroundColor: "#ffffff" })
+  })
+
+  it("keeps near-black line colors in light mode", () => {
+    render(
+      <ProviderCard
+        name="Cursor"
+        displayMode="used"
+        lines={[
+          { type: "progress", label: "Usage", used: 40, limit: 100, format: { kind: "percent" }, color: "#000000" },
+        ]}
+      />
+    )
+
+    const indicator = screen.getByRole("progressbar").firstElementChild
+    expect(indicator).toHaveStyle({ backgroundColor: "#000000" })
   })
 
   it("renders quick links and opens URL", async () => {

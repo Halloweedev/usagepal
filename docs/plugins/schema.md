@@ -223,7 +223,7 @@ type MetricLine =
     }
 ```
 
-- `color`: optional hex string (e.g. `#22c55e`)
+- `color`: optional hex string (e.g. `#22c55e`). Near-black colors (e.g. `#000000`) flip to white in dark mode so bars stay visible; near-white colors fall back to the theme text color in light mode.
 - `subtitle`: optional text displayed below the line in smaller muted text
 - `resetsAt`: optional ISO timestamp (UI shows "Resets in ..." automatically)
 - `periodDurationMs`: optional period length in milliseconds (enables pace indicator when combined with `resetsAt`)
