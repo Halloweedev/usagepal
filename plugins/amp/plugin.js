@@ -46,6 +46,9 @@
       bonusPct: null,
       bonusDays: null,
       credits: null,
+      subscriptionPlan: null,
+      otherRemainingPct: null,
+      orbRemainingPct: null,
     }
 
     var percentMatch = text.match(/Amp Free: ([0-9]+(?:\.[0-9]+)?)% remaining today/)
@@ -86,7 +89,18 @@
       if (Number.isFinite(credits)) result.credits = credits
     }
 
-    if (result.remainingPct === null && result.total === null && result.credits === null) return null
+    var subscriptionMatch = text.match(/Subscription ([^:\r\n]+): ([0-9]+(?:\.[0-9]+)?)% other usage and ([0-9]+(?:\.[0-9]+)?)% orb usage remaining/)
+    if (subscriptionMatch) {
+      var otherRemainingPct = Number(subscriptionMatch[2])
+      var orbRemainingPct = Number(subscriptionMatch[3])
+      if (Number.isFinite(otherRemainingPct) && Number.isFinite(orbRemainingPct)) {
+        result.subscriptionPlan = subscriptionMatch[1].trim()
+        result.otherRemainingPct = otherRemainingPct
+        result.orbRemainingPct = orbRemainingPct
+      }
+    }
+
+    if (result.remainingPct === null && result.total === null && result.credits === null && result.subscriptionPlan === null) return null
 
     return result
   }
@@ -128,16 +142,34 @@
 
     var balance = parseBalanceText(json.result.displayText)
     if (!balance) {
-      if (/Amp Free/.test(json.result.displayText)) {
-        ctx.host.log.error("failed to parse Amp Free display text")
+      if (/Amp Free|Subscription /.test(json.result.displayText)) {
+        ctx.host.log.error("failed to parse Amp usage display text")
         throw "Could not parse usage data."
       }
       ctx.host.log.warn("no balance data found, assuming credits-only")
-      balance = { remainingPct: null, remaining: null, total: null, hourlyRate: 0, bonusPct: null, bonusDays: null, credits: 0 }
+      balance = { remainingPct: null, remaining: null, total: null, hourlyRate: 0, bonusPct: null, bonusDays: null, credits: 0, subscriptionPlan: null, otherRemainingPct: null, orbRemainingPct: null }
+    } else if (/Subscription /.test(json.result.displayText) && balance.subscriptionPlan === null) {
+      ctx.host.log.error("failed to parse Amp subscription display text")
+      throw "Could not parse usage data."
     }
 
     var lines = []
-    var plan = "Free"
+    var plan = balance.subscriptionPlan || "Free"
+
+    if (balance.subscriptionPlan !== null) {
+      lines.push(ctx.line.progress({
+        label: "Subscription Usage",
+        used: Math.min(100, Math.max(0, 100 - balance.otherRemainingPct)),
+        limit: 100,
+        format: { kind: "percent" },
+      }))
+      lines.push(ctx.line.progress({
+        label: "Orb Usage",
+        used: Math.min(100, Math.max(0, 100 - balance.orbRemainingPct)),
+        limit: 100,
+        format: { kind: "percent" },
+      }))
+    }
 
     if (balance.remainingPct !== null) {
       lines.push(ctx.line.progress({
@@ -175,7 +207,7 @@
     }
 
     var hasFreeTier = balance.remainingPct !== null || balance.total !== null
-    if (balance.credits !== null && !hasFreeTier) plan = "Credits"
+    if (balance.credits !== null && !hasFreeTier && balance.subscriptionPlan === null) plan = "Credits"
 
     if (balance.credits !== null && (balance.credits > 0 || !hasFreeTier)) {
       lines.push(ctx.line.text({

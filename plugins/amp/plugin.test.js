@@ -185,6 +185,43 @@ describe("amp plugin", () => {
     expect(result.lines[0].resetsAt).toBeUndefined()
   })
 
+  it("parses subscription usage pools", async () => {
+    var ctx = makeCtx()
+    writeSecrets(ctx)
+    var text = "Signed in as user@test.com (testuser)\n"
+      + "Amp Free: 100% remaining today (resets daily) - https://ampcode.com/settings#amp-free\n"
+      + "Subscription Megawatt: 100% other usage and 100% orb usage remaining"
+    ctx.host.http.request.mockReturnValue(balanceResponse(text))
+    var plugin = await loadPlugin()
+    var result = plugin.probe(ctx)
+    expect(result.plan).toBe("Megawatt")
+    expect(result.lines).toHaveLength(3)
+    expect(result.lines[0]).toMatchObject({
+      type: "progress",
+      label: "Subscription Usage",
+      used: 0,
+      limit: 100,
+      format: { kind: "percent" },
+    })
+    expect(result.lines[1]).toMatchObject({
+      type: "progress",
+      label: "Orb Usage",
+      used: 0,
+      limit: 100,
+      format: { kind: "percent" },
+    })
+    expect(result.lines[2]).toMatchObject({ label: "Free", used: 0 })
+  })
+
+  it("throws when subscription usage is present but unparseable", async () => {
+    var ctx = makeCtx()
+    writeSecrets(ctx)
+    var text = "Amp Free: 100% remaining today\nSubscription Megawatt: unparseable data"
+    ctx.host.http.request.mockReturnValue(balanceResponse(text))
+    var plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")
+  })
+
   it("parses standard balance text", async () => {
     var ctx = makeCtx()
     writeSecrets(ctx)
