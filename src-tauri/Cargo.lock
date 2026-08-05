@@ -2874,9 +2874,9 @@ dependencies = [
 
 [[package]]
 name = "keylight"
-version = "0.3.3"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fac1c2f1c93bc693ef9ab6f10e8029002c801c19a9ebd294bb0f8b9593d656be"
+checksum = "f61411e8b57d647ed08d7937740bcb80f56c34b3fc8cb20eb6c350a2273dda92"
 dependencies = [
  "base64 0.22.1",
  "blake3",
@@ -5680,9 +5680,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-keylight"
-version = "0.3.3"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbb60803545e7ff7c318c3e42a5a16a11441305fca7f89a145537a8cf6b5289f"
+checksum = "929e9a67dffb9a7d44ab07fb8f8c42442c244281c26602bcd0c0c4ad2b86089a"
 dependencies = [
  "keylight",
  "serde",
