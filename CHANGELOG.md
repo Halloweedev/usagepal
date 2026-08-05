@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.7.65
+
+Cursor's slice in the spend donut and its legend swatch are no longer invisible on dark backgrounds.
+
+### Bug Fixes
+- Cursor's slice in the spend donut and its legend swatch no longer disappear on dark backgrounds in the Overview strip and share cards — Cursor's pure-black brand color now flips to white in dark mode, the way progress bars and usage trend charts already did by @Halloweedev
+
+### Chores
+- Updated the Keylight licensing SDK to 0.3.5 by @Halloweedev
+
+---
+
 ## v0.7.64
 
 Amp subscription plans (Megawatt / Gigawatt) now show their included usage, and progress bars no longer vanish on dark backgrounds for providers with black brand colors.
