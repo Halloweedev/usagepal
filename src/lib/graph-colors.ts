@@ -81,8 +81,14 @@ const MONO_PROVIDER_HUES = [250, 30, 145, 310, 85, 200, 15, 175] as const
 const SLATE_HUE = 255
 const SLATE_CHROMA = 0.05
 
-/** Cursor is the only provider rendered as pure black. */
-export const CURSOR_PROVIDER_COLOR = "#000000"
+/** Cursor is the only provider rendered as a pure monochrome slice. It flips
+ * with the theme — black on light backgrounds, white on dark ones — so the
+ * donut slice and legend swatch never vanish into the card, mirroring the
+ * near-black guard in {@link import("@/lib/color").getAdaptiveBarColor}. */
+export const CURSOR_PROVIDER_COLORS: Record<GraphTheme, string> = {
+  dark: "#ffffff",
+  light: "#000000",
+}
 
 /** Neutral in-band grays for the "Others" bucket. */
 export const OTHERS_COLORS: Record<GraphTheme, string> = {
@@ -106,7 +112,7 @@ function canonicalizeHex(hex: string): string {
 
 /** One on-brand provider accent — hue locked to the brand, chroma boosted.
  * Monochrome brands take `monoRank` so several black logos don't share a slice color.
- * Cursor is handled separately as {@link CURSOR_PROVIDER_COLOR}. */
+ * Cursor is handled separately as {@link CURSOR_PROVIDER_COLORS}. */
 export function deriveProviderColor(brandColor: string | null, theme: GraphTheme, monoRank = 0): string {
   const base = brandColor ? hexToOklch(brandColor) : null
   if (!base || base.c < MONO_CHROMA) {
@@ -142,7 +148,8 @@ export type GraphColorEntry = {
 }
 
 /** Colors for graph/strip slices. Provider mode keeps brand hues; Cursor is
- * pure black (alone); other mono brands fan out. Model mode walks the ranked
+ * the lone pure-monochrome slice (black on light, white on dark); other mono
+ * brands fan out across a hue ramp. Model mode walks the ranked
  * list so every model gets a globally distinct shade. */
 export function assignGraphEntryColors(
   entries: GraphColorEntry[],
@@ -158,7 +165,7 @@ export function assignGraphEntryColors(
         continue
       }
       if (entry.key === "cursor") {
-        colors.set(entry.key, CURSOR_PROVIDER_COLOR)
+        colors.set(entry.key, CURSOR_PROVIDER_COLORS[theme])
         continue
       }
       // Claude / Codex / other chromatic brands: keep the brand hex as-is so

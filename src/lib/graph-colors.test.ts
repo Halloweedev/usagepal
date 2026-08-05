@@ -8,6 +8,7 @@ import {
   oklchToHex,
   OTHERS_COLORS,
 } from "@/lib/graph-colors"
+import { getRelativeLuminance } from "@/lib/color"
 
 const HEX = /^#[0-9a-f]{6}$/
 
@@ -116,18 +117,16 @@ describe("assignGraphEntryColors", () => {
     expect(colors.get("codex")).toBe("#74aa9c")
   })
 
-  it("provider mode: Cursor is pure black and the only black slice", () => {
-    const colors = assignGraphEntryColors(
-      [
-        { key: "cursor", brandColor: "#000000" },
-        { key: "opencode-go", brandColor: "#000000" },
-        { key: "cline-pass", brandColor: "#000000" },
-        { key: "claude", brandColor: "#DE7356" },
-        { key: "codex", brandColor: "#74AA9C" },
-      ],
-      "provider",
-      "dark"
-    )
+  const MONO_ENTRIES = [
+    { key: "cursor", brandColor: "#000000" },
+    { key: "opencode-go", brandColor: "#000000" },
+    { key: "cline-pass", brandColor: "#000000" },
+    { key: "claude", brandColor: "#DE7356" },
+    { key: "codex", brandColor: "#74AA9C" },
+  ]
+
+  it("provider mode: Cursor is pure black in light mode and the only black slice", () => {
+    const colors = assignGraphEntryColors(MONO_ENTRIES, "provider", "light")
     expect(colors.get("cursor")).toBe("#000000")
     expect(colors.get("claude")).toBe("#de7356")
     expect(colors.get("codex")).toBe("#74aa9c")
@@ -135,6 +134,25 @@ describe("assignGraphEntryColors", () => {
       expect(colors.get(key)).not.toBe("#000000")
     }
     expect(colors.get("opencode-go")).not.toBe(colors.get("cline-pass"))
+  })
+
+  it("provider mode: Cursor flips to white in dark mode so the slice stays visible", () => {
+    const colors = assignGraphEntryColors(MONO_ENTRIES, "provider", "dark")
+    expect(colors.get("cursor")).toBe("#ffffff")
+    expect(colors.get("claude")).toBe("#de7356")
+    expect(colors.get("codex")).toBe("#74aa9c")
+    for (const key of ["opencode-go", "cline-pass", "claude", "codex"]) {
+      expect(colors.get(key)).not.toBe("#ffffff")
+      expect(colors.get(key)).not.toBe("#000000")
+    }
+    expect(colors.get("opencode-go")).not.toBe(colors.get("cline-pass"))
+  })
+
+  it("provider mode: no slice renders near-black on a dark card", () => {
+    const colors = assignGraphEntryColors(MONO_ENTRIES, "provider", "dark")
+    for (const color of colors.values()) {
+      expect(getRelativeLuminance(color)).toBeGreaterThan(0.05)
+    }
   })
 })
 

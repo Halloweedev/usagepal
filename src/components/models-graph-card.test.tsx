@@ -124,6 +124,37 @@ describe("ModelsGraphCard", () => {
   })
 })
 
+describe("ModelsGraphCard Cursor slice contrast", () => {
+  const cursorEntries: GraphEntry[] = [
+    ...providerEntries,
+    { key: "cursor", name: "Cursor", providerId: "cursor", brandColor: "#000000", todayCost: 253.6, tokenCount: null, share: 0.2 },
+  ]
+
+  const cursorProps = { ...baseProps, entries: cursorEntries, groupBy: "provider" as const, graphStyle: "donut" as const }
+
+  function cursorSwatchColor(): string | undefined {
+    // Legend swatches are the first cell of each row's grid triplet.
+    const row = screen.getByText("Cursor")
+    return (row.previousElementSibling as HTMLElement | null)?.style.backgroundColor
+  }
+
+  it("paints the Cursor donut slice and swatch white on a dark card", () => {
+    render(<ModelsGraphCard {...cursorProps} theme="dark" />)
+
+    const slices = screen.getByTestId("models-graph-donut").querySelectorAll("path")
+    expect(slices[2]).toHaveAttribute("fill", "#ffffff")
+    expect(cursorSwatchColor()).toBe("rgb(255, 255, 255)")
+  })
+
+  it("keeps the Cursor donut slice and swatch black on a light card", () => {
+    render(<ModelsGraphCard {...cursorProps} theme="light" />)
+
+    const slices = screen.getByTestId("models-graph-donut").querySelectorAll("path")
+    expect(slices[2]).toHaveAttribute("fill", "#000000")
+    expect(cursorSwatchColor()).toBe("rgb(0, 0, 0)")
+  })
+})
+
 describe("assignEntryColors", () => {
   it("model mode: same-provider models get distinct shades, Others the neutral", () => {
     const others: GraphEntry = { key: "::Others", name: "Others", providerId: "", brandColor: null, todayCost: 1, tokenCount: null, share: 0.05, isOthers: true }
