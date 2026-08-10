@@ -21,12 +21,6 @@ beforeEach(() => {
 })
 
 describe("SupporterSection", () => {
-  it("shows the key input and a Secured by Keylight link when unlicensed", () => {
-    render(<SupporterSection />)
-    expect(screen.getByPlaceholderText("License Key")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Secured by Keylight.dev" })).toBeInTheDocument()
-  })
-
   it("opens Buy Me a Coffee so unlicensed users can find the way to support", async () => {
     render(<SupporterSection />)
     await userEvent.click(screen.getByRole("button", { name: "Buy Me a Coffee" }))
@@ -39,35 +33,37 @@ describe("SupporterSection", () => {
     expect(screen.getByRole("button", { name: "Buy Me a Coffee" })).toBeInTheDocument()
   })
 
+  it("hides the license key entry and the Keylight credit", () => {
+    render(<SupporterSection />)
+    expect(screen.queryByPlaceholderText("License Key")).toBeNull()
+    expect(screen.queryByRole("button", { name: "Activate" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Secured by Keylight.dev" })).toBeNull()
+  })
+
+  it("hides the license error, since there is nothing to retry here", () => {
+    useAppLicenseStore.setState({ status: "error", lastError: "This key isn't valid or has expired." })
+    render(<SupporterSection />)
+    expect(screen.queryByText("This key isn't valid or has expired.")).toBeNull()
+  })
+
   it("uses a compact title-only layout that does not force horizontal scrolling", () => {
-    const { container } = render(<SupporterSection />)
+    render(<SupporterSection />)
 
     expect(screen.getByRole("heading", { level: 3, name: "Supporter" })).toBeInTheDocument()
     expect(screen.queryByText("Support UsagePal — activate your supporter license key.")).toBeNull()
-    expect(container.querySelector("form")).toHaveClass("min-w-0")
-    expect(screen.getByPlaceholderText("License Key")).toHaveClass("min-w-0")
-    expect(screen.getByRole("button", { name: "Activate" })).toHaveClass("shrink-0")
+    expect(screen.getByRole("button", { name: "Buy Me a Coffee" })).toHaveClass("text-sm")
   })
 
-  it("calls activate with the entered key", async () => {
-    const activate = vi.fn(async () => {})
-    useAppLicenseStore.setState({ activate })
+  it("still re-validates for someone who activated previously", () => {
+    const refresh = vi.fn(async () => {})
+    useAppLicenseStore.setState({ hasActivated: true, refresh })
     render(<SupporterSection />)
-    await userEvent.type(screen.getByPlaceholderText("License Key"), "KEY-9")
-    await userEvent.click(screen.getByRole("button", { name: "Activate" }))
-    expect(activate).toHaveBeenCalledWith("KEY-9")
+    expect(refresh).toHaveBeenCalled()
   })
 
-  it("shows the active state and no input when licensed", () => {
+  it("shows the active state for licensed supporters", () => {
     useAppLicenseStore.setState({ status: "active" })
     render(<SupporterSection />)
     expect(screen.getByText("Supporter — Active")).toBeInTheDocument()
-    expect(screen.queryByPlaceholderText("License Key")).not.toBeInTheDocument()
-  })
-
-  it("surfaces the error message", () => {
-    useAppLicenseStore.setState({ status: "error", lastError: "This key isn't valid or has expired." })
-    render(<SupporterSection />)
-    expect(screen.getByText("This key isn't valid or has expired.")).toBeInTheDocument()
   })
 })
