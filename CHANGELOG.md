@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.7.66
+
+Codex Auto Review no longer takes a share of Codex spend it never generated, and Settings now shows a way to support UsagePal.
+
+### New Features
+- Settings → Supporter now links to Buy Me a Coffee, so there's a way to support UsagePal without a license key by @Halloweedev
+
+### Bug Fixes
+- Codex Auto Review no longer inflates the Codex model breakdown — Codex runs its approval reviewer as its own model that carries no published price, and splitting each day's spend by raw token share was handing it dollars the other models earned (roughly $24 over a month of heavy use). It now reports $0.00 under a readable name, keeps its token percentage so you can still see its usage, and the spend goes back to the models that generated it by @Halloweedev
+
+---
+
 ## v0.7.65
 
 Cursor's slice in the spend donut and its legend swatch are no longer invisible on dark backgrounds.
