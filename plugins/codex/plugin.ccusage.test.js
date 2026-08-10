@@ -141,6 +141,55 @@ describe("codex plugin ccusage usage trend", () => {
     })
   })
 
+  it("keeps codex-auto-review's tokens out of the cost split and values it at $0", async () => {
+    // Codex runs its approval reviewer as its own model. It burns real tokens
+    // but has no published price, so ccusage values it at $0 — splitting the
+    // day total by raw token share would hand it dollars gpt-5.6-sol earned.
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({
+      status: "ok",
+      data: {
+        daily: [
+          {
+            date: dayKey(0),
+            totalTokens: 100,
+            costUSD: 10,
+            models: {
+              "gpt-5.6-sol": { totalTokens: 80 },
+              "codex-auto-review": { totalTokens: 20 },
+            },
+          },
+        ],
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // Sol keeps its 80% token share but collects the whole $10 — the reviewer
+    // generated none of it. The reviewer keeps its 20% token share at $0.
+    const sol = result.lines.find((line) => line.label === "GPT-5.6 Sol")
+    const review = result.lines.find((line) => line.label === "Codex Auto Review")
+    expect(sol).toMatchObject({
+      type: "text",
+      value: "80% · Today $10.00 · 7d $10.00 · 30d $10.00",
+    })
+    expect(review).toMatchObject({
+      type: "text",
+      value: "20% · Today $0.00 · 7d $0.00 · 30d $0.00",
+    })
+    expect(result.lines.find((line) => line.label === "codex-auto-review")).toBeUndefined()
+  })
+
   it("merges Today/7d/30d cost into each model's existing % line", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({

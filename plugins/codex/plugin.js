@@ -637,8 +637,20 @@
     return "$" + Math.round(amount).toLocaleString("en-US")
   }
 
+  // Codex runs its approval reviewer as its own model, so its turns land in
+  // ccusage's token map like any other. It carries no published price, so
+  // ccusage costs it at $0 and it must be held out of the day-cost split below
+  // — otherwise it siphons dollars off the models that actually earned them.
+  const ZERO_COST_MODELS = { "codex-auto-review": "Codex Auto Review" }
+
+  function isZeroCostModel(name) {
+    return Object.prototype.hasOwnProperty.call(ZERO_COST_MODELS, name)
+  }
+
   function prettifyModelName(rawId) {
-    if (typeof rawId !== "string" || !rawId.startsWith("gpt-")) return rawId
+    if (typeof rawId !== "string") return rawId
+    if (isZeroCostModel(rawId)) return ZERO_COST_MODELS[rawId]
+    if (!rawId.startsWith("gpt-")) return rawId
     const parts = rawId.slice("gpt-".length).split("-")
     const version = parts[0]
     if (!/^\d+(\.\d+)?$/.test(version)) return rawId
@@ -655,9 +667,11 @@
       const model = models[i]
       let value = percentLabel(model.percent)
       const segments = []
-      if (costTotals.Today[model.name]) segments.push("Today " + fmtModelCost(costTotals.Today[model.name]))
-      if (costTotals["7d"][model.name]) segments.push("7d " + fmtModelCost(costTotals["7d"][model.name]))
-      if (costTotals["30d"][model.name]) segments.push("30d " + fmtModelCost(costTotals["30d"][model.name]))
+      // `!= null` rather than truthiness: a zero-cost model's $0.00 is a real
+      // value to render, not a missing one.
+      if (costTotals.Today[model.name] != null) segments.push("Today " + fmtModelCost(costTotals.Today[model.name]))
+      if (costTotals["7d"][model.name] != null) segments.push("7d " + fmtModelCost(costTotals["7d"][model.name]))
+      if (costTotals["30d"][model.name] != null) segments.push("30d " + fmtModelCost(costTotals["30d"][model.name]))
       if (segments.length > 0) value += " · " + segments.join(" · ")
       lines.push(ctx.line.text({
         label: prettifyModelName(model.name),
@@ -681,6 +695,15 @@
     totals["30d"][name] = (totals["30d"][name] || 0) + cost
     if (in7d) totals["7d"][name] = (totals["7d"][name] || 0) + cost
     if (inToday) totals.Today[name] = (totals.Today[name] || 0) + cost
+  }
+
+  // Records a $0 entry for a period the model was actually used in, so the line
+  // renders "$0.00" instead of dropping the segment — a missing segment reads as
+  // "unknown" downstream and gets back-filled from the provider total × percent.
+  function markZeroCost(totals, name, inToday, in7d) {
+    totals["30d"][name] = totals["30d"][name] || 0
+    if (in7d) totals["7d"][name] = totals["7d"][name] || 0
+    if (inToday) totals.Today[name] = totals.Today[name] || 0
   }
 
   // Per-model $ for Today/7d/30d. Prefers Claude-style modelBreakdowns[].cost;
@@ -722,6 +745,10 @@
         const name = names[j]
         const tokens = modelTokenCount(models[name])
         if (tokens <= 0) continue
+        if (isZeroCostModel(name)) {
+          markZeroCost(totals, name, inToday, in7d)
+          continue
+        }
         tokenByName[name] = tokens
         dayTokens += tokens
       }

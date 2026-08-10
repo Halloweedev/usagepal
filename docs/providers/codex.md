@@ -158,6 +158,10 @@ Expected auth payload shape (file or keychain JSON value):
 
 Local Codex logs drive the Share graph (Today, Yesterday, Last 30 Days, and per-model lines). Day spend comes from ccusage’s `costUSD`. Codex does not publish per-model costs in that payload, so UsagePal splits each day’s spend across models by that day’s token share and writes Today / 7d / 30d dollar segments onto each model’s percentage line (same shape Share expects from Claude and Cursor).
 
+### Codex Auto Review
+
+Codex runs its own approval reviewer as a separate model, `codex-auto-review`, so its turns show up in the usage logs alongside the models you picked. It has no published price, which means ccusage values it at $0 and it is held out of the day-spend split above — otherwise it would take a share of the dollars the other models actually earned. It still appears in the model list, shown as **Codex Auto Review** with its token percentage and $0.00, so its usage stays visible without distorting spend.
+
 ### Token Refresh
 
 Access tokens are short-lived JWTs. Refreshed when `last_refresh` is older than 8 days, or on 401/403.

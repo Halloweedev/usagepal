@@ -113,6 +113,32 @@ describe("buildTodayModelUsage", () => {
     expect(usage.providers.map((p) => p.id)).toEqual(["claude"])
   })
 
+  it("gives a model an explicit $0.00 no slice, and never back-fills it from the provider total", () => {
+    // Codex Auto Review has tokens but no published price, so the plugin emits
+    // $0.00 rather than omitting the segment. Omitting it would send the row
+    // down the percent-only path and hand it a share of the provider's spend.
+    const withFreeModel = makeSource("codex", "Codex", "#74AA9C", [
+      modelLine("Last 30 Days", "$100.00 · 200M"),
+      modelLine("GPT-5.6 Sol", "80% · Today $10.00"),
+      modelLine("Codex Auto Review", "20% · Today $0.00"),
+    ])
+    const usage = buildTodayModelUsage([withFreeModel])
+
+    expect(usage.models.map((m) => m.name)).toEqual(["GPT-5.6 Sol"])
+    expect(usage.totalCost).toBeCloseTo(10)
+  })
+
+  it("keeps an explicit $0.00 instead of deriving a cost from the provider total", () => {
+    const enriched = enrichModelBreakdownParsed(
+      { percent: "20%", today: "$0.00" },
+      { today: 100, thirtyDay: 500 }
+    )
+
+    expect(enriched.today).toBe("$0.00")
+    // 30d was never supplied, so deriving it there is still correct.
+    expect(enriched.thirtyDay).toBe("$100.00")
+  })
+
   it("keeps every model ranked by today cost", () => {
     const many = makeSource(
       "claude",
