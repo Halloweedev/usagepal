@@ -54,13 +54,22 @@ export function SupporterSection() {
         </>
       )}
 
-      <Button
-        variant="link"
-        className="h-auto self-start p-0 text-xs text-muted-foreground"
-        onClick={() => openUrl("https://keylight.dev").catch(console.error)}
-      >
-        Secured by Keylight.dev
-      </Button>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <Button
+          variant="link"
+          className="h-auto p-0 text-xs"
+          onClick={() => openUrl("https://buymeacoffee.com/dmzxnico").catch(console.error)}
+        >
+          Buy Me a Coffee
+        </Button>
+        <Button
+          variant="link"
+          className="h-auto p-0 text-xs text-muted-foreground"
+          onClick={() => openUrl("https://keylight.dev").catch(console.error)}
+        >
+          Secured by Keylight.dev
+        </Button>
+      </div>
     </section>
   )
 }

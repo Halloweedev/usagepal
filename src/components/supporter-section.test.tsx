@@ -27,6 +27,18 @@ describe("SupporterSection", () => {
     expect(screen.getByRole("button", { name: "Secured by Keylight.dev" })).toBeInTheDocument()
   })
 
+  it("opens Buy Me a Coffee so unlicensed users can find the way to support", async () => {
+    render(<SupporterSection />)
+    await userEvent.click(screen.getByRole("button", { name: "Buy Me a Coffee" }))
+    expect(opener.openUrl).toHaveBeenCalledWith("https://buymeacoffee.com/dmzxnico")
+  })
+
+  it("keeps the Buy Me a Coffee link visible for active supporters", () => {
+    useAppLicenseStore.setState({ status: "active" })
+    render(<SupporterSection />)
+    expect(screen.getByRole("button", { name: "Buy Me a Coffee" })).toBeInTheDocument()
+  })
+
   it("uses a compact title-only layout that does not force horizontal scrolling", () => {
     const { container } = render(<SupporterSection />)
 

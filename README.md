@@ -7,6 +7,7 @@
 <p align="center"><strong>Track all your AI coding subscriptions in one place.</strong></p>
 
 [![Secured by Keylight.dev](https://img.shields.io/badge/Secured%20by-Keylight.dev-6E56CF)](https://keylight.dev)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/dmzxnico)
 
 See your usage at a glance from your menu bar. No digging through dashboards.
 
@@ -78,6 +79,12 @@ Plugins are currently bundled; making them loadable so you can build and run you
 - **Request a feature.** [Open an issue](https://github.com/Halloweedev/usagepal/issues/new) and make your case.
 
 Keep it simple. No feature creep, test your changes.
+
+## Support UsagePal
+
+UsagePal is free and stays free. If it saves you a trip to a dashboard, you can [**buy me a coffee**](https://buymeacoffee.com/dmzxnico) — it covers the Apple Developer account, code signing, and the time that goes into new providers.
+
+You can also support it for free: star the repo, report bugs, or add a provider.
 
 ## Credits
 
