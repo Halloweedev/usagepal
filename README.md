@@ -64,14 +64,6 @@ UsagePal is open source and grows through community contributions: new providers
 
 Plugins are currently bundled; making them loadable so you can build and run your own is on the roadmap.
 
-<a href="https://www.star-history.com/?repos=Halloweedev%2Fusagepal&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Halloweedev/usagepal&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Halloweedev/usagepal&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Halloweedev/usagepal&type=date&legend=top-left" />
- </picture>
-</a>
-
 ### How to Contribute
 
 - **Add a provider.** Each one is just a plugin. See the [Plugin API](docs/plugins/api.md).
