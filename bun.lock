@@ -28,7 +28,7 @@
         "react-dom": "^19.1.0",
         "tailwind-merge": "^3.4.0",
         "tailwindcss": "^4.1.18",
-        "tauri-plugin-keylight-api": "^0.3.5",
+        "tauri-plugin-keylight-api": "^0.3.6",
         "zustand": "^5.0.11",
       },
       "devDependencies": {
@@ -460,7 +460,7 @@
 
     "tapable": ["tapable@2.3.0", "", {}, "sha512-g9ljZiwki/LfxmQADO3dEY1CbpmXT5Hm2fJ+QaGKwSXUylMybePR7/67YW7jOrrvjEgL1Fmz5kzyAjWVWLlucg=="],
 
-    "tauri-plugin-keylight-api": ["tauri-plugin-keylight-api@0.3.5", "", { "dependencies": { "@tauri-apps/api": "^2.0.0" } }, "sha512-10z/2PQUwsrAFK7GO62wtIsEEDxa3bBi3JStBVF7xVeBKwmbJz5A9LZYAsiCbgqsihbc4NEuYP1C8xV1DM4fjQ=="],
+    "tauri-plugin-keylight-api": ["tauri-plugin-keylight-api@0.3.6", "", { "dependencies": { "@tauri-apps/api": "^2.0.0" } }, "sha512-umAkpYCBYrSi4D9O03kqHAOerrWYjYAYH4lZZnKBdJprzBuBkO/kncsMfr5s3HdIhBzYSYKS7XjsuXWq22tZKg=="],
 
     "tinybench": ["tinybench@2.9.0", "", {}, "sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg=="],
 
