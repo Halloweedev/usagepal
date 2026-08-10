@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.7.67
+
+The Supporter section in Settings is now a single clear way to support UsagePal.
+
+### Improvements
+- Settings → Supporter now leads with the Buy Me a Coffee link and hides the license key field, so supporting UsagePal is one click instead of a form by @Halloweedev
+
+### Chores
+- Updated the Keylight licensing SDK to 0.3.6 by @Halloweedev
+
+---
+
 ## v0.7.66
 
 Codex Auto Review no longer takes a share of Codex spend it never generated, and Settings now shows a way to support UsagePal.
