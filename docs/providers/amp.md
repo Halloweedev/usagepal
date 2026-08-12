@@ -5,7 +5,7 @@
 - **Protocol:** JSON-RPC (`POST /api/internal`)
 - **URL:** `https://ampcode.com/api/internal`
 - **Auth:** API key from Amp CLI (`~/.local/share/amp/secrets.json`)
-- **Tier:** Free (daily quota), Megawatt/Gigawatt subscriptions, and/or individual credits
+- **Tier:** Megawatt/Gigawatt subscriptions and/or individual credits
 
 ## Authentication
 
@@ -37,17 +37,9 @@ Content-Type: application/json
 
 The response contains a `displayText` string whose contents vary by user tier:
 
-**Free tier + credits:**
-```
-Signed in as <user>
-Amp Free: <percent>% remaining today (resets daily) - https://ampcode.com/settings#amp-free
-Individual credits: $<credits> remaining - https://ampcode.com/settings
-```
-
 **Subscription:**
 ```
 Signed in as <user>
-Amp Free: <percent>% remaining today (resets daily) - https://ampcode.com/settings#amp-free
 Subscription <plan>: <percent>% other usage and <percent>% orb usage remaining
 ```
 
@@ -58,23 +50,15 @@ Individual credits: $<credits> remaining - https://ampcode.com/settings
 ```
 
 The plugin parses the display text with regex to extract:
-- **Free quota:** `<percent>% remaining today` → daily percentage remaining
 - **Subscription:** plan name, other usage remaining, and orb usage remaining
 - **Credits:** `Individual credits: $N remaining` → paid credits balance
-
-### Usage Calculation (Free tier only)
-
-- **Used:** `100 - percent remaining` (clamped between 0% and 100%)
-- **Reset time:** Not supplied by the API; the response only states that it resets daily
-- **Period:** 24 hours (fixed)
 
 ## Plan Detection
 
 | Condition | Plan |
 |-----------|------|
 | Subscription present | Subscription plan name, such as `"Megawatt"` |
-| Free tier present (with or without credits) | `"Free"` |
-| Credits only (no free tier) | `"Credits"` |
+| No subscription | `"Credits"` |
 
 ## Displayed Lines
 
@@ -82,13 +66,7 @@ The plugin parses the display text with regex to extract:
 |-------------|----------|-----------------------------|----------------------------------------|
 | Subscription Usage | overview | Subscription enabled        | Included non-orb subscription usage consumed |
 | Orb Usage   | overview | Subscription enabled        | Included orb usage consumed            |
-| Free        | overview | Amp Free enabled            | Daily usage consumed as a percentage progress bar |
 | Credits     | overview | Credits > $0, or credits-only accounts | Individual credits balance      |
-
-The Free progress line includes:
-- `periodDurationMs` — 24 hours for pace tracking
-
-The API does not provide exact reset times, so the progress lines do not include `resetsAt`.
 
 ## Errors
 

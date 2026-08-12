@@ -10,8 +10,6 @@
   "lines": [
     { "type": "progress", "label": "Subscription Usage", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Orb Usage", "scope": "overview", "primaryOrder": 2 },
-    { "type": "progress", "label": "Free", "scope": "overview", "primaryOrder": 3 },
-    { "type": "text", "label": "Bonus", "scope": "detail" },
     { "type": "text", "label": "Credits", "scope": "overview" }
   ]
 }
