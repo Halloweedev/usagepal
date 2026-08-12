@@ -75,7 +75,7 @@ Validation rules:
 - `entry` must be relative (not absolute)
 - `entry` must exist within the plugin directory
 - `id` must match `globalThis.__openusage_plugin.id`
-- `icon` must be relative and point to an SVG file (use `fill="currentColor"` for theme compatibility)
+- `icon` must be relative and point to a self-contained SVG file (use `fill="currentColor"` for theme compatibility; do not reference external images or fonts)
 - `links[].url` (if provided) must be an `http://` or `https://` URL
 
 ### Links Array (Optional)
