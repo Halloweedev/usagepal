@@ -1,100 +1,43 @@
 # OpenCode Go
 
-> Uses local OpenCode history from SQLite to track observed OpenCode Go spend on this machine.
+> Uses OpenCode's account API to show authoritative Go usage limits.
 
 ## Overview
 
-- **Source of truth:** `~/.local/share/opencode/opencode.db`
-- **Auth discovery:** `~/.local/share/opencode/auth.json`
+- **Source of truth:** `https://opencode.ai/zen/go/v1/usage`
 - **Provider ID:** `opencode-go`
-- **Usage scope:** local observed assistant spend only
+- **Usage scope:** account usage across devices
 
-## Detection
+## API Key
 
-The plugin enables when either condition is true:
+UsagePal checks these sources in order:
 
-- `~/.local/share/opencode/auth.json` contains an `opencode-go` entry with a non-empty `key`
-- local OpenCode history already contains `opencode-go` assistant messages with numeric `cost` or token usage
+1. A key saved in UsagePal Settings
+2. The `opencode-go` key from `~/.local/share/opencode/auth.json`
+3. The `OPENCODE_API_KEY` environment variable
 
-If neither signal exists, the plugin stays hidden.
+UsagePal stores a key entered in Settings at `~/.config/usagepal/opencode-go.json`. It does not
+change OpenCode's auth file. The saved key is never read back into the app interface.
 
-## Data Source
+The plugin is detected when the UsagePal key file or OpenCode auth file exists, or when
+`OPENCODE_API_KEY` is set.
 
-UsagePal reads the local OpenCode SQLite database directly:
+## Usage Bars
 
-```sql
-SELECT
-  CAST(COALESCE(json_extract(data, '$.time.created'), time_created) AS INTEGER) AS createdMs,
-  CAST(json_extract(data, '$.cost') AS REAL) AS cost,
-  COALESCE(
-    json_extract(data, '$.modelID'),
-    json_extract(data, '$.model'),
-    json_extract(data, '$.modelName')
-  ) AS modelID,
-  (
-    COALESCE(CAST(json_extract(data, '$.tokens.input') AS INTEGER), 0) +
-    COALESCE(CAST(json_extract(data, '$.tokens.output') AS INTEGER), 0) +
-    COALESCE(CAST(json_extract(data, '$.tokens.reasoning') AS INTEGER), 0) +
-    COALESCE(CAST(json_extract(data, '$.tokens.cacheRead') AS INTEGER), 0) +
-    COALESCE(CAST(json_extract(data, '$.tokens.cacheWrite') AS INTEGER), 0) +
-    COALESCE(CAST(json_extract(data, '$.tokens.cache_read') AS INTEGER), 0) +
-    COALESCE(CAST(json_extract(data, '$.tokens.cache_write') AS INTEGER), 0)
-  ) AS tokensTotal
-FROM message
-WHERE json_valid(data)
-  AND json_extract(data, '$.providerID') = 'opencode-go'
-  AND json_extract(data, '$.role') = 'assistant'
-  AND (
-    json_type(data, '$.cost') IN ('integer', 'real')
-    OR tokensTotal > 0
-  )
-```
+The API supplies the percentage used and exact reset time for:
 
-Only assistant messages with numeric `cost` or token counts count. When `cost` is zero or missing but per-token fields are present, UsagePal estimates spend using the published OpenCode Go per-million rates (same table as the official docs). Stored non-zero `cost` values always win over estimates. Missing remote or other-device usage is not estimated.
+- **Session:** rolling five-hour usage
+- **Weekly:** weekly usage
+- **Monthly:** subscription-month usage
 
-## Share Graph
-
-When local history is available, the plugin also emits share-graph lines:
-
-- **Today / Yesterday / Last 30 Days** — provider spend totals, plus token counts when message `tokens` are present
-- **Usage Trend** — daily token bar chart for the last 31 days (only when tokens exist)
-- **Per-model breakdown** — one text line per model with 30-day share and Today/Yesterday/7d/30d spend
-
-Model names come from `modelID` (with `model` / `modelName` fallbacks) and are prettified for display (for example `glm-5.1` → `GLM 5.1`). If no model ID is stored on any row, UsagePal shows a single aggregate line labeled **OpenCode Go** at 100%.
-
-Day buckets use UTC calendar dates, matching the Cursor share-graph behavior.
-
-## Limits
-
-UsagePal uses the current published OpenCode Go plan limits from the official docs:
-
-- `5h`: `$12`
-- `Weekly`: `$30`
-- `Monthly`: `$60`
-
-Bars show observed local spend as a percentage of those fixed limits and clamp at `100%`.
-
-### Per-model quota multipliers
-
-OpenCode Go’s docs give some models a lower “Usage” allowance than the shared `$60` monthly pool (for example `$15` for Grok 4.5, MiMo V2.5 Pro, and DeepSeek V4 Pro). Those models burn the shared Session / Weekly / Monthly bars faster:
-
-`quota cost = raw cost × ($60 / model usage allowance)`
-
-So a `$15`-allowance model counts at **4×** toward the bars. Kimi K3’s base allowance is `$15`, but OpenCode’s temporary “2× usage limits” promo raises its effective allowance to `$30`, so it currently counts at **2×**.
-
-Share-graph lines (Today / Yesterday / Last 30 Days / per-model spend) still show raw local dollar cost, not quota-weighted cost.
-## Window Rules
-
-- `5h`: rolling last 5 hours from now
-- `Weekly`: UTC Monday `00:00` through the next UTC Monday `00:00`
-- `Monthly`: inferred subscription-style monthly window using the earliest local OpenCode Go usage timestamp as the anchor
-
-Monthly usage is inferred from local history, not read from OpenCode’s account API. UsagePal reuses the earliest observed local OpenCode Go usage timestamp as the monthly anchor. If no local history exists yet, it falls back to UTC calendar month boundaries until the first Go usage is recorded.
+UsagePal displays these values directly. It does not estimate limits from local history, token
+prices, or the local OpenCode database.
 
 ## Failure Behavior
 
-If auth or prior history already indicates OpenCode Go is in use, but SQLite becomes unreadable or malformed, the provider stays visible and shows a grey `Status: No usage data` badge instead of failing hard.
+If an update fails after a successful fetch, UsagePal keeps the last successful result visible and
+shows an inline warning. A failed response never replaces the cached result and never falls back to
+local estimates.
 
-## Future Compatibility
-
-The public provider identity stays `opencode-go`. If OpenCode later exposes account-truth usage by API key, UsagePal can swap the backend without changing the provider ID or UI contract.
+If no previous result exists, UsagePal shows a friendly error for a missing or invalid key, a
+missing Go subscription, an unreachable service, or an invalid API response.
