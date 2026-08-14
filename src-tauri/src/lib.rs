@@ -5,6 +5,7 @@ mod local_http_api;
 mod log_path;
 mod notifications;
 mod onboarding;
+mod opencode_go_key;
 mod openrouter_key;
 mod panel;
 mod keylight;
@@ -877,7 +878,10 @@ pub fn run() {
             clinepass_key::clear_clinepass_key,
             openrouter_key::openrouter_key_status,
             openrouter_key::save_openrouter_key,
-            openrouter_key::clear_openrouter_key
+            openrouter_key::clear_openrouter_key,
+            opencode_go_key::opencode_go_key_status,
+            opencode_go_key::save_opencode_go_key,
+            opencode_go_key::clear_opencode_go_key
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,
@@ -1090,7 +1094,10 @@ fn export_bindings() {
             clinepass_key::clear_clinepass_key,
             openrouter_key::openrouter_key_status,
             openrouter_key::save_openrouter_key,
-            openrouter_key::clear_openrouter_key
+            openrouter_key::clear_openrouter_key,
+            opencode_go_key::opencode_go_key_status,
+            opencode_go_key::save_opencode_go_key,
+            opencode_go_key::clear_opencode_go_key
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,

@@ -68,6 +68,9 @@ export const commands = {
 	openrouterKeyStatus: () => __TAURI_INVOKE<KeyStatus>("openrouter_key_status"),
 	saveOpenrouterKey: (key: string) => typedError<null, string>(__TAURI_INVOKE("save_openrouter_key", { key })),
 	clearOpenrouterKey: () => typedError<null, string>(__TAURI_INVOKE("clear_openrouter_key")),
+	opencodeGoKeyStatus: () => __TAURI_INVOKE<OpenCodeGoKeyStatus>("opencode_go_key_status"),
+	saveOpencodeGoKey: (key: string) => typedError<null, string>(__TAURI_INVOKE("save_opencode_go_key", { key })),
+	clearOpencodeGoKey: () => typedError<null, string>(__TAURI_INVOKE("clear_opencode_go_key")),
 };
 
 /** Events */
@@ -123,6 +126,12 @@ export type ManifestLineDto = {
 };
 
 export type MetricLine = { type: "text"; label: string; value: string; color: string | null; subtitle: string | null; resetExpiry: string[] | null } | { type: "progress"; label: string; used: number | null; limit: number | null; format: ProgressFormat; resetsAt: string | null; periodDurationMs: number | null; color: string | null } | { type: "badge"; label: string; text: string; color: string | null; subtitle: string | null } | { type: "barChart"; label: string; points: BarChartPoint[]; note: string | null; color: string | null };
+
+export type OpenCodeGoKeyStatus = {
+	saved: boolean,
+	fromOpenCode: boolean,
+	fromEnv: boolean,
+};
 
 export type PluginLinkDto = {
 	label: string,

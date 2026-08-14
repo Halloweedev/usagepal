@@ -2,11 +2,15 @@
   "schemaVersion": 1,
   "id": "opencode-go",
   "name": "OpenCode Go",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#000000",
-  "detect": [{ "file": "~/.local/share/opencode/auth.json" }],
+  "detect": [
+    { "file": "~/.config/usagepal/opencode-go.json" },
+    { "file": "~/.local/share/opencode/auth.json" },
+    { "env": "OPENCODE_API_KEY" }
+  ],
   "links": [
     {
       "label": "Console",
@@ -35,10 +39,6 @@
       "label": "Monthly",
       "scope": "overview",
       "escalateAtPercent": 98
-    },
-    { "type": "text", "label": "Today", "scope": "detail" },
-    { "type": "text", "label": "Yesterday", "scope": "detail" },
-    { "type": "text", "label": "Last 30 Days", "scope": "detail" },
-    { "type": "barChart", "label": "Usage Trend", "scope": "detail" }
+    }
   ]
 }

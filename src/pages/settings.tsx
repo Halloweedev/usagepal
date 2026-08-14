@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { ClinePassKeyDialog } from "@/components/clinepass-key-dialog";
 import { OpenRouterKeyDialog } from "@/components/openrouter-key-dialog";
+import { OpenCodeGoKeyDialog } from "@/components/opencode-go-key-dialog";
 import { SettingsAdvancedSection } from "@/components/settings-advanced-section";
 import { SupporterSection } from "@/components/supporter-section";
 import { ProviderIconMask } from "@/components/provider-icon-mask";
@@ -414,6 +415,8 @@ function SortablePluginItem({
         <span onClick={(e) => e.stopPropagation()}>
           {plugin.id === "cline-pass" ? (
             <ClinePassKeyDialog onClose={closeKeyDialog} onSaved={saveKeyDialog} />
+          ) : plugin.id === "opencode-go" ? (
+            <OpenCodeGoKeyDialog onClose={closeKeyDialog} onSaved={saveKeyDialog} />
           ) : (
             <OpenRouterKeyDialog onClose={closeKeyDialog} onSaved={saveKeyDialog} />
           )}

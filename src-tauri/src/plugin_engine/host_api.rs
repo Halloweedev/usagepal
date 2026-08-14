@@ -16,7 +16,7 @@ use std::process::Command;
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-const WHITELISTED_ENV_VARS: [&str; 19] = [
+const WHITELISTED_ENV_VARS: [&str; 20] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -36,6 +36,7 @@ const WHITELISTED_ENV_VARS: [&str; 19] = [
     "OPENROUTER_API_KEY",
     "OPENROUTER_KEY",
     "CLINE_API_KEY",
+    "OPENCODE_API_KEY",
 ];
 const MIN_BLOCKING_TIMEOUT: Duration = Duration::from_millis(1);
 /// Ceiling on a single ccusage load, clamped further by the probe deadline.

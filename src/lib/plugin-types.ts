@@ -15,7 +15,7 @@ export type PluginMeta = Omit<PluginMetaDto, "lines"> & {
 
 /** Providers whose access runs through a UsagePal-managed API key. Enabling
  * them prompts for the key; onboarding surfaces them as "needs a key". */
-export const MANAGED_API_KEY_PLUGIN_IDS = ["openrouter", "cline-pass"] as const
+export const MANAGED_API_KEY_PLUGIN_IDS = ["openrouter", "cline-pass", "opencode-go"] as const
 
 export const hasManagedApiKey = (pluginId: string): boolean =>
   (MANAGED_API_KEY_PLUGIN_IDS as readonly string[]).includes(pluginId)
