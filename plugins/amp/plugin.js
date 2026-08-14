@@ -39,48 +39,10 @@
     if (!text || typeof text !== "string") return null
 
     var result = {
-      remainingPct: null,
-      remaining: null,
-      total: null,
-      hourlyRate: 0,
-      bonusPct: null,
-      bonusDays: null,
       credits: null,
       subscriptionPlan: null,
       otherRemainingPct: null,
       orbRemainingPct: null,
-    }
-
-    var percentMatch = text.match(/Amp Free: ([0-9]+(?:\.[0-9]+)?)% remaining today/)
-    if (percentMatch) {
-      var remainingPct = Number(percentMatch[1])
-      if (Number.isFinite(remainingPct)) result.remainingPct = remainingPct
-    }
-
-    var balanceMatch = text.match(/\$([0-9][0-9,]*(?:\.[0-9]+)?)\/\$([0-9][0-9,]*(?:\.[0-9]+)?) remaining/)
-    if (balanceMatch) {
-      var remaining = parseMoney(balanceMatch[1])
-      var total = parseMoney(balanceMatch[2])
-      if (Number.isFinite(remaining) && Number.isFinite(total)) {
-        result.remaining = remaining
-        result.total = total
-      }
-    }
-
-    var rateMatch = text.match(/replenishes \+\$([0-9][0-9,]*(?:\.[0-9]+)?)\/hour/)
-    if (rateMatch) {
-      var rate = parseMoney(rateMatch[1])
-      if (Number.isFinite(rate)) result.hourlyRate = rate
-    }
-
-    var bonusMatch = text.match(/\+(\d+)% bonus for (\d+) more days?/)
-    if (bonusMatch) {
-      var pct = Number(bonusMatch[1])
-      var days = Number(bonusMatch[2])
-      if (Number.isFinite(pct) && Number.isFinite(days)) {
-        result.bonusPct = pct
-        result.bonusDays = days
-      }
     }
 
     var creditsMatch = text.match(/Individual credits: \$([0-9][0-9,]*(?:\.[0-9]+)?) remaining/)
@@ -100,7 +62,7 @@
       }
     }
 
-    if (result.remainingPct === null && result.total === null && result.credits === null && result.subscriptionPlan === null) return null
+    if (result.credits === null && result.subscriptionPlan === null) return null
 
     return result
   }
@@ -142,19 +104,19 @@
 
     var balance = parseBalanceText(json.result.displayText)
     if (!balance) {
-      if (/Amp Free|Subscription /.test(json.result.displayText)) {
+      if (/Subscription /.test(json.result.displayText)) {
         ctx.host.log.error("failed to parse Amp usage display text")
         throw "Could not parse usage data."
       }
       ctx.host.log.warn("no balance data found, assuming credits-only")
-      balance = { remainingPct: null, remaining: null, total: null, hourlyRate: 0, bonusPct: null, bonusDays: null, credits: 0, subscriptionPlan: null, otherRemainingPct: null, orbRemainingPct: null }
+      balance = { credits: 0, subscriptionPlan: null, otherRemainingPct: null, orbRemainingPct: null }
     } else if (/Subscription /.test(json.result.displayText) && balance.subscriptionPlan === null) {
       ctx.host.log.error("failed to parse Amp subscription display text")
       throw "Could not parse usage data."
     }
 
     var lines = []
-    var plan = balance.subscriptionPlan || "Free"
+    var plan = balance.subscriptionPlan || "Credits"
 
     if (balance.subscriptionPlan !== null) {
       lines.push(ctx.line.progress({
@@ -171,45 +133,7 @@
       }))
     }
 
-    if (balance.remainingPct !== null) {
-      lines.push(ctx.line.progress({
-        label: "Free",
-        used: Math.min(100, Math.max(0, 100 - balance.remainingPct)),
-        limit: 100,
-        format: { kind: "percent" },
-        periodDurationMs: 24 * 3600 * 1000,
-      }))
-    } else if (balance.total !== null) {
-      var used = Math.max(0, balance.total - balance.remaining)
-      var total = balance.total
-
-      var resetsAtMs = null
-      if (used > 0 && balance.hourlyRate > 0) {
-        var hoursToFull = used / balance.hourlyRate
-        resetsAtMs = Date.now() + hoursToFull * 3600 * 1000
-      }
-
-      lines.push(ctx.line.progress({
-        label: "Free",
-        used: used,
-        limit: total,
-        format: { kind: "dollars" },
-        resetsAt: ctx.util.toIso(resetsAtMs),
-        periodDurationMs: 24 * 3600 * 1000,
-      }))
-
-      if (balance.bonusPct && balance.bonusDays) {
-        lines.push(ctx.line.text({
-          label: "Bonus",
-          value: "+" + balance.bonusPct + "% for " + balance.bonusDays + "d",
-        }))
-      }
-    }
-
-    var hasFreeTier = balance.remainingPct !== null || balance.total !== null
-    if (balance.credits !== null && !hasFreeTier && balance.subscriptionPlan === null) plan = "Credits"
-
-    if (balance.credits !== null && (balance.credits > 0 || !hasFreeTier)) {
+    if (balance.credits !== null && (balance.credits > 0 || balance.subscriptionPlan === null)) {
       lines.push(ctx.line.text({
         label: "Credits",
         value: "$" + balance.credits.toFixed(2),
