@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.7.68
+
+OpenCode Go usage now comes straight from OpenCode's official account API, and menubar icons no longer flash empty.
+
+### New Features
+- OpenCode Go now reads authoritative usage from OpenCode's account API instead of estimating spend from the local database — Session, Weekly, and Monthly bars match your account across every device, and you can paste an API key in Settings when you aren't signed in through the OpenCode CLI ([#33](https://github.com/Halloweedev/usagepal/pull/33)) by @divaltor
+
+### Bug Fixes
+- Menubar tray icons no longer render empty — provider icons are now drawn into the tray image synchronously instead of loading asynchronously, removing the race that could leave the icon blank ([#35](https://github.com/Halloweedev/usagepal/pull/35)) by @divaltor
+
+### Changes
+- Amp no longer shows a "Free" daily quota bar — Amp discontinued the free tier and moved everyone to subscriptions and credits, so UsagePal now tracks subscription usage, orb usage, and individual credits ([#34](https://github.com/Halloweedev/usagepal/pull/34)) by @divaltor
+
+---
+
 ## v0.7.67
 
 The Supporter section in Settings is now a single clear way to support UsagePal.
