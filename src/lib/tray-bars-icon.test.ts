@@ -18,6 +18,10 @@ import {
   renderTrayBarsIcon,
 } from "@/lib/tray-bars-icon"
 
+const TEST_PROVIDER_ICON_URL = `data:image/svg+xml;base64,${btoa(
+  '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M0 0h24v24H0z"/></svg>'
+)}`
+
 describe("tray-bars-icon", () => {
   it("getTrayIconSizePx renders 18px at 1x and 36px at 2x", () => {
     expect(getTrayIconSizePx(1)).toBe(18)
@@ -38,11 +42,10 @@ describe("tray-bars-icon", () => {
       bars: [],
       sizePx: 36,
       style: "provider",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
     })
-    expect(svg).toContain("<image ")
+    expect(svg).toContain('data-provider-icon=""')
     expect(svg).not.toContain("<rect ")
-    expect(svg).not.toContain("<path ")
   })
 
   it("style=bars renders bar SVG elements and no image", () => {
@@ -83,10 +86,10 @@ describe("tray-bars-icon", () => {
       bars: [{ id: "a", fraction: 0.42 }],
       sizePx: 36,
       style: "donut",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
     })
     expect(svg).toContain('stroke-dasharray="')
-    expect(svg).toContain("<image ")
+    expect(svg).toContain('data-provider-icon=""')
     expect(svg).not.toContain("<rect ")
   })
 
@@ -102,14 +105,18 @@ describe("tray-bars-icon", () => {
   })
 
   it("renders provider icon", () => {
+    const iconSvg = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M0 0h24v24H0z"/></svg>'
+    const providerIconUrl = `data:image/svg+xml;base64,${btoa(iconSvg)}`
     const svg = makeTrayBarsSvg({
       bars: [],
       sizePx: 36,
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl,
     })
 
-    expect(svg).toContain("<image ")
-    expect(svg).toContain('href="data:image/svg+xml;base64,ABC"')
+    expect(svg).toContain('data-provider-icon=""')
+    expect(svg).toContain('d="M0 0h24v24H0z"')
+    expect(svg).not.toContain("<image ")
+    expect(svg).not.toContain(providerIconUrl)
     const viewBox = svg.match(/viewBox="0 0 (\d+) (\d+)"/)
     expect(viewBox).toBeTruthy()
     if (viewBox) {
@@ -117,6 +124,46 @@ describe("tray-bars-icon", () => {
       const height = Number(viewBox[2])
       expect(width).toBe(height)
     }
+  })
+
+  it("preserves provider viewBox while replacing its rendered dimensions", () => {
+    const iconSvg = '<svg width="100" height="80" viewBox="0 0 50 40" fill="none"><path fill="currentColor" d="M0 0h50v40H0z"/></svg>'
+    const svg = makeTrayBarsSvg({
+      bars: [],
+      sizePx: 36,
+      providerIconUrl: `data:image/svg+xml;base64,${btoa(iconSvg)}`,
+    })
+
+    const providerIcon = svg.match(/<svg[^>]*data-provider-icon=""[^>]*>/)?.[0]
+    expect(providerIcon).toMatch(/width="\d+"/)
+    expect(providerIcon).toMatch(/height="\d+"/)
+    expect(providerIcon).toContain('viewBox="0 0 50 40"')
+    expect(providerIcon).not.toContain('width="100"')
+    expect(providerIcon).not.toContain('height="80"')
+  })
+
+  it("uses the fallback glyph instead of loading a malformed provider SVG", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [],
+      sizePx: 36,
+      providerIconUrl: "data:image/svg+xml;base64,not-valid-base64",
+    })
+
+    expect(svg).toContain("<circle ")
+    expect(svg).not.toContain("<image ")
+    expect(svg).not.toContain("data-provider-icon")
+  })
+
+  it("inlines a percent-encoded provider SVG", () => {
+    const iconSvg = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M0 0h24v24H0z"/></svg>'
+    const svg = makeTrayBarsSvg({
+      bars: [],
+      sizePx: 36,
+      providerIconUrl: `data:image/svg+xml,${encodeURIComponent(iconSvg)}`,
+    })
+
+    expect(svg).toContain('data-provider-icon=""')
+    expect(svg).not.toContain("<image ")
   })
 
   it("falls back to circle glyph when provider icon is missing", () => {
@@ -152,7 +199,7 @@ describe("tray-bars-icon", () => {
       style: "provider",
       percentText: "100%",
       secondaryPercentText: "36%",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
     })
     expect(svg).toContain(">100%</text>")
     expect(svg).toContain(">36%</text>")
@@ -173,7 +220,7 @@ describe("tray-bars-icon", () => {
       style: "provider",
       percentText: "100%",
       secondaryPercentText: "36%",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
     })
     const compactSvg = makeTrayBarsSvg({
       bars: [],
@@ -181,7 +228,7 @@ describe("tray-bars-icon", () => {
       style: "provider",
       percentText: "100%",
       secondaryPercentText: "36%",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
       compact: true,
     })
     const defaultWidth = Number(defaultSvg.match(/viewBox="0 0 (\d+)/)?.[1])
@@ -195,9 +242,9 @@ describe("tray-bars-icon", () => {
       sizePx: 36,
       style: "provider",
       percentText: "70%",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
     })
-    const iconSize = Number(svg.match(/<image[^>]*width="(\d+)"/)?.[1])
+    const iconSize = Number(svg.match(/<svg[^>]*data-provider-icon=""[^>]*width="(\d+)"/)?.[1])
     expect(iconSize).toBeGreaterThanOrEqual(33)
   })
 
@@ -206,17 +253,17 @@ describe("tray-bars-icon", () => {
       bars: [],
       sizePx: 36,
       style: "provider",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
     })
     const scaledSvg = makeTrayBarsSvg({
       bars: [],
       sizePx: 36,
       style: "provider",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
       providerId: "opencode-go",
     })
-    const defaultSize = Number(defaultSvg.match(/<image[^>]*width="(\d+)"/)?.[1])
-    const scaledSize = Number(scaledSvg.match(/<image[^>]*width="(\d+)"/)?.[1])
+    const defaultSize = Number(defaultSvg.match(/<svg[^>]*data-provider-icon=""[^>]*width="(\d+)"/)?.[1])
+    const scaledSize = Number(scaledSvg.match(/<svg[^>]*data-provider-icon=""[^>]*width="(\d+)"/)?.[1])
     expect(scaledSize).toBe(Math.round(defaultSize * 0.9))
   })
 
@@ -226,7 +273,7 @@ describe("tray-bars-icon", () => {
       sizePx: 36,
       style: "provider",
       percentText: "93%",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
     })
     expect(svg).toContain(">93%</text>")
     expect(svg.match(/<text /g)?.length).toBe(1)
@@ -240,7 +287,7 @@ describe("tray-bars-icon", () => {
       style: "provider",
       percentText: "100%",
       secondaryPercentText: "36%",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
       compact: true,
     })
     const singleLineSvg = makeTrayBarsSvg({
@@ -248,7 +295,7 @@ describe("tray-bars-icon", () => {
       sizePx,
       style: "provider",
       percentText: "93%",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
       compact: true,
     })
     const dualFontSize = dualLineSvg.match(/font-size="(\d+)"[^>]*>100%/)?.[1]
@@ -268,7 +315,7 @@ describe("tray-bars-icon", () => {
       style: "provider",
       percentText: "70%",
       secondaryPercentText: "36%",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
       compact: true,
       providerDisplayMode: "bars",
       sessionFraction: 0.7,
@@ -290,7 +337,7 @@ describe("tray-bars-icon", () => {
       style: "provider",
       percentText: "70%",
       secondaryPercentText: "36%",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
       compact: true,
       providerDisplayMode: "bars",
       sessionFraction: 0.7,
@@ -313,14 +360,14 @@ describe("tray-bars-icon", () => {
   it("makeMultiTrayBarsSvg bars mode composes providers with mini bars", () => {
     const providers = [
       {
-        iconUrl: "data:image/svg+xml;base64,ABC",
+        iconUrl: TEST_PROVIDER_ICON_URL,
         sessionText: "70%",
         weeklyText: "36%",
         sessionFraction: 0.7,
         weeklyFraction: 0.36,
       },
       {
-        iconUrl: "data:image/svg+xml;base64,DEF",
+        iconUrl: TEST_PROVIDER_ICON_URL,
         sessionText: "42%",
         sessionFraction: 0.42,
       },
@@ -335,10 +382,10 @@ describe("tray-bars-icon", () => {
       bars: [],
       sizePx: 36,
       style: "provider",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
     })
     expect(svg).not.toContain("<text ")
-    expect(svg).toContain("<image ")
+    expect(svg).toContain('data-provider-icon=""')
     const viewBox = svg.match(/viewBox="0 0 (\d+) (\d+)"/)
     expect(viewBox?.[1]).toBe(viewBox?.[2])
   })
@@ -352,17 +399,17 @@ describe("tray-bars-icon", () => {
   it("makeMultiTrayBarsSvg composes providers horizontally with gaps", () => {
     const providers = [
       {
-        iconUrl: "data:image/svg+xml;base64,ABC",
+        iconUrl: TEST_PROVIDER_ICON_URL,
         sessionText: "70%",
         weeklyText: "36%",
       },
       {
-        iconUrl: "data:image/svg+xml;base64,DEF",
+        iconUrl: TEST_PROVIDER_ICON_URL,
         sessionText: "42%",
         weeklyText: "18%",
       },
       {
-        iconUrl: "data:image/svg+xml;base64,GHI",
+        iconUrl: TEST_PROVIDER_ICON_URL,
         sessionText: "55%",
       },
     ]
@@ -380,7 +427,7 @@ describe("tray-bars-icon", () => {
     expect(layout.width).toBe(slotWidth * 3 + gap * 2)
     expect(singleLayout.width).toBe(slotWidth)
     expect(layout.slotCount).toBe(3)
-    expect(svg.match(/<image /g)?.length).toBe(3)
+    expect(svg.match(/data-provider-icon=""/g)?.length).toBe(3)
     expect(svg).toContain(">70%</text>")
     expect(svg).toContain(">42%</text>")
     expect(svg).toContain(">55%</text>")
@@ -390,7 +437,7 @@ describe("tray-bars-icon", () => {
   it("multi tray layout width scales with provider count", () => {
     const sizePx = 36
     const baseProvider = {
-      iconUrl: "data:image/svg+xml;base64,ABC",
+      iconUrl: TEST_PROVIDER_ICON_URL,
       sessionText: "70%",
       weeklyText: "36%",
     }
@@ -400,15 +447,15 @@ describe("tray-bars-icon", () => {
       compact: true,
     })
     const two = getMultiTraySvgLayout({
-      providers: [baseProvider, { ...baseProvider, iconUrl: "data:image/svg+xml;base64,DEF" }],
+      providers: [baseProvider, { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL }],
       sizePx,
       compact: true,
     })
     const three = getMultiTraySvgLayout({
       providers: [
         baseProvider,
-        { ...baseProvider, iconUrl: "data:image/svg+xml;base64,DEF" },
-        { ...baseProvider, iconUrl: "data:image/svg+xml;base64,GHI" },
+        { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL },
+        { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL },
       ],
       sizePx,
       compact: true,
@@ -428,9 +475,9 @@ describe("tray-bars-icon", () => {
     const four = getMultiTraySvgLayout({
       providers: [
         baseProvider,
-        { ...baseProvider, iconUrl: "data:image/svg+xml;base64,DEF" },
-        { ...baseProvider, iconUrl: "data:image/svg+xml;base64,GHI" },
-        { ...baseProvider, iconUrl: "data:image/svg+xml;base64,JKL" },
+        { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL },
+        { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL },
+        { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL },
       ],
       sizePx,
       compact: true,
@@ -444,7 +491,7 @@ describe("tray-bars-icon", () => {
   it("multi tray left-aligns providers without extra right padding", () => {
     const sizePx = 36
     const baseProvider = {
-      iconUrl: "data:image/svg+xml;base64,ABC",
+      iconUrl: TEST_PROVIDER_ICON_URL,
       sessionText: "70%",
       weeklyText: "36%",
     }
@@ -454,15 +501,15 @@ describe("tray-bars-icon", () => {
       compact: true,
     })
     const twoProviderLayout = getMultiTraySvgLayout({
-      providers: [baseProvider, { ...baseProvider, iconUrl: "data:image/svg+xml;base64,DEF" }],
+      providers: [baseProvider, { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL }],
       sizePx,
       compact: true,
     })
     const threeProviderLayout = getMultiTraySvgLayout({
       providers: [
         baseProvider,
-        { ...baseProvider, iconUrl: "data:image/svg+xml;base64,DEF" },
-        { ...baseProvider, iconUrl: "data:image/svg+xml;base64,GHI" },
+        { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL },
+        { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL },
       ],
       sizePx,
       compact: true,
@@ -477,15 +524,15 @@ describe("tray-bars-icon", () => {
       compact: true,
     })
     const twoProviderSvg = makeMultiTrayBarsSvg({
-      providers: [baseProvider, { ...baseProvider, iconUrl: "data:image/svg+xml;base64,DEF" }],
+      providers: [baseProvider, { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL }],
       sizePx,
       compact: true,
     })
     const threeProviderSvg = makeMultiTrayBarsSvg({
       providers: [
         baseProvider,
-        { ...baseProvider, iconUrl: "data:image/svg+xml;base64,DEF" },
-        { ...baseProvider, iconUrl: "data:image/svg+xml;base64,GHI" },
+        { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL },
+        { ...baseProvider, iconUrl: TEST_PROVIDER_ICON_URL },
       ],
       sizePx,
       compact: true,
@@ -493,7 +540,7 @@ describe("tray-bars-icon", () => {
 
     const firstRenderedImageX = (svg: string) => {
       const groupX = Number(svg.match(/<g transform="translate\((\d+), 0\)">/)?.[1])
-      const imageX = Number(svg.match(/<image[^>]*x="(\d+)"/)?.[1])
+      const imageX = Number(svg.match(/<svg[^>]*data-provider-icon=""[^>]*x="(\d+)"/)?.[1])
       return groupX + imageX
     }
 
@@ -506,7 +553,7 @@ describe("tray-bars-icon", () => {
     expect(firstRenderedImageX(threeProviderSvg)).toBe(pad)
 
     const renderedImageXs = (svg: string) =>
-      [...svg.matchAll(/<g transform="translate\((\d+), 0\)">[\s\S]*?<image[^>]*x="(\d+)"/g)].map(
+      [...svg.matchAll(/<g transform="translate\((\d+), 0\)">[\s\S]*?<svg[^>]*data-provider-icon=""[^>]*x="(\d+)"/g)].map(
         (match) => Number(match[1]) + Number(match[2]),
       )
     const twoProviderImageXs = renderedImageXs(twoProviderSvg)
@@ -520,12 +567,12 @@ describe("tray-bars-icon", () => {
   it("multi tray layout uses fixed gaps between provider slots", () => {
     const providers = [
       {
-        iconUrl: "data:image/svg+xml;base64,ABC",
+        iconUrl: TEST_PROVIDER_ICON_URL,
         sessionText: "70%",
         weeklyText: "36%",
       },
       {
-        iconUrl: "data:image/svg+xml;base64,DEF",
+        iconUrl: TEST_PROVIDER_ICON_URL,
         sessionText: "42%",
         weeklyText: "18%",
       },
@@ -543,21 +590,21 @@ describe("tray-bars-icon", () => {
     const sizePx = 36
     const providers = [
       {
-        iconUrl: "data:image/svg+xml;base64,ABC",
+        iconUrl: TEST_PROVIDER_ICON_URL,
         sessionText: "70%",
         weeklyText: "36%",
       },
       {
-        iconUrl: "data:image/svg+xml;base64,DEF",
+        iconUrl: TEST_PROVIDER_ICON_URL,
         sessionText: "42%",
         weeklyText: "18%",
       },
       {
-        iconUrl: "data:image/svg+xml;base64,GHI",
+        iconUrl: TEST_PROVIDER_ICON_URL,
         sessionText: "55%",
       },
       {
-        iconUrl: "data:image/svg+xml;base64,JKL",
+        iconUrl: TEST_PROVIDER_ICON_URL,
         sessionText: "88%",
         weeklyText: "12%",
       },
@@ -581,7 +628,7 @@ describe("tray-bars-icon", () => {
       sizePx,
       style: "provider",
       percentText: "55%",
-      providerIconUrl: "data:image/svg+xml;base64,GHI",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
       compact: true,
     })
     const dualLineSvg = makeTrayBarsSvg({
@@ -590,7 +637,7 @@ describe("tray-bars-icon", () => {
       style: "provider",
       percentText: "100%",
       secondaryPercentText: "100%",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
       compact: true,
     })
     const narrowWidth = Number(singleLineSvg.match(/viewBox="0 0 (\d+)/)?.[1])
@@ -602,7 +649,7 @@ describe("tray-bars-icon", () => {
       sizePx,
       style: "provider",
       percentText: "55%",
-      providerIconUrl: "data:image/svg+xml;base64,GHI",
+      providerIconUrl: TEST_PROVIDER_ICON_URL,
       compact: true,
       slotWidth: fixedWidth,
     })
@@ -612,12 +659,12 @@ describe("tray-bars-icon", () => {
   it("multi tray layout width stays stable across text changes", () => {
     const sizePx = 36
     const providersLoading = [
-      { iconUrl: "data:image/svg+xml;base64,ABC" },
-      { iconUrl: "data:image/svg+xml;base64,DEF", sessionText: "9%" },
+      { iconUrl: TEST_PROVIDER_ICON_URL },
+      { iconUrl: TEST_PROVIDER_ICON_URL, sessionText: "9%" },
     ]
     const providersLoaded = [
-      { iconUrl: "data:image/svg+xml;base64,ABC", sessionText: "100%", weeklyText: "100%" },
-      { iconUrl: "data:image/svg+xml;base64,DEF", sessionText: "42%", weeklyText: "7%" },
+      { iconUrl: TEST_PROVIDER_ICON_URL, sessionText: "100%", weeklyText: "100%" },
+      { iconUrl: TEST_PROVIDER_ICON_URL, sessionText: "42%", weeklyText: "7%" },
     ]
 
     const loadingLayout = getMultiTraySvgLayout({
@@ -631,13 +678,13 @@ describe("tray-bars-icon", () => {
       compact: true,
     })
     const noTextToFullText = getMultiTraySvgLayout({
-      providers: [{ iconUrl: "data:image/svg+xml;base64,ABC" }],
+      providers: [{ iconUrl: TEST_PROVIDER_ICON_URL }],
       sizePx,
       compact: true,
     })
     const withFullText = getMultiTraySvgLayout({
       providers: [
-        { iconUrl: "data:image/svg+xml;base64,ABC", sessionText: "100%", weeklyText: "100%" },
+        { iconUrl: TEST_PROVIDER_ICON_URL, sessionText: "100%", weeklyText: "100%" },
       ],
       sizePx,
       compact: true,
@@ -684,12 +731,12 @@ describe("tray-bars-icon", () => {
       const img = await renderMultiTrayIcon({
         providers: [
           {
-            iconUrl: "data:image/svg+xml;base64,ABC",
+            iconUrl: TEST_PROVIDER_ICON_URL,
             sessionText: "70%",
             weeklyText: "36%",
           },
           {
-            iconUrl: "data:image/svg+xml;base64,DEF",
+            iconUrl: TEST_PROVIDER_ICON_URL,
             sessionText: "42%",
           },
         ],

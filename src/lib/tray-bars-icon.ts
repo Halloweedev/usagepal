@@ -442,10 +442,10 @@ export function makeTrayBarsSvg(args: {
     })
     const href = typeof providerIconUrl === "string" ? providerIconUrl.trim() : ""
 
-    if (href.length > 0) {
-      parts.push(
-        `<image x="${x}" y="${y}" width="${iconSize}" height="${iconSize}" href="${escapeXmlText(href)}" preserveAspectRatio="xMidYMid meet" />`
-      )
+    const providerIcon = href.length > 0 ? makeProviderIconSvg(href, x, y, iconSize) : null
+
+    if (providerIcon) {
+      parts.push(providerIcon)
     } else {
       const cx = x + iconSize / 2
       const cy = y + iconSize / 2
@@ -504,10 +504,10 @@ export function makeTrayBarsSvg(args: {
     })
     const href = typeof providerIconUrl === "string" ? providerIconUrl.trim() : ""
 
-    if (href.length > 0) {
-      parts.push(
-        `<image x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}" href="${escapeXmlText(href)}" preserveAspectRatio="xMidYMid meet" />`
-      )
+    const providerIcon = href.length > 0 ? makeProviderIconSvg(href, iconX, iconY, iconSize) : null
+
+    if (providerIcon) {
+      parts.push(providerIcon)
     } else {
       const fcx = iconX + iconSize / 2
       const fcy = iconY + iconSize / 2
@@ -574,6 +574,45 @@ export function makeTrayBarsSvg(args: {
 
   parts.push(`</svg>`)
   return parts.join("")
+}
+
+function decodeSvgDataUrl(url: string): string | null {
+  const match = url.match(/^data:image\/svg\+xml(?:;charset=[^;,]+)?(;base64)?,(.*)$/is)
+  if (!match) return null
+
+  try {
+    if (!match[1]) return decodeURIComponent(match[2]!)
+
+    const binary = atob(match[2]!)
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return null
+  }
+}
+
+function makeProviderIconSvg(url: string, x: number, y: number, size: number): string | null {
+  const source = decodeSvgDataUrl(url)
+  if (!source) return null
+
+  const document = new DOMParser().parseFromString(source, "image/svg+xml")
+  const root = document.documentElement
+  if (root.localName !== "svg" || document.querySelector("parsererror")) return null
+
+  const viewBox = root.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number)
+  if (viewBox?.length !== 4 || viewBox.some((value) => !Number.isFinite(value))) return null
+
+  // Plugin icons are required to be self-contained. Reject nested resources
+  // instead of reintroducing an asynchronous load during tray rasterization.
+  if (root.querySelector("script, style, image, foreignObject")) return null
+
+  root.setAttribute("data-provider-icon", "")
+  root.setAttribute("x", String(x))
+  root.setAttribute("y", String(y))
+  root.setAttribute("width", String(size))
+  root.setAttribute("height", String(size))
+  root.setAttribute("preserveAspectRatio", "xMidYMid meet")
+  return new XMLSerializer().serializeToString(root)
 }
 
 async function rasterizeSvgToRgba(svg: string, widthPx: number, heightPx: number): Promise<Uint8Array> {
