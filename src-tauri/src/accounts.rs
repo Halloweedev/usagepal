@@ -221,6 +221,78 @@ fn read_cursor_state_tokens() -> Option<(String, String)> {
     Some((access, refresh))
 }
 
+#[derive(serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLoginStarted {
+    pub staging_id: String,
+}
+
+fn extract_codex_account_id(auth_json_text: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(auth_json_text).ok()?;
+    value
+        .get("tokens")?
+        .get("account_id")?
+        .as_str()
+        .map(str::to_string)
+}
+
+fn codex_staging_dir(app_data_dir: &Path, staging_id: &str) -> PathBuf {
+    app_data_dir
+        .join("accounts")
+        .join("codex")
+        .join(".staging")
+        .join(staging_id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn begin_codex_login(
+    state: tauri::State<'_, std::sync::Mutex<crate::AppState>>,
+) -> Result<CodexLoginStarted, String> {
+    let app_data_dir = state.lock().map_err(|e| e.to_string())?.app_data_dir.clone();
+    let staging_id = uuid::Uuid::new_v4().to_string();
+    let dir = codex_staging_dir(&app_data_dir, &staging_id);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't create the profile dir: {e}"))?;
+
+    // Detached, interactive login into the managed CODEX_HOME (opens a browser).
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("codex")
+        .arg("login")
+        .env("CODEX_HOME", &dir)
+        .spawn()
+        .map_err(|_| {
+            "Couldn't launch `codex`. Is the Codex CLI installed and on PATH?".to_string()
+        })?;
+
+    Ok(CodexLoginStarted { staging_id })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn finish_codex_login(
+    state: tauri::State<'_, std::sync::Mutex<crate::AppState>>,
+    staging_id: String,
+) -> Result<AccountAdded, String> {
+    let app_data_dir = state.lock().map_err(|e| e.to_string())?.app_data_dir.clone();
+    let staging = codex_staging_dir(&app_data_dir, &staging_id);
+    let auth_path = staging.join("auth.json");
+    let text = std::fs::read_to_string(&auth_path)
+        .map_err(|_| "No Codex login found yet. Finish signing in, then try again.".to_string())?;
+    let account_id =
+        extract_codex_account_id(&text).ok_or("Codex auth.json had no account_id.")?;
+
+    let final_dir = codex_profile_dir(&app_data_dir, &account_id);
+    if final_dir.exists() {
+        std::fs::remove_dir_all(&final_dir).ok(); // re-adding the same account overwrites
+    }
+    if let Some(parent) = final_dir.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Couldn't create dir: {e}"))?;
+    }
+    std::fs::rename(&staging, &final_dir)
+        .map_err(|e| format!("Couldn't finalize the profile: {e}"))?;
+    Ok(AccountAdded { account_id })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,6 +382,18 @@ mod tests {
     fn decode_jwt_sub_rejects_malformed_token() {
         assert_eq!(decode_jwt_sub("not-a-jwt"), None);
         assert_eq!(decode_jwt_sub(""), None);
+    }
+
+    #[test]
+    fn extract_codex_account_id_reads_nested_field() {
+        let text = r#"{"tokens":{"access_token":"x","account_id":"acct_123","refresh_token":"r"}}"#;
+        assert_eq!(extract_codex_account_id(text), Some("acct_123".to_string()));
+    }
+
+    #[test]
+    fn extract_codex_account_id_none_when_absent() {
+        assert_eq!(extract_codex_account_id(r#"{"tokens":{}}"#), None);
+        assert_eq!(extract_codex_account_id("garbage"), None);
     }
 
     #[test]
