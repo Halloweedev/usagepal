@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.69-beta.6
+
+Multi-account cards now show each account's real local usage instead of $0 or another account's spend.
+
+### Bug Fixes
+- A registered account now shows its **real local spend** (Today / Yesterday / 30-day) when it's the one you're signed into in the CLI — Codex no longer reads an empty managed profile ($0), and Claude no longer shows the default login's spend for every account. Accounts you aren't signed into locally now show a clear "no local data" state instead of a misleading $0, since local usage logs can't be split per account by @Halloweedev
+
+---
+
 ## v0.7.69-beta.5
 
 Hardens the newly-added-account refresh so it can never disturb a multi-account provider's other cards.
