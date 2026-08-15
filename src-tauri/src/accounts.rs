@@ -137,6 +137,31 @@ pub fn load_account_registry(app_data_dir: &Path) -> AccountRegistry {
     AccountRegistry(registry)
 }
 
+#[derive(serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountAdded {
+    pub account_id: String,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn save_claude_account(label: String, setup_token: String) -> Result<AccountAdded, String> {
+    let token = setup_token.trim();
+    if token.is_empty() {
+        return Err("Setup token is empty.".to_string());
+    }
+    let _ = label; // label is persisted by the frontend in settings.json
+    let account_id = uuid::Uuid::new_v4().to_string();
+    let path = claude_secret_path(&account_id).ok_or("No home directory available.")?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("Couldn't create the accounts directory: {e}"))?;
+    }
+    write_private_file(&path, &serde_json::json!({ "setupToken": token }).to_string())
+        .map_err(|e| format!("Couldn't save the account: {e}"))?;
+    Ok(AccountAdded { account_id })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,6 +220,21 @@ mod tests {
         assert_eq!(
             specs[0].env_overrides.get("CODEX_HOME").map(String::as_str),
             Some(profile.to_string_lossy().as_ref())
+        );
+    }
+
+    #[test]
+    fn claude_secret_roundtrips_setup_token() {
+        let dir = tmp_dir("claude-secret");
+        let path = dir.join("acc.json");
+        write_private_file(
+            &path,
+            &serde_json::json!({ "setupToken": "sk-ant-oat01-XXX" }).to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            read_json_string_field(&path, "setupToken").as_deref(),
+            Some("sk-ant-oat01-XXX")
         );
     }
 

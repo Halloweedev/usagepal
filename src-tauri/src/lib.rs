@@ -895,7 +895,8 @@ pub fn run() {
             openrouter_key::clear_openrouter_key,
             opencode_go_key::opencode_go_key_status,
             opencode_go_key::save_opencode_go_key,
-            opencode_go_key::clear_opencode_go_key
+            opencode_go_key::clear_opencode_go_key,
+            accounts::save_claude_account
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,
@@ -1113,7 +1114,8 @@ fn export_bindings() {
             openrouter_key::clear_openrouter_key,
             opencode_go_key::opencode_go_key_status,
             opencode_go_key::save_opencode_go_key,
-            opencode_go_key::clear_opencode_go_key
+            opencode_go_key::clear_opencode_go_key,
+            accounts::save_claude_account
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,
