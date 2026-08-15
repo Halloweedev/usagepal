@@ -11,6 +11,8 @@ interface OverviewPageProps {
    * paginated cards. */
   groupedPlugins: GroupedProviderView[]
   onRetryPlugin?: (pluginId: string) => void
+  /** Persist the account a provider shows (card + tray follow it). */
+  onSelectAccount?: (providerId: string, accountId: string) => void
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   timeFormatMode?: TimeFormatMode
@@ -23,6 +25,7 @@ export function OverviewPage({
   plugins,
   groupedPlugins,
   onRetryPlugin,
+  onSelectAccount,
   displayMode,
   resetTimerDisplayMode,
   timeFormatMode = "auto",
@@ -54,6 +57,15 @@ export function OverviewPage({
               showSeparator={index < groupedPlugins.length - 1}
               skeletonLines={group.meta.lines}
               accounts={group.accounts}
+              activeIndex={group.activeIndex}
+              onActiveIndexChange={
+                onSelectAccount
+                  ? (i) => {
+                      const accountId = group.accounts[i]?.accountId
+                      if (accountId) onSelectAccount(group.meta.id, accountId)
+                    }
+                  : undefined
+              }
               onRetry={onRetryPlugin ? () => onRetryPlugin(group.meta.id) : undefined}
               scopeFilter="overview"
               displayMode={displayMode}

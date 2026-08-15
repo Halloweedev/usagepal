@@ -285,6 +285,42 @@ export function removeAccountMeta(
   return copy;
 }
 
+// The account shown for a provider across the card UI and the menubar tray:
+// providerId -> accountId. Persisted so the choice survives restart and stays
+// consistent between surfaces (the card opens to it, the tray follows it).
+export type SelectedAccounts = Record<string, string>;
+
+const SELECTED_ACCOUNTS_KEY = "selectedAccounts";
+
+export async function loadSelectedAccounts(): Promise<SelectedAccounts> {
+  const stored = await store.get<SelectedAccounts>(SELECTED_ACCOUNTS_KEY);
+  return stored && typeof stored === "object" ? stored : {};
+}
+
+export async function saveSelectedAccounts(selected: SelectedAccounts): Promise<void> {
+  await store.set(SELECTED_ACCOUNTS_KEY, selected);
+  await store.save();
+}
+
+/**
+ * The accountId a provider should display: the persisted selection when it
+ * still names a registered account, otherwise the primary (lowest-`order`)
+ * account, and `null` when the provider has no registered accounts (the
+ * implicit single-account path). Shared by the card UI and the tray so both
+ * surfaces resolve to the same account.
+ */
+export function resolveSelectedAccountId(
+  providerId: string,
+  accountsByProvider: AccountsByProvider,
+  selectedByProvider: SelectedAccounts
+): string | null {
+  const accounts = accountsByProvider[providerId];
+  if (!accounts || accounts.length === 0) return null;
+  const selected = selectedByProvider[providerId];
+  if (selected && accounts.some((a) => a.accountId === selected)) return selected;
+  return accounts.reduce((best, a) => (a.order < best.order ? a : best)).accountId;
+}
+
 /** Apply an onboarding provider selection: `keep` ids leave the disabled list,
  * `drop` ids join it. Pure — callers persist via savePluginSettings. */
 export function mergeProviderSelection(

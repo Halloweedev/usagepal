@@ -1,4 +1,5 @@
-import type { AccountMeta } from "@/lib/settings"
+import type { AccountMeta, SelectedAccounts } from "@/lib/settings"
+import { resolveSelectedAccountId } from "@/lib/settings"
 import type { PluginState } from "@/hooks/app/types"
 import type { PluginMeta } from "@/lib/plugin-types"
 import { stateKey } from "@/hooks/app/use-probe-state"
@@ -15,7 +16,13 @@ export type AccountSnapshot = {
   lastUpdatedAt: number | null
 }
 
-export type GroupedProviderView = { meta: PluginMeta; accounts: AccountSnapshot[] }
+export type GroupedProviderView = {
+  meta: PluginMeta
+  accounts: AccountSnapshot[]
+  /** Index into `accounts` of the persisted selection (primary as fallback);
+   * `0` for providers with no registered accounts. */
+  activeIndex: number
+}
 
 const EMPTY_STATE: PluginState = {
   data: null,
@@ -48,13 +55,14 @@ function snapshot(
 export function groupProviderViews(
   orderedEnabledMeta: PluginMeta[],
   pluginStates: Record<string, PluginState>,
-  accountsByProvider: Record<string, AccountMeta[]>
+  accountsByProvider: Record<string, AccountMeta[]>,
+  selectedByProvider: SelectedAccounts = {}
 ): GroupedProviderView[] {
   return orderedEnabledMeta.map((meta) => {
     const accountsMeta = accountsByProvider[meta.id]
     if (!accountsMeta || accountsMeta.length === 0) {
       const state = pluginStates[meta.id] ?? EMPTY_STATE
-      return { meta, accounts: [snapshot(null, null, state)] }
+      return { meta, accounts: [snapshot(null, null, state)], activeIndex: 0 }
     }
     const accounts = [...accountsMeta]
       .sort((a, b) => a.order - b.order)
@@ -62,6 +70,11 @@ export function groupProviderViews(
         const state = pluginStates[stateKey(meta.id, acct.accountId)] ?? EMPTY_STATE
         return snapshot(acct.accountId, acct.label, state)
       })
-    return { meta, accounts }
+    const selectedId = resolveSelectedAccountId(meta.id, accountsByProvider, selectedByProvider)
+    const activeIndex = Math.max(
+      0,
+      accounts.findIndex((acct) => acct.accountId === selectedId)
+    )
+    return { meta, accounts, activeIndex }
   })
 }

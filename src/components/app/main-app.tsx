@@ -125,7 +125,7 @@ export function MainApp() {
     void hydrateShareSettings()
   }, [hydrateShareSettings])
 
-  const { accountsByProvider } = useAccounts()
+  const { accountsByProvider, selectedByProvider, selectAccount } = useAccounts()
 
   const { scheduleTrayIconUpdate, traySettingsPreview } = useTrayIcon({
     pluginsMeta,
@@ -138,6 +138,7 @@ export function MainApp() {
     multiTrayDisplayMode,
     activeView,
     accountsByProvider,
+    selectedByProvider,
   })
 
   useEffect(() => {
@@ -246,6 +247,7 @@ export function MainApp() {
     pluginsMeta,
     pluginStates,
     accountsByProvider,
+    selectedByProvider,
   })
 
   const pluginSettingsRef = useRef(pluginSettings)
@@ -315,6 +317,7 @@ export function MainApp() {
         onRetryPlugin: handleRetryPlugin,
         onReorder: handleReorder,
         onToggle: handleToggle,
+        onSelectAccount: selectAccount,
         onAutoUpdateIntervalChange: handleAutoUpdateIntervalChange,
         onBetaUpdatesEnabledChange: handleBetaUpdatesEnabledChange,
         onThemeModeChange: handleThemeModeChange,

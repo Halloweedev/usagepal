@@ -8,6 +8,10 @@ interface ProviderDetailPageProps {
   /** Ordered account snapshots for the selected provider — drives the paginated
    * card. Falls back to `plugin`'s flat state when absent (single account). */
   accounts?: AccountSnapshot[]
+  /** Index into `accounts` of the persisted selection (primary as fallback). */
+  activeIndex?: number
+  /** Persist the account this provider shows (card + tray follow it). */
+  onSelectAccount?: (providerId: string, accountId: string) => void
   onRetry?: () => void
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
@@ -19,6 +23,8 @@ interface ProviderDetailPageProps {
 export function ProviderDetailPage({
   plugin,
   accounts,
+  activeIndex,
+  onSelectAccount,
   onRetry,
   displayMode,
   resetTimerDisplayMode,
@@ -41,6 +47,15 @@ export function ProviderDetailPage({
       showSeparator={false}
       skeletonLines={plugin.meta.lines}
       accounts={accounts}
+      activeIndex={activeIndex}
+      onActiveIndexChange={
+        onSelectAccount
+          ? (i) => {
+              const accountId = accounts?.[i]?.accountId
+              if (accountId) onSelectAccount(plugin.meta.id, accountId)
+            }
+          : undefined
+      }
       onRetry={onRetry}
       scopeFilter="all"
       displayMode={displayMode}

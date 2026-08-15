@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react"
 import type { ActiveView, NavPlugin } from "@/components/side-nav"
 import type { PluginMeta } from "@/lib/plugin-types"
-import type { PluginSettings } from "@/lib/settings"
+import type { PluginSettings, SelectedAccounts } from "@/lib/settings"
 import type { PluginState } from "@/hooks/app/types"
 import {
   type AccountMeta,
@@ -18,6 +18,7 @@ type UseAppPluginViewsArgs = {
   pluginsMeta: PluginMeta[]
   pluginStates: Record<string, PluginState>
   accountsByProvider: Record<string, AccountMeta[]>
+  selectedByProvider?: SelectedAccounts
 }
 
 export function useAppPluginViews({
@@ -27,6 +28,7 @@ export function useAppPluginViews({
   pluginsMeta,
   pluginStates,
   accountsByProvider,
+  selectedByProvider = {},
 }: UseAppPluginViewsArgs) {
   const orderedEnabledMeta = useMemo<PluginMeta[]>(() => {
     if (!pluginSettings) return []
@@ -39,8 +41,8 @@ export function useAppPluginViews({
   }, [pluginSettings, pluginsMeta])
 
   const groupedPlugins = useMemo<GroupedProviderView[]>(
-    () => groupProviderViews(orderedEnabledMeta, pluginStates, accountsByProvider),
-    [orderedEnabledMeta, pluginStates, accountsByProvider]
+    () => groupProviderViews(orderedEnabledMeta, pluginStates, accountsByProvider, selectedByProvider),
+    [orderedEnabledMeta, pluginStates, accountsByProvider, selectedByProvider]
   )
 
   const displayPlugins = useMemo<DisplayPluginState[]>(

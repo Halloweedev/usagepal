@@ -60,4 +60,37 @@ describe("groupProviderViews", () => {
     expect(views[0].accounts[0].label).toBe("Work")
     expect(views[0].accounts[0].data).toBeNull()
   })
+
+  describe("activeIndex", () => {
+    const accountsByProvider = {
+      claude: [
+        { accountId: "work", label: "Work", order: 0 },
+        { accountId: "home", label: "Home", order: 1 },
+      ],
+    }
+
+    it("defaults to the primary (order-0) account when nothing is selected", () => {
+      const views = groupProviderViews([meta("claude")], {}, accountsByProvider, {})
+      expect(views[0].activeIndex).toBe(0)
+    })
+
+    it("points at the persisted selection", () => {
+      const views = groupProviderViews([meta("claude")], {}, accountsByProvider, {
+        claude: "home",
+      })
+      expect(views[0].activeIndex).toBe(1)
+    })
+
+    it("falls back to primary when the selection no longer exists", () => {
+      const views = groupProviderViews([meta("claude")], {}, accountsByProvider, {
+        claude: "deleted",
+      })
+      expect(views[0].activeIndex).toBe(0)
+    })
+
+    it("is 0 for a single-account (unregistered) provider", () => {
+      const views = groupProviderViews([meta("codex")], { codex: state("Plus") }, {}, {})
+      expect(views[0].activeIndex).toBe(0)
+    })
+  })
 })
