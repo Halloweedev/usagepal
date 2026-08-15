@@ -81,9 +81,6 @@ pub struct AppState {
     pub plugins: Vec<Arc<plugin_engine::manifest::LoadedPlugin>>,
     pub app_data_dir: PathBuf,
     pub app_version: String,
-    /// Registered accounts per provider. Empty until the add-account flows
-    /// (a later plan) populate it — so single-account probing is unchanged.
-    pub accounts: plugin_engine::account::AccountRegistry,
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -305,13 +302,12 @@ async fn start_probe_batch(
         })
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    let (plugins, app_data_dir, app_version, accounts) = {
+    let (plugins, app_data_dir, app_version) = {
         let locked = state.lock().map_err(|e| e.to_string())?;
         (
             locked.plugins.clone(),
             locked.app_data_dir.clone(),
             locked.app_version.clone(),
-            locked.accounts.clone(),
         )
     };
 
@@ -353,7 +349,8 @@ async fn start_probe_batch(
         .map(|plugin| plugin.manifest.id.clone())
         .collect();
 
-    let probe_units = plugin_engine::account::expand_probe_units(&selected_plugins, &accounts);
+    let registry = accounts::load_account_registry(&app_data_dir);
+    let probe_units = plugin_engine::account::expand_probe_units(&selected_plugins, &registry);
 
     log::info!(
         "probe batch {} starting: {:?}",
@@ -551,7 +548,6 @@ fn start_auto_update_scheduler(
     app_data_dir: PathBuf,
     app_version: String,
     detected_ids: HashSet<String>,
-    accounts: plugin_engine::account::AccountRegistry,
 ) {
     let known_plugin_ids: Vec<String> = plugins.iter().map(|p| p.manifest.id.clone()).collect();
 
@@ -617,7 +613,10 @@ fn start_auto_update_scheduler(
                 batch_id,
                 selected.len()
             );
-            let probe_units = plugin_engine::account::expand_probe_units(&selected, &accounts);
+            // Load the account registry fresh each batch so add/remove is
+            // reflected on the next tick with no restart or cache-invalidation.
+            let registry = accounts::load_account_registry(&app_data_dir);
+            let probe_units = plugin_engine::account::expand_probe_units(&selected, &registry);
             run_probe_batch(
                 app_handle.clone(),
                 probe_units,
@@ -1008,7 +1007,6 @@ pub fn run() {
                 plugins: plugin_arcs,
                 app_data_dir: app_data_dir.clone(),
                 app_version: app.package_info().version.to_string(),
-                accounts: plugin_engine::account::AccountRegistry::default(),
             }));
 
             local_http_api::init(&app_data_dir, known_plugin_ids, detected_ids.clone());
@@ -1022,7 +1020,6 @@ pub fn run() {
                 app_data_dir.clone(),
                 version.clone(),
                 detected_ids,
-                plugin_engine::account::AccountRegistry::default(),
             );
 
             tray::create(app.handle())?;
@@ -1221,6 +1218,35 @@ mod tests {
             .find(|u| u.plugin.manifest.id == "codex")
             .unwrap();
         assert_eq!(codex_default.account.output_account_id(), None);
+    }
+
+    #[test]
+    fn load_registry_from_settings_feeds_expansion() {
+        use crate::plugin_engine::account::expand_probe_units;
+        let app_data = std::env::temp_dir().join(format!(
+            "usagepal-lib-accounts-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&app_data).unwrap();
+        // Codex profile with an auth.json so the account resolves.
+        let profile = crate::accounts::codex_profile_dir(&app_data, "c1");
+        std::fs::create_dir_all(&profile).unwrap();
+        std::fs::write(profile.join("auth.json"), r#"{"tokens":{"account_id":"c1"}}"#).unwrap();
+        std::fs::write(
+            app_data.join("settings.json"),
+            r#"{"accounts":{"codex":[{"accountId":"c1","label":"Home","order":0}]}}"#,
+        )
+        .unwrap();
+
+        let registry = crate::accounts::load_account_registry(&app_data);
+        let plugins = vec![test_loaded_plugin("codex")];
+        let units = expand_probe_units(&plugins, &registry);
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].account.account_id, "c1");
     }
 
     #[test]
