@@ -412,12 +412,10 @@ pub fn codex_daily_json(
     let pricing = load_pricing_map(&shared, log_level() != Some(0));
     let groups = adapter::codex::load_groups(&shared, cli::AgentReportKind::Daily)
         .map_err(|err| err.to_string())?;
-    let speed = adapter::codex::resolve_codex_speed(cli::CodexSpeed::Auto);
-
     Ok(adapter::codex::report_from_groups(
         &groups,
         cli::AgentReportKind::Daily,
         &pricing,
-        speed,
+        cli::CodexSpeed::Auto,
     ))
 }
