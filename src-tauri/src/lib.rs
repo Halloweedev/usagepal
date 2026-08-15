@@ -896,7 +896,8 @@ pub fn run() {
             opencode_go_key::opencode_go_key_status,
             opencode_go_key::save_opencode_go_key,
             opencode_go_key::clear_opencode_go_key,
-            accounts::save_claude_account
+            accounts::save_claude_account,
+            accounts::snapshot_cursor_account
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,
@@ -1115,7 +1116,8 @@ fn export_bindings() {
             opencode_go_key::opencode_go_key_status,
             opencode_go_key::save_opencode_go_key,
             opencode_go_key::clear_opencode_go_key,
-            accounts::save_claude_account
+            accounts::save_claude_account,
+            accounts::snapshot_cursor_account
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,

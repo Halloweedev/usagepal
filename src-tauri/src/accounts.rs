@@ -162,6 +162,65 @@ pub fn save_claude_account(label: String, setup_token: String) -> Result<Account
     Ok(AccountAdded { account_id })
 }
 
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+/// Extract the `sub` claim from a JWT's payload. No signature verification — this
+/// is only reading Cursor's own token to key the account by its stable subject.
+fn decode_jwt_sub(access_token: &str) -> Option<String> {
+    let payload_b64 = access_token.split('.').nth(1)?;
+    let bytes = URL_SAFE_NO_PAD.decode(payload_b64).ok()?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    value.get("sub")?.as_str().map(str::to_string)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn snapshot_cursor_account(label: String) -> Result<AccountAdded, String> {
+    let _ = label; // persisted by the frontend
+    let (access_token, refresh_token) = read_cursor_state_tokens()
+        .ok_or("Couldn't read the Cursor login. Sign in to the Cursor app first.")?;
+    let account_id = decode_jwt_sub(&access_token).ok_or("Cursor token was not a readable JWT.")?;
+    let path = cursor_secret_path(&account_id).ok_or("No home directory available.")?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("Couldn't create the accounts directory: {e}"))?;
+    }
+    let body = serde_json::json!({
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+    })
+    .to_string();
+    write_private_file(&path, &body).map_err(|e| format!("Couldn't save the account: {e}"))?;
+    Ok(AccountAdded { account_id })
+}
+
+/// Read Cursor's access/refresh tokens READ-ONLY from its state.vscdb via `sqlite3`.
+/// Mirrors the shell-out pattern host_api.rs uses for sqlite; never writes.
+fn read_cursor_state_tokens() -> Option<(String, String)> {
+    let db = dirs::home_dir()?
+        .join("Library/Application Support/Cursor/User/globalStorage/state.vscdb");
+    let read = |key: &str| -> Option<String> {
+        let out = std::process::Command::new("sqlite3")
+            .arg("-readonly")
+            .arg(&db)
+            .arg(format!("SELECT value FROM ItemTable WHERE key = '{key}' LIMIT 1;"))
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
+    };
+    let access = read("cursorAuth/accessToken")?;
+    let refresh = read("cursorAuth/refreshToken").unwrap_or_default();
+    Some((access, refresh))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,6 +295,21 @@ mod tests {
             read_json_string_field(&path, "setupToken").as_deref(),
             Some("sk-ant-oat01-XXX")
         );
+    }
+
+    #[test]
+    fn decode_jwt_sub_extracts_subject() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"HS256","typ":"JWT"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(br#"{"sub":"auth0|user_01ABC","exp":9999999999}"#);
+        let jwt = format!("{header}.{payload}.sig");
+        assert_eq!(decode_jwt_sub(&jwt), Some("auth0|user_01ABC".to_string()));
+    }
+
+    #[test]
+    fn decode_jwt_sub_rejects_malformed_token() {
+        assert_eq!(decode_jwt_sub("not-a-jwt"), None);
+        assert_eq!(decode_jwt_sub(""), None);
     }
 
     #[test]
