@@ -14,6 +14,11 @@
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
   const LOGIN_HINT = "Sign in via Cursor app or run `agent login`."
 
+  // UsagePal multi-account seam: when this env var points at a snapshot JSON
+  // file, the plugin probes that managed account read-only instead of Cursor's
+  // real state.vscdb / keychain. See docs/superpowers plan "multi-account-cursor-seam".
+  const MANAGED_AUTH_ENV = "USAGEPAL_CURSOR_AUTH_FILE"
+
   const MAX_MODE_UPLIFT = 1.2
 
   // Per-million USD token rates, synced from https://cursor.com/docs/models-and-pricing.md.
@@ -659,7 +664,44 @@
     }
   }
 
+  function readManagedAuth(ctx) {
+    if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null
+    if (!ctx.host.fs || typeof ctx.host.fs.readText !== "function") return null
+    let path = null
+    try {
+      path = ctx.host.env.get(MANAGED_AUTH_ENV)
+    } catch (e) {
+      ctx.host.log.warn(MANAGED_AUTH_ENV + " read failed: " + String(e))
+      return null
+    }
+    if (typeof path !== "string" || !path.trim()) return null
+    path = path.trim()
+    try {
+      const text = ctx.host.fs.readText(path)
+      const parsed = ctx.util.tryParseJson(text)
+      if (!parsed || typeof parsed.accessToken !== "string" || !parsed.accessToken) {
+        ctx.host.log.warn("managed cursor auth file missing accessToken: " + path)
+        return null
+      }
+      return {
+        accessToken: parsed.accessToken,
+        refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : null,
+        source: "managed",
+        managedPath: path,
+      }
+    } catch (e) {
+      ctx.host.log.warn("managed cursor auth read failed for " + path + ": " + String(e))
+      return null
+    }
+  }
+
   function loadAuthState(ctx) {
+    const managed = readManagedAuth(ctx)
+    if (managed) {
+      ctx.host.log.info("using managed cursor account snapshot")
+      return managed
+    }
+
     const sqliteAccessToken = readStateValue(ctx, "cursorAuth/accessToken")
     const sqliteRefreshToken = readStateValue(ctx, "cursorAuth/refreshToken")
     const sqliteMembershipTypeRaw = readStateValue(ctx, "cursorAuth/stripeMembershipType")
