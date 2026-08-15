@@ -278,12 +278,21 @@ export function deriveObservation(line: MetricLine, nowMs: number): MetricObserv
   return { bucket, remainingFraction, usedFraction, resetsAtMs: Number.isFinite(resetsAtMs) ? resetsAtMs : null }
 }
 
-/** Stable per-metric key so dedup state follows a metric across refreshes. */
-export const metricKey = (providerId: string, label: string): string => `${providerId}:${label}`
+/** Stable per-metric key so dedup state follows a metric across refreshes.
+ * Includes the account id (mirroring the probe `stateKey`) so two accounts of
+ * the same provider keep independent dedup state instead of colliding on
+ * `provider:label` and firing each other's milestones on every refresh. */
+export const metricKey = (
+  providerId: string,
+  accountId: string | null | undefined,
+  label: string
+): string => `${accountId ? `${providerId}::${accountId}` : providerId}:${label}`
 
 /** A provider's rendered metrics, as fed to `evaluate`. */
 export type ProviderMetrics = {
   providerId: string
+  /** Null/undefined for the implicit default account. */
+  accountId?: string | null
   displayName: string
   lines: MetricLine[]
 }
@@ -319,7 +328,7 @@ export function evaluate(
       const obs = deriveObservation(line, nowMs)
       if (!obs) continue
 
-      const key = metricKey(provider.providerId, line.label)
+      const key = metricKey(provider.providerId, provider.accountId, line.label)
       const previous = nextStates.get(key) ?? initialNotificationState()
       const { fire, newState } = transitions({ ...obs, isSession: line.label === "Session" }, previous, toggles)
       nextStates.set(key, newState)

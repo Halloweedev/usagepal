@@ -46,6 +46,7 @@ export function usePaceNotifications(pluginStates: Record<string, PluginState>) 
       .filter((data): data is NonNullable<typeof data> => data != null)
       .map((data) => ({
         providerId: data.providerId,
+        accountId: data.accountId,
         displayName: data.displayName,
         lines: data.lines,
       }))
