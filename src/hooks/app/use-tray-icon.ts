@@ -624,6 +624,14 @@ export function useTrayIcon({
     scheduleTrayIconUpdate("settings", 0)
   }, [activeView, scheduleTrayIconUpdate, trayReady])
 
+  // Repaint when the shown account changes (swipe → persisted selection) or an
+  // account is added/removed. Affects every style, including multi, since each
+  // provider's icon reads its selected account's state.
+  useEffect(() => {
+    if (!trayReady) return
+    scheduleTrayIconUpdate("settings", 0)
+  }, [accountsByProvider, selectedByProvider, scheduleTrayIconUpdate, trayReady])
+
   useEffect(() => {
     return () => {
       if (trayUpdateTimerRef.current !== null) {
