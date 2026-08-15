@@ -95,4 +95,35 @@ describe("cursor plugin — managed account seam", () => {
     expect(lastWrite.accessToken).toBe(refreshedToken)
     expect(lastWrite.refreshToken).toBe("managed-refresh")
   })
+
+  it("captures a rotated refresh token into the managed snapshot", async () => {
+    const ctx = makeCtx()
+    const expiredToken = makeJwt({ sub: "auth0|user123", exp: 1 })
+    const refreshedToken = makeJwt({ sub: "auth0|user123", exp: 4102444800 })
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "USAGEPAL_CURSOR_AUTH_FILE" ? MANAGED_PATH : null
+    )
+    ctx.host.fs.writeText(
+      MANAGED_PATH,
+      JSON.stringify({ accessToken: expiredToken, refreshToken: "old-refresh" })
+    )
+    ctx.host.fs.writeText.mockClear()
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("oauth/token")) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ access_token: refreshedToken, refresh_token: "rotated-refresh" }),
+        }
+      }
+      return { status: 200, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    try { plugin.probe(ctx) } catch (_e) {}
+
+    const managedWrites = ctx.host.fs.writeText.mock.calls.filter((c) => c[0] === MANAGED_PATH)
+    const lastWrite = JSON.parse(managedWrites[managedWrites.length - 1][1])
+    expect(lastWrite.refreshToken).toBe("rotated-refresh") // captured, not left stale
+  })
 })
