@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from "react"
-import { ArrowSquareOut, ArrowsClockwise, Fire, Hourglass, WarningCircle } from "@phosphor-icons/react"
+import { ArrowSquareOut, ArrowsClockwise, Fire, Hourglass, Plus, WarningCircle } from "@phosphor-icons/react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -67,6 +67,9 @@ interface ProviderCardProps {
   accounts?: AccountSnapshot[]
   activeIndex?: number
   onActiveIndexChange?: (index: number) => void
+  /** When set, a "＋" appears by the plan badge to add another account for this
+   * provider. Parents pass it only for account-capable providers. */
+  onAddAccount?: (providerId: string) => void
 }
 
 // "behind" (run out soon) renders a flame instead of a dot — see PaceIndicator.
@@ -154,6 +157,7 @@ export function ProviderCard({
   accounts,
   activeIndex: controlledIndex,
   onActiveIndexChange,
+  onAddAccount,
 }: ProviderCardProps) {
   // Active account is card-local state unless the parent controls it. When
   // `accounts` is provided, the active account's snapshot overrides the raw
@@ -273,36 +277,13 @@ export function ProviderCard({
 
   return (
     <div
-      onPointerDown={showDots ? swipe.onPointerDown : undefined}
-      onPointerUp={showDots ? swipe.onPointerUp : undefined}
-      onPointerCancel={showDots ? swipe.onPointerCancel : undefined}
+      {...(showDots ? swipe.handlers : {})}
+      className={showDots ? "overflow-hidden" : undefined}
+      style={showDots ? { touchAction: "pan-y" } : undefined}
     >
-      <div className={asCard ? "pb-1 pt-2" : "py-3"}>
+      <div className={asCard ? "pb-1 pt-2" : "py-3"} style={showDots ? swipe.contentStyle : undefined}>
         <div className="flex items-center justify-between mb-2">
           <div className="relative flex items-center">
-            {showDots && (
-              <div
-                className="mr-2 flex items-center gap-1"
-                role="tablist"
-                aria-label={`${name} accounts`}
-              >
-                {accounts!.map((acct, i) => (
-                  <button
-                    key={acct.accountId ?? i}
-                    type="button"
-                    role="tab"
-                    data-account-dot
-                    aria-selected={i === activeIdx}
-                    aria-label={acct.label ?? `Account ${i + 1}`}
-                    onClick={() => setActive(i)}
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full transition-colors",
-                      i === activeIdx ? "bg-foreground" : "bg-muted-foreground/40"
-                    )}
-                  />
-                ))}
-              </div>
-            )}
             {asCard && iconUrl && (
               <ProviderIconMask
                 iconUrl={iconUrl}
@@ -318,7 +299,7 @@ export function ProviderCard({
                 className="ml-1.5 text-sm text-muted-foreground truncate max-w-[40%]"
                 data-account-label
               >
-                · {activeAccount.label}
+                {activeAccount.label}
               </span>
             )}
             {onRetry && (
@@ -384,15 +365,50 @@ export function ProviderCard({
               )
             )}
           </div>
-          {plan && (
-            <Badge
-              variant="outline"
-              className="truncate min-w-0 max-w-[50%]"
-              title={plan}
-            >
-              {plan}
-            </Badge>
-          )}
+          <div className="flex items-center gap-2 min-w-0 max-w-[60%]">
+            {showDots && (
+              <div
+                className="flex items-center gap-1"
+                role="tablist"
+                aria-label={`${name} accounts`}
+              >
+                {accounts!.map((acct, i) => (
+                  <button
+                    key={acct.accountId ?? i}
+                    type="button"
+                    role="tab"
+                    data-account-dot
+                    aria-selected={i === activeIdx}
+                    aria-label={acct.label ?? `Account ${i + 1}`}
+                    onClick={() => setActive(i)}
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full transition-colors",
+                      i === activeIdx ? "bg-foreground" : "bg-muted-foreground/40"
+                    )}
+                  />
+                ))}
+              </div>
+            )}
+            {onAddAccount && pluginId && (
+              <button
+                type="button"
+                aria-label={`Add ${name} account`}
+                onClick={() => onAddAccount(pluginId)}
+                className="flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <Plus className="h-2.5 w-2.5" weight="bold" />
+              </button>
+            )}
+            {plan && (
+              <Badge
+                variant="outline"
+                className="truncate min-w-0"
+                title={plan}
+              >
+                {plan}
+              </Badge>
+            )}
+          </div>
         </div>
         <div data-testid="provider-card-body" className={asCard ? "rounded-xl border p-3" : undefined}>
         {visibleLinks.length > 0 && (

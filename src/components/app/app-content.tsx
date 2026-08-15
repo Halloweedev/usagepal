@@ -33,6 +33,7 @@ export type AppContentActionProps = {
   onReorder: (orderedIds: string[]) => void
   onToggle: (id: string) => void
   onSelectAccount: (providerId: string, accountId: string) => void
+  onAddAccount: (providerId: string) => void
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void
   onThemeModeChange: (mode: ThemeMode) => void
   onDisplayModeChange: (mode: DisplayMode) => void
@@ -62,6 +63,7 @@ export function AppContent({
   onReorder,
   onToggle,
   onSelectAccount,
+  onAddAccount,
   onAutoUpdateIntervalChange,
   onThemeModeChange,
   onDisplayModeChange,
@@ -126,6 +128,7 @@ export function AppContent({
         groupedPlugins={groupedPlugins}
         onRetryPlugin={onRetryPlugin}
         onSelectAccount={onSelectAccount}
+        onAddAccount={onAddAccount}
         displayMode={displayMode}
         resetTimerDisplayMode={resetTimerDisplayMode}
         timeFormatMode={timeFormatMode}
@@ -193,6 +196,7 @@ export function AppContent({
       accounts={selectedGroup?.accounts}
       activeIndex={selectedGroup?.activeIndex ?? 0}
       onSelectAccount={onSelectAccount}
+      onAddAccount={onAddAccount}
       onRetry={handleRetry}
       displayMode={displayMode}
       resetTimerDisplayMode={resetTimerDisplayMode}

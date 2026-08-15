@@ -31,7 +31,7 @@ import {
   AddCursorAccountDialog,
   type SavedAccount,
 } from "@/components/add-account-dialog";
-import { useAccounts } from "@/hooks/app/use-accounts";
+import { emitAccountsChanged, useAccounts } from "@/hooks/app/use-accounts";
 import { SettingsAdvancedSection } from "@/components/settings-advanced-section";
 import { SupporterSection } from "@/components/supporter-section";
 import { ProviderIconMask } from "@/components/provider-icon-mask";
@@ -327,6 +327,7 @@ function AccountsManagerDialog({
     );
     setAddOpen(false);
     await reload();
+    emitAccountsChanged();
     onChanged();
   };
 
@@ -337,6 +338,7 @@ function AccountsManagerDialog({
       const current = await loadAccounts();
       await saveAccounts(removeAccountMeta(current, providerId, accountId));
       await reload();
+      emitAccountsChanged();
       onChanged();
     } catch (e) {
       setError(String(e));

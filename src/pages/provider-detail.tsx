@@ -1,3 +1,4 @@
+import { ADD_ACCOUNT_PROVIDERS } from "@/components/add-account-dialog"
 import { ProviderCard } from "@/components/provider-card"
 import type { AccountSnapshot } from "@/hooks/app/group-provider-views"
 import type { PluginDisplayState } from "@/lib/plugin-types"
@@ -12,6 +13,8 @@ interface ProviderDetailPageProps {
   activeIndex?: number
   /** Persist the account this provider shows (card + tray follow it). */
   onSelectAccount?: (providerId: string, accountId: string) => void
+  /** Open the add-account flow for this provider (shown only for capable ones). */
+  onAddAccount?: (providerId: string) => void
   onRetry?: () => void
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
@@ -25,6 +28,7 @@ export function ProviderDetailPage({
   accounts,
   activeIndex,
   onSelectAccount,
+  onAddAccount,
   onRetry,
   displayMode,
   resetTimerDisplayMode,
@@ -43,6 +47,7 @@ export function ProviderDetailPage({
   return (
     <ProviderCard
       name={plugin.meta.name}
+      pluginId={plugin.meta.id}
       links={plugin.meta.links}
       showSeparator={false}
       skeletonLines={plugin.meta.lines}
@@ -54,6 +59,11 @@ export function ProviderDetailPage({
               const accountId = accounts?.[i]?.accountId
               if (accountId) onSelectAccount(plugin.meta.id, accountId)
             }
+          : undefined
+      }
+      onAddAccount={
+        onAddAccount && ADD_ACCOUNT_PROVIDERS.includes(plugin.meta.id)
+          ? onAddAccount
           : undefined
       }
       onRetry={onRetry}

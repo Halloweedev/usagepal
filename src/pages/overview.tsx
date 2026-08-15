@@ -1,3 +1,4 @@
+import { ADD_ACCOUNT_PROVIDERS } from "@/components/add-account-dialog"
 import { ModelsTodayStrip } from "@/components/models-today-strip"
 import { ProviderCard } from "@/components/provider-card"
 import type { GroupedProviderView } from "@/hooks/app/group-provider-views"
@@ -13,6 +14,8 @@ interface OverviewPageProps {
   onRetryPlugin?: (pluginId: string) => void
   /** Persist the account a provider shows (card + tray follow it). */
   onSelectAccount?: (providerId: string, accountId: string) => void
+  /** Open the add-account flow for a provider (shown only for capable ones). */
+  onAddAccount?: (providerId: string) => void
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   timeFormatMode?: TimeFormatMode
@@ -26,6 +29,7 @@ export function OverviewPage({
   groupedPlugins,
   onRetryPlugin,
   onSelectAccount,
+  onAddAccount,
   displayMode,
   resetTimerDisplayMode,
   timeFormatMode = "auto",
@@ -67,6 +71,11 @@ export function OverviewPage({
                   : undefined
               }
               onRetry={onRetryPlugin ? () => onRetryPlugin(group.meta.id) : undefined}
+              onAddAccount={
+                onAddAccount && ADD_ACCOUNT_PROVIDERS.includes(group.meta.id)
+                  ? onAddAccount
+                  : undefined
+              }
               scopeFilter="overview"
               displayMode={displayMode}
               resetTimerDisplayMode={resetTimerDisplayMode}

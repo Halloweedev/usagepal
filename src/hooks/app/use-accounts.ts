@@ -12,6 +12,16 @@ import {
 
 type CodexLoginComplete = { accountId: string; label: string }
 
+/** Same-window signal that registered accounts changed (added or removed). Any
+ * mounted `useAccounts` reloads on it, so the card view stays in sync with the
+ * settings dialog's separate instance. */
+export const ACCOUNTS_CHANGED_EVENT = "usagepal:accounts-changed"
+
+/** Broadcast that accounts changed. Call after persisting an add/remove. */
+export function emitAccountsChanged(): void {
+  window.dispatchEvent(new Event(ACCOUNTS_CHANGED_EVENT))
+}
+
 /**
  * Reactive source of registered account metadata, keyed by provider. Seeded from
  * the settings store on mount; `reload` re-reads after an add/remove mutation so
@@ -56,6 +66,16 @@ export function useAccounts(): {
 
   useEffect(() => {
     void reload()
+  }, [reload])
+
+  // The add/remove flows live in a separate component tree (the settings dialog)
+  // with its own `useAccounts` instance, so its `reload` doesn't refresh this
+  // one. A same-window broadcast keeps every instance — card view included — in
+  // sync when an account is added or removed (Codex has its own native event).
+  useEffect(() => {
+    const onChanged = () => void reload()
+    window.addEventListener(ACCOUNTS_CHANGED_EVENT, onChanged)
+    return () => window.removeEventListener(ACCOUNTS_CHANGED_EVENT, onChanged)
   }, [reload])
 
   // The Codex login finishes in the backend (it watches the staging dir and

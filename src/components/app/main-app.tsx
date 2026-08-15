@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useShallow } from "zustand/react/shallow"
+import { AddAccountDialogHost } from "@/components/add-account-dialog"
 import { AppShell } from "@/components/app/app-shell"
 import { useAccounts } from "@/hooks/app/use-accounts"
+import { useAutoProbeAccounts } from "@/hooks/app/use-auto-probe-accounts"
 import { useAppPluginViews } from "@/hooks/app/use-app-plugin-views"
 import { useProbe } from "@/hooks/app/use-probe"
 import { usePaceNotifications } from "@/hooks/app/use-pace-notifications"
@@ -126,6 +128,13 @@ export function MainApp() {
   }, [hydrateShareSettings])
 
   const { accountsByProvider, selectedByProvider, selectAccount } = useAccounts()
+
+  // Auto-refresh a newly added account so its card fills in without a manual
+  // refresh (the backend probes all of the provider's accounts, new one included).
+  useAutoProbeAccounts({ accountsByProvider, startBatch, setLoadingForPlugins })
+
+  // Which provider's add-account dialog is open (launched from a card's ＋).
+  const [addAccountProvider, setAddAccountProvider] = useState<string | null>(null)
 
   const { scheduleTrayIconUpdate, traySettingsPreview } = useTrayIcon({
     pluginsMeta,
@@ -300,6 +309,7 @@ export function MainApp() {
   )
 
   return (
+    <>
     <AppShell
       onRefreshAll={handleRefreshAll}
       navPlugins={navPlugins}
@@ -318,6 +328,7 @@ export function MainApp() {
         onReorder: handleReorder,
         onToggle: handleToggle,
         onSelectAccount: selectAccount,
+        onAddAccount: (providerId: string) => setAddAccountProvider(providerId),
         onAutoUpdateIntervalChange: handleAutoUpdateIntervalChange,
         onBetaUpdatesEnabledChange: handleBetaUpdatesEnabledChange,
         onThemeModeChange: handleThemeModeChange,
@@ -336,5 +347,12 @@ export function MainApp() {
         onStartOnLoginChange: handleStartOnLoginChange,
       }}
     />
+    {addAccountProvider && (
+      <AddAccountDialogHost
+        providerId={addAccountProvider}
+        onClose={() => setAddAccountProvider(null)}
+      />
+    )}
+    </>
   )
 }

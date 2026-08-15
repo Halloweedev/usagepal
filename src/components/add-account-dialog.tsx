@@ -3,6 +3,11 @@ import { invoke } from "@tauri-apps/api/core"
 import { listen, type UnlistenFn } from "@tauri-apps/api/event"
 import { Button } from "@/components/ui/button"
 import type { AccountAdded, CodexLoginStarted } from "@/bindings"
+import { emitAccountsChanged } from "@/hooks/app/use-accounts"
+import { loadAccounts, saveAccounts, upsertAccount } from "@/lib/settings"
+
+/** Providers that support multiple accounts (and therefore an add flow). */
+export const ADD_ACCOUNT_PROVIDERS = ["claude", "codex", "cursor"]
 
 /** Metadata handed back to the parent so it can persist label + id in settings.json. */
 export type SavedAccount = { accountId: string; label: string }
@@ -269,4 +274,37 @@ export function AddCursorAccountDialog({
       </div>
     </DialogShell>
   )
+}
+
+/**
+ * Renders the right add-account dialog for `providerId` and persists the account
+ * metadata on save, then broadcasts the change so every mounted `useAccounts`
+ * (card view included) reloads. Lets the add flow be launched straight from a
+ * provider card instead of only from deep inside Settings. Codex finalizes via
+ * its native `codex:login-complete` event, so its `onSaved` is a no-op here. */
+export function AddAccountDialogHost({
+  providerId,
+  onClose,
+}: {
+  providerId: string
+  onClose: () => void
+}) {
+  const handleSaved = async (savedProvider: string, account: SavedAccount) => {
+    const current = await loadAccounts()
+    await saveAccounts(
+      upsertAccount(current, savedProvider, {
+        accountId: account.accountId,
+        label: account.label,
+        order: current[savedProvider]?.length ?? 0,
+      })
+    )
+    emitAccountsChanged()
+    onClose()
+  }
+  const onSaved = (p: string, a: SavedAccount) => void handleSaved(p, a)
+
+  if (providerId === "claude") return <AddClaudeAccountDialog onClose={onClose} onSaved={onSaved} />
+  if (providerId === "codex") return <AddCodexAccountDialog onClose={onClose} onSaved={onSaved} />
+  if (providerId === "cursor") return <AddCursorAccountDialog onClose={onClose} onSaved={onSaved} />
+  return null
 }
