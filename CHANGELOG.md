@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.69-beta.5
+
+Hardens the newly-added-account refresh so it can never disturb a multi-account provider's other cards.
+
+### Changes
+- The refresh that fills in a newly added account now triggers on the add itself and touches only that one account, rather than inferring adds from state changes — removing the startup edge case behind the Codex "0 for everything" glitch and making the behaviour robust by design by @Halloweedev
+
+---
+
 ## v0.7.69-beta.4
 
 Fixes multi-account providers (Codex) showing 0 for every stat after the beta.3 update.
