@@ -4,7 +4,23 @@ import type { PluginSettings } from "@/lib/settings"
 import {
   buildTraySettingsPreview,
   getMultiTrayProviderIds,
+  resolveTrayStateKey,
 } from "@/hooks/app/use-tray-icon"
+
+describe("resolveTrayStateKey", () => {
+  it("returns providerId when the provider has no registered accounts", () => {
+    expect(resolveTrayStateKey("codex", {})).toBe("codex")
+  })
+  it("returns the first (order-0) account's composite key", () => {
+    const accountsByProvider = {
+      claude: [
+        { accountId: "home", label: "Home", order: 1 },
+        { accountId: "work", label: "Work", order: 0 },
+      ],
+    }
+    expect(resolveTrayStateKey("claude", accountsByProvider)).toBe("claude::work")
+  })
+})
 
 const pluginsMeta: PluginMeta[] = [
   {
@@ -146,6 +162,47 @@ describe("buildTraySettingsPreview", () => {
       sessionFraction: 0.42,
       weeklyFraction: 0.18,
     })
+  })
+
+  it("reads the primary account's composite-key state when accounts are registered", () => {
+    const preview = buildTraySettingsPreview({
+      pluginsMeta,
+      pluginSettings: { order: ["claude"], disabled: [] },
+      pluginStates: {
+        // Decoy under the bare providerId — must be ignored once accounts exist.
+        claude: {
+          data: {
+            providerId: "claude",
+            lines: [{ type: "progress", label: "Session", used: 10, limit: 100 }],
+          },
+          loading: false,
+          error: null,
+        },
+        "claude::work": {
+          data: {
+            providerId: "claude",
+            lines: [{ type: "progress", label: "Session", used: 70, limit: 100 }],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+      displayMode: "used",
+      menubarMetric: "default",
+      activeView: "claude",
+      lastTrayProviderId: null,
+      accountsByProvider: {
+        claude: [
+          { accountId: "home", label: "Home", order: 1 },
+          { accountId: "work", label: "Work", order: 0 },
+        ],
+      },
+    })
+
+    expect(preview.providerBars[0]?.fraction).toBe(0.7)
+    expect(preview.providerPercentText).toBe("70%")
+    expect(preview.bars[0]?.fraction).toBe(0.7)
+    expect(preview.multiProviders[0]).toMatchObject({ id: "claude", sessionText: "70%" })
   })
 
   it("uses Total usage for Cursor provider and bars preview", () => {

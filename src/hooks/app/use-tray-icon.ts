@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
 import type { PluginMeta } from "@/lib/plugin-types"
-import type { DisplayMode, MenubarIconStyle, MenubarMetric, MultiTrayDisplayMode, PluginSettings } from "@/lib/settings"
+import type { AccountsByProvider, DisplayMode, MenubarIconStyle, MenubarMetric, MultiTrayDisplayMode, PluginSettings } from "@/lib/settings"
 import { getEnabledPluginIds } from "@/lib/settings"
 import {
   getTrayIconSizePx,
@@ -10,7 +10,7 @@ import {
   renderMultiTrayIcon,
   renderTrayBarsIcon,
 } from "@/lib/tray-bars-icon"
-import { getTrayPrimaryBars, getTrayMultiProviderMetrics, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
+import { getTrayPrimaryBars, getTrayMultiProviderMetrics, resolveTrayStateKey, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
 import {
   formatTrayPercentIfPresent,
   formatTrayPercentText,
@@ -34,6 +34,7 @@ type UseTrayIconArgs = {
   multiTrayProviderCount: number
   multiTrayDisplayMode: MultiTrayDisplayMode
   activeView: string
+  accountsByProvider: AccountsByProvider
 }
 
 export type TrayMultiProviderPreview = {
@@ -144,6 +145,7 @@ function buildTraySettingsPreview(args: {
   menubarMetric: MenubarMetric
   activeView: string
   lastTrayProviderId: string | null
+  accountsByProvider?: AccountsByProvider
 }): TraySettingsPreview {
   const {
     pluginsMeta,
@@ -153,6 +155,7 @@ function buildTraySettingsPreview(args: {
     menubarMetric,
     activeView,
     lastTrayProviderId,
+    accountsByProvider = {},
   } = args
 
   const enabledPluginIds = getEnabledPluginIds(pluginSettings)
@@ -170,6 +173,7 @@ function buildTraySettingsPreview(args: {
     maxBars: 4,
     displayMode,
     preferWeekly,
+    accountsByProvider,
   })
 
   const providerBars = trayProviderId
@@ -181,6 +185,7 @@ function buildTraySettingsPreview(args: {
         displayMode,
         pluginId: trayProviderId,
         preferWeekly,
+        accountsByProvider,
       })
     : []
 
@@ -199,6 +204,7 @@ function buildTraySettingsPreview(args: {
       pluginSettings,
       pluginStates,
       displayMode,
+      accountsByProvider,
     })
 
     return {
@@ -221,7 +227,7 @@ function buildTraySettingsPreview(args: {
   }
 }
 
-export { buildTraySettingsPreview, getMultiTrayProviderIds }
+export { buildTraySettingsPreview, getMultiTrayProviderIds, resolveTrayStateKey }
 
 export function useTrayIcon({
   pluginsMeta,
@@ -233,6 +239,7 @@ export function useTrayIcon({
   multiTrayProviderCount,
   multiTrayDisplayMode,
   activeView,
+  accountsByProvider,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
   const trayGaugeIconPathRef = useRef<string | null>(null)
@@ -254,6 +261,7 @@ export function useTrayIcon({
   const multiTrayProviderCountRef = useRef(multiTrayProviderCount)
   const multiTrayDisplayModeRef = useRef(multiTrayDisplayMode)
   const activeViewRef = useRef(activeView)
+  const accountsByProviderRef = useRef(accountsByProvider)
   const lastTrayProviderIdRef = useRef<string | null>(null)
 
   // Single sync effect replaces 7 individual useRef+useEffect pairs.
@@ -269,6 +277,7 @@ export function useTrayIcon({
     multiTrayProviderCountRef.current = multiTrayProviderCount
     multiTrayDisplayModeRef.current = multiTrayDisplayMode
     activeViewRef.current = activeView
+    accountsByProviderRef.current = accountsByProvider
   })
 
   const scheduleTrayIconUpdate = useCallback((
@@ -382,6 +391,7 @@ export function useTrayIcon({
         menubarMetric: menubarMetricRef.current,
         activeView: activeViewRef.current,
         lastTrayProviderId: lastTrayProviderIdRef.current,
+        accountsByProvider: accountsByProviderRef.current,
       })
       setTraySettingsPreview((prev) =>
         isSameTraySettingsPreview(prev, nextPreview) ? prev : nextPreview
@@ -405,6 +415,7 @@ export function useTrayIcon({
               pluginSettings: currentSettings,
               pluginStates: pluginStatesRef.current,
               displayMode: displayModeRef.current,
+              accountsByProvider: accountsByProviderRef.current,
             })
 
             return { id: pluginId, sessionFraction, weeklyFraction }

@@ -125,6 +125,8 @@ export function MainApp() {
     void hydrateShareSettings()
   }, [hydrateShareSettings])
 
+  const { accountsByProvider } = useAccounts()
+
   const { scheduleTrayIconUpdate, traySettingsPreview } = useTrayIcon({
     pluginsMeta,
     pluginSettings,
@@ -135,6 +137,7 @@ export function MainApp() {
     multiTrayProviderCount,
     multiTrayDisplayMode,
     activeView,
+    accountsByProvider,
   })
 
   useEffect(() => {
@@ -235,8 +238,6 @@ export function MainApp() {
     pluginSettings,
     pluginsMeta,
   })
-
-  const { accountsByProvider } = useAccounts()
 
   const { displayPlugins, groupedPlugins, navPlugins, selectedPlugin } = useAppPluginViews({
     activeView,
