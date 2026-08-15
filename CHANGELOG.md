@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.7.69-beta.1
+
+Beta preview: multi-account support for Claude, Codex, and Cursor, with swipeable per-provider account cards and a menubar that follows the account you pick — bundled with the latest provider fixes for testing.
+
+### New Features
+- Multi-account support for Claude, Codex, and Cursor — register several accounts per provider and track each one's usage. Providers now render as swipeable cards (one dot per account) on the overview and detail views; the account you swipe to is remembered per provider and is the one shown in the menubar tray ([#37](https://github.com/Halloweedev/usagepal/pull/37), [#39](https://github.com/Halloweedev/usagepal/pull/39), [#41](https://github.com/Halloweedev/usagepal/pull/41)) by @Halloweedev
+
+### Bug Fixes
+- OpenRouter now reports the correct usage window, Z.ai surfaces its CREDIT_LIMIT, and GitHub Copilot counts organization-seat credits ([#36](https://github.com/Halloweedev/usagepal/pull/36)) by @Halloweedev
+- Codex fast-tier spend is priced per turn instead of read from config.toml, so the model breakdown matches actual usage ([#38](https://github.com/Halloweedev/usagepal/pull/38)) by @Halloweedev
+
+### Changes
+- Cursor adds Grok 4.6 pricing ([#36](https://github.com/Halloweedev/usagepal/pull/36)) by @Halloweedev
+- Cursor gains a read-only per-account seam so a snapshotted account can be probed without touching Cursor's real login or keychain ([#40](https://github.com/Halloweedev/usagepal/pull/40)) by @Halloweedev
+
+---
+
 ## v0.7.68
 
 OpenCode Go usage now comes straight from OpenCode's official account API, and menubar icons no longer flash empty.
