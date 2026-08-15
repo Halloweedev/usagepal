@@ -1,10 +1,15 @@
 import { ModelsTodayStrip } from "@/components/models-today-strip"
 import { ProviderCard } from "@/components/provider-card"
+import type { GroupedProviderView } from "@/hooks/app/group-provider-views"
 import type { PluginDisplayState } from "@/lib/plugin-types"
 import type { DisplayMode, ResetTimerDisplayMode, TimeFormatMode } from "@/lib/settings"
 
 interface OverviewPageProps {
+  /** Flat, first-account-per-provider state — drives the spend strip only. */
   plugins: PluginDisplayState[]
+  /** One entry per provider carrying its ordered account snapshots — drives the
+   * paginated cards. */
+  groupedPlugins: GroupedProviderView[]
   onRetryPlugin?: (pluginId: string) => void
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
@@ -16,6 +21,7 @@ interface OverviewPageProps {
 
 export function OverviewPage({
   plugins,
+  groupedPlugins,
   onRetryPlugin,
   displayMode,
   resetTimerDisplayMode,
@@ -26,7 +32,7 @@ export function OverviewPage({
 }: OverviewPageProps) {
   return (
     <div className="pb-3">
-      {plugins.length === 0 ? (
+      {groupedPlugins.length === 0 ? (
         <div className="text-center text-muted-foreground py-8">
           No providers enabled
         </div>
@@ -38,22 +44,17 @@ export function OverviewPage({
               <ModelsTodayStrip plugins={plugins} />
             </section>
           )}
-          {plugins.map((plugin, index) => (
+          {groupedPlugins.map((group, index) => (
             <ProviderCard
-              key={plugin.meta.id}
-              name={plugin.meta.name}
-              plan={plugin.data?.plan ?? undefined}
+              key={group.meta.id}
+              name={group.meta.name}
               asCard
-              iconUrl={plugin.meta.iconUrl}
-              pluginId={plugin.meta.id}
-              showSeparator={index < plugins.length - 1}
-              loading={plugin.loading}
-              error={plugin.error}
-              lines={plugin.data?.lines ?? []}
-              skeletonLines={plugin.meta.lines}
-              lastManualRefreshAt={plugin.lastManualRefreshAt}
-              lastUpdatedAt={plugin.lastUpdatedAt}
-              onRetry={onRetryPlugin ? () => onRetryPlugin(plugin.meta.id) : undefined}
+              iconUrl={group.meta.iconUrl}
+              pluginId={group.meta.id}
+              showSeparator={index < groupedPlugins.length - 1}
+              skeletonLines={group.meta.lines}
+              accounts={group.accounts}
+              onRetry={onRetryPlugin ? () => onRetryPlugin(group.meta.id) : undefined}
               scopeFilter="overview"
               displayMode={displayMode}
               resetTimerDisplayMode={resetTimerDisplayMode}

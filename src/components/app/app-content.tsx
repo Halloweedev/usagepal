@@ -4,6 +4,7 @@ import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
 import { SharePage } from "@/pages/share"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
+import type { GroupedProviderView } from "@/hooks/app/group-provider-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
@@ -22,6 +23,7 @@ import type {
 
 type AppContentDerivedProps = {
   displayPlugins: DisplayPluginState[]
+  groupedPlugins: GroupedProviderView[]
   settingsPlugins: SettingsPluginState[]
   selectedPlugin: DisplayPluginState | null
 }
@@ -52,6 +54,7 @@ export type AppContentProps = AppContentDerivedProps & AppContentActionProps
 
 export function AppContent({
   displayPlugins,
+  groupedPlugins,
   settingsPlugins,
   selectedPlugin,
   onRetryPlugin,
@@ -118,6 +121,7 @@ export function AppContent({
     return (
       <OverviewPage
         plugins={displayPlugins}
+        groupedPlugins={groupedPlugins}
         onRetryPlugin={onRetryPlugin}
         displayMode={displayMode}
         resetTimerDisplayMode={resetTimerDisplayMode}
@@ -176,9 +180,14 @@ export function AppContent({
     ? () => onRetryPlugin(selectedPlugin.meta.id)
     : /* v8 ignore next */ undefined
 
+  const selectedGroup = selectedPlugin
+    ? groupedPlugins.find((group) => group.meta.id === selectedPlugin.meta.id)
+    : undefined
+
   return (
     <ProviderDetailPage
       plugin={selectedPlugin}
+      accounts={selectedGroup?.accounts}
       onRetry={handleRetry}
       displayMode={displayMode}
       resetTimerDisplayMode={resetTimerDisplayMode}

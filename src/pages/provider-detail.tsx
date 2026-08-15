@@ -1,9 +1,13 @@
 import { ProviderCard } from "@/components/provider-card"
+import type { AccountSnapshot } from "@/hooks/app/group-provider-views"
 import type { PluginDisplayState } from "@/lib/plugin-types"
 import type { DisplayMode, ResetTimerDisplayMode, TimeFormatMode } from "@/lib/settings"
 
 interface ProviderDetailPageProps {
   plugin: PluginDisplayState | null
+  /** Ordered account snapshots for the selected provider — drives the paginated
+   * card. Falls back to `plugin`'s flat state when absent (single account). */
+  accounts?: AccountSnapshot[]
   onRetry?: () => void
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
@@ -14,6 +18,7 @@ interface ProviderDetailPageProps {
 
 export function ProviderDetailPage({
   plugin,
+  accounts,
   onRetry,
   displayMode,
   resetTimerDisplayMode,
@@ -32,15 +37,10 @@ export function ProviderDetailPage({
   return (
     <ProviderCard
       name={plugin.meta.name}
-      plan={plugin.data?.plan ?? undefined}
       links={plugin.meta.links}
       showSeparator={false}
-      loading={plugin.loading}
-      error={plugin.error}
-      lines={plugin.data?.lines ?? []}
       skeletonLines={plugin.meta.lines}
-      lastManualRefreshAt={plugin.lastManualRefreshAt}
-      lastUpdatedAt={plugin.lastUpdatedAt}
+      accounts={accounts}
       onRetry={onRetry}
       scopeFilter="all"
       displayMode={displayMode}

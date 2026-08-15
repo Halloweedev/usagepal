@@ -238,7 +238,7 @@ export function MainApp() {
 
   const { accountsByProvider } = useAccounts()
 
-  const { displayPlugins, navPlugins, selectedPlugin } = useAppPluginViews({
+  const { displayPlugins, groupedPlugins, navPlugins, selectedPlugin } = useAppPluginViews({
     activeView,
     setActiveView,
     pluginSettings,
@@ -301,6 +301,7 @@ export function MainApp() {
       onRefreshAll={handleRefreshAll}
       navPlugins={navPlugins}
       displayPlugins={displayPlugins}
+      groupedPlugins={groupedPlugins}
       settingsPlugins={settingsPlugins}
       autoUpdateNextAt={autoUpdateNextAt}
       betaUpdatesEnabled={betaUpdatesEnabled}

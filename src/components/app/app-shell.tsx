@@ -3,6 +3,7 @@ import { AppContent, type AppContentActionProps } from "@/components/app/app-con
 import { PanelFooter } from "@/components/panel-footer"
 import { SideNav, type NavPlugin, type PluginContextAction } from "@/components/side-nav"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
+import type { GroupedProviderView } from "@/hooks/app/group-provider-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import { useAppVersion } from "@/hooks/app/use-app-version"
 import { usePanel } from "@/hooks/app/use-panel"
@@ -15,6 +16,7 @@ type AppShellProps = {
   onRefreshAll: () => void
   navPlugins: NavPlugin[]
   displayPlugins: DisplayPluginState[]
+  groupedPlugins: GroupedProviderView[]
   settingsPlugins: SettingsPluginState[]
   autoUpdateNextAt: number | null
   betaUpdatesEnabled: boolean
@@ -30,6 +32,7 @@ export function AppShell({
   onRefreshAll,
   navPlugins,
   displayPlugins,
+  groupedPlugins,
   settingsPlugins,
   autoUpdateNextAt,
   betaUpdatesEnabled,
@@ -95,6 +98,7 @@ export function AppShell({
               <AppContent
                 {...appContentProps}
                 displayPlugins={displayPlugins}
+                groupedPlugins={groupedPlugins}
                 settingsPlugins={settingsPlugins}
                 selectedPlugin={selectedPlugin}
               />
