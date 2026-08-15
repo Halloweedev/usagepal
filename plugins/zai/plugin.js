@@ -5,6 +5,9 @@
   const PERIOD_MS = 5 * 60 * 60 * 1000
   const WEEK_MS = 7 * 24 * 60 * 60 * 1000
   const MONTH_MS = 30 * 24 * 60 * 60 * 1000
+  // Z.ai renamed the percentage quota type from TOKENS_LIMIT to CREDIT_LIMIT.
+  // Accept both so new and legacy payloads keep producing Session/Weekly lines.
+  const CREDIT_LIMIT_TYPES = ["CREDIT_LIMIT", "TOKENS_LIMIT"]
 
   function loadApiKey(ctx) {
     const zai = ctx.host.env.get("ZAI_API_KEY")
@@ -79,10 +82,11 @@
   }
 
   function findLimit(limits, type, unit) {
+    const types = Array.isArray(type) ? type : [type]
     let fallback = null
     for (let i = 0; i < limits.length; i++) {
       const item = limits[i]
-      if (item.type === type || item.name === type) {
+      if (types.indexOf(item.type) !== -1 || types.indexOf(item.name) !== -1) {
         if (unit === undefined) {
           return item
         }
@@ -117,7 +121,7 @@
       return { plan, lines }
     }
 
-    const tokenLimit = findLimit(limits, "TOKENS_LIMIT", 3)
+    const tokenLimit = findLimit(limits, CREDIT_LIMIT_TYPES, 3)
 
     if (!tokenLimit) {
       lines.push(ctx.line.badge({ label: "Session", text: "No usage data", color: "#a3a3a3" }))
@@ -139,7 +143,7 @@
     }
     lines.push(ctx.line.progress(progressOpts))
 
-    const weeklyTokenLimit = findLimit(limits, "TOKENS_LIMIT", 6)
+    const weeklyTokenLimit = findLimit(limits, CREDIT_LIMIT_TYPES, 6)
     if (weeklyTokenLimit) {
       const weeklyUsed = Number.isFinite(weeklyTokenLimit.percentage) ? weeklyTokenLimit.percentage : 0
       const weeklyResetsAt = weeklyTokenLimit.nextResetTime ? ctx.util.toIso(weeklyTokenLimit.nextResetTime) : undefined

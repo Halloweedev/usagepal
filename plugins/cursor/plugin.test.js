@@ -1849,10 +1849,36 @@ describe("cursor pricing", () => {
       plugin.__test.resolveModelRates("auto-cost")
     )
     // CSV often prefixes Cursor first-party models and appends reasoning effort.
-    expect(plugin.__test.resolveModelRates("cursor-grok-4.5-high-fast").output).toBe(18.0)
+    expect(plugin.__test.resolveModelRates("cursor-grok-4.5-high-fast").output).toBe(12.0)
     expect(plugin.__test.resolveModelRates("cursor-grok-4.5-high").output).toBe(6.0)
-    expect(plugin.__test.resolveModelRates("grok-4.5-high-fast").output).toBe(18.0)
+    expect(plugin.__test.resolveModelRates("grok-4.5-high-fast").output).toBe(12.0)
     expect(plugin.__test.resolveModelRates("grok-4.5-high").output).toBe(6.0)
+  })
+
+  it("resolves Grok 4.6 tiers and reasoning/fast suffixes", async () => {
+    const plugin = await loadPlugin()
+    // Base and fast tiers, with Cursor's `cursor-` prefix and reasoning suffix.
+    expect(plugin.__test.resolveModelRates("cursor-grok-4.6-high").input).toBe(2.0)
+    expect(plugin.__test.resolveModelRates("cursor-grok-4.6-high-fast").input).toBe(4.0)
+    // Dashed slug variant resolves to the same 4.6 row as the dotted one.
+    expect(plugin.__test.resolveModelRates("grok-4-6")).toEqual(
+      plugin.__test.resolveModelRates("grok-4.6")
+    )
+    expect(plugin.__test.resolveModelRates("grok-4-6").input).toBe(2.0)
+    // Full 4.6 base rates.
+    expect(plugin.__test.resolveModelRates("grok-4.6")).toEqual({
+      input: 2.0, cache_write: null, cache_read: 0.5, output: 6.0, apply_max_mode_uplift: true,
+    })
+    // Full 4.6 fast rates.
+    expect(plugin.__test.resolveModelRates("grok-4.6-fast")).toEqual({
+      input: 4.0, cache_write: null, cache_read: 1.0, output: 12.0, apply_max_mode_uplift: true,
+    })
+  })
+
+  it("prices grok-4.5-fast output at 12.0", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.resolveModelRates("grok-4.5-fast").output).toBe(12.0)
+    expect(plugin.__test.resolveModelRates("grok-4.5-high-fast").output).toBe(12.0)
   })
 
   it("returns null for an unknown slug", async () => {
