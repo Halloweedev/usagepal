@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.69-beta.2
+
+Fixes adding a Codex account when UsagePal is launched from Finder.
+
+### Bug Fixes
+- Adding a Codex account now works from a normal Finder/Dock launch — UsagePal resolves your login-shell PATH so the `codex` CLI is found, and finalizes the sign-in automatically instead of relying on a confirm button that disappeared when the browser took focus ([#41](https://github.com/Halloweedev/usagepal/pull/41)) by @Halloweedev
+
+---
+
 ## v0.7.69-beta.1
 
 Beta preview: multi-account support for Claude, Codex, and Cursor, with swipeable per-provider account cards and a menubar that follows the account you pick — bundled with the latest provider fixes for testing.
