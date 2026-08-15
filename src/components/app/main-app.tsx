@@ -131,7 +131,7 @@ export function MainApp() {
 
   // Auto-refresh a newly added account so its card fills in without a manual
   // refresh (the backend probes all of the provider's accounts, new one included).
-  useAutoProbeAccounts({ accountsByProvider, startBatch, setLoadingForPlugins })
+  useAutoProbeAccounts({ accountsByProvider, pluginStates, startBatch, setLoadingForPlugins })
 
   // Which provider's add-account dialog is open (launched from a card's ＋).
   const [addAccountProvider, setAddAccountProvider] = useState<string | null>(null)
