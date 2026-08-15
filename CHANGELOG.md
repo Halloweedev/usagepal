@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.69-beta.4
+
+Fixes multi-account providers (Codex) showing 0 for every stat after the beta.3 update.
+
+### Bug Fixes
+- A provider with multiple accounts (e.g. Codex) no longer shows 0 for all usage on launch — restored accounts are no longer mistaken for freshly added ones and needlessly re-probed, which was blanking their usage until a manual refresh by @Halloweedev
+
+---
+
 ## v0.7.69-beta.3
 
 Polishes the multi-account cards from beta feedback: added accounts load right away, swiping is smoother, you can add an account from the card itself, and switching accounts no longer spams "usage reset" alerts.
