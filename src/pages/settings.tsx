@@ -327,7 +327,7 @@ function AccountsManagerDialog({
     );
     setAddOpen(false);
     await reload();
-    emitAccountsChanged();
+    emitAccountsChanged({ added: true, providerId: savedProvider, accountId: account.accountId });
     onChanged();
   };
 

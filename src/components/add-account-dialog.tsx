@@ -298,7 +298,7 @@ export function AddAccountDialogHost({
         order: current[savedProvider]?.length ?? 0,
       })
     )
-    emitAccountsChanged()
+    emitAccountsChanged({ added: true, providerId: savedProvider, accountId: account.accountId })
     onClose()
   }
   const onSaved = (p: string, a: SavedAccount) => void handleSaved(p, a)

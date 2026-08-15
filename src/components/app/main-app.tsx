@@ -3,7 +3,7 @@ import { useShallow } from "zustand/react/shallow"
 import { AddAccountDialogHost } from "@/components/add-account-dialog"
 import { AppShell } from "@/components/app/app-shell"
 import { useAccounts } from "@/hooks/app/use-accounts"
-import { useAutoProbeAccounts } from "@/hooks/app/use-auto-probe-accounts"
+import { useProbeOnAccountAdded } from "@/hooks/app/use-probe-on-account-added"
 import { useAppPluginViews } from "@/hooks/app/use-app-plugin-views"
 import { useProbe } from "@/hooks/app/use-probe"
 import { usePaceNotifications } from "@/hooks/app/use-pace-notifications"
@@ -129,9 +129,10 @@ export function MainApp() {
 
   const { accountsByProvider, selectedByProvider, selectAccount } = useAccounts()
 
-  // Auto-refresh a newly added account so its card fills in without a manual
-  // refresh (the backend probes all of the provider's accounts, new one included).
-  useAutoProbeAccounts({ accountsByProvider, pluginStates, startBatch, setLoadingForPlugins })
+  // Refresh a newly added account so its card fills in without a manual refresh.
+  // Driven by the explicit add events, so it never runs at startup or touches
+  // accounts other than the one just added.
+  useProbeOnAccountAdded({ startBatch, setLoadingForPlugins, setErrorForPlugins })
 
   // Which provider's add-account dialog is open (launched from a card's ＋).
   const [addAccountProvider, setAddAccountProvider] = useState<string | null>(null)

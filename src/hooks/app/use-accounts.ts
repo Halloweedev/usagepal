@@ -14,12 +14,21 @@ type CodexLoginComplete = { accountId: string; label: string }
 
 /** Same-window signal that registered accounts changed (added or removed). Any
  * mounted `useAccounts` reloads on it, so the card view stays in sync with the
- * settings dialog's separate instance. */
+ * settings dialog's separate instance. On an add it also carries the provider +
+ * account id so a listener can probe exactly that new account. */
 export const ACCOUNTS_CHANGED_EVENT = "usagepal:accounts-changed"
 
-/** Broadcast that accounts changed. Call after persisting an add/remove. */
-export function emitAccountsChanged(): void {
-  window.dispatchEvent(new Event(ACCOUNTS_CHANGED_EVENT))
+export type AccountsChangedDetail = {
+  /** True when an account was added (vs removed) — the only case worth probing. */
+  added: boolean
+  providerId: string
+  accountId: string
+}
+
+/** Broadcast that accounts changed. Pass the add detail so a listener can probe
+ * the new account; omit it for a plain reload (e.g. after a removal). */
+export function emitAccountsChanged(detail?: AccountsChangedDetail): void {
+  window.dispatchEvent(new CustomEvent(ACCOUNTS_CHANGED_EVENT, { detail }))
 }
 
 /**
