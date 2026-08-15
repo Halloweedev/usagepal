@@ -27,10 +27,21 @@ const CACHE_WRITE_RETRY_MAX_DELAY: Duration = Duration::from_secs(30);
 #[serde(rename_all = "camelCase")]
 pub struct CachedPluginSnapshot {
     pub provider_id: String,
+    #[serde(default)]
+    pub account_id: Option<String>,
     pub display_name: String,
     pub plan: Option<String>,
     pub lines: Vec<MetricLine>,
     pub fetched_at: String,
+}
+
+/// Cache key: `provider_id` alone for the default account (backward-compatible),
+/// `provider_id::account_id` for a registered account.
+fn cache_key(provider_id: &str, account_id: Option<&str>) -> String {
+    match account_id {
+        Some(id) if !id.is_empty() => format!("{provider_id}::{id}"),
+        _ => provider_id.to_string(),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -256,14 +267,16 @@ pub fn cache_successful_output(output: &PluginOutput) {
 
     let snapshot = CachedPluginSnapshot {
         provider_id: output.provider_id.clone(),
+        account_id: output.account_id.clone(),
         display_name: output.display_name.clone(),
         plan: output.plan.clone(),
         lines: output.lines.clone(),
         fetched_at,
     };
 
+    let key = cache_key(&output.provider_id, output.account_id.as_deref());
     let mut state = cache_state().lock().expect("cache state poisoned");
-    state.snapshots.insert(output.provider_id.clone(), snapshot);
+    state.snapshots.insert(key, snapshot);
     state.dirty_generation = state.dirty_generation.wrapping_add(1);
     schedule_cache_flush_locked(&mut state);
 }
@@ -407,9 +420,29 @@ mod tests {
     use serial_test::serial;
     use std::time::Instant;
 
+    #[test]
+    fn cache_key_uses_provider_id_alone_for_default_account() {
+        assert_eq!(cache_key("claude", None), "claude");
+        assert_eq!(cache_key("claude", Some("")), "claude");
+    }
+
+    #[test]
+    fn cache_key_is_composite_for_named_account() {
+        assert_eq!(cache_key("claude", Some("work")), "claude::work");
+    }
+
+    #[test]
+    fn snapshot_deserializes_without_account_id_field() {
+        // Existing on-disk cache files predate account_id.
+        let json = r#"{"providerId":"claude","displayName":"Claude","plan":"Max","lines":[],"fetchedAt":"2026-01-01T00:00:00Z"}"#;
+        let snap: CachedPluginSnapshot = serde_json::from_str(json).unwrap();
+        assert_eq!(snap.account_id, None);
+    }
+
     fn make_snapshot(id: &str, name: &str) -> CachedPluginSnapshot {
         CachedPluginSnapshot {
             provider_id: id.to_string(),
+            account_id: None,
             display_name: name.to_string(),
             plan: Some("Pro".to_string()),
             lines: vec![],
@@ -651,6 +684,7 @@ mod tests {
     fn snapshot_with_progress_line_round_trips() {
         let snap = CachedPluginSnapshot {
             provider_id: "claude".to_string(),
+            account_id: None,
             display_name: "Claude".to_string(),
             plan: Some("Max 20x".to_string()),
             lines: vec![crate::plugin_engine::runtime::MetricLine::Progress {
