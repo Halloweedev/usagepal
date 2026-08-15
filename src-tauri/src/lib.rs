@@ -1,3 +1,4 @@
+mod accounts;
 mod beta_updater;
 mod clinepass_key;
 mod config;
