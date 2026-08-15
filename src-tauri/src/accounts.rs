@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use tauri::Emitter;
 
 /// Account metadata as persisted by the frontend under settings.json "accounts".
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -244,10 +245,50 @@ fn codex_staging_dir(app_data_dir: &Path, staging_id: &str) -> PathBuf {
         .join(staging_id)
 }
 
+/// Event payload emitted when a Codex login finishes on its own (the watcher
+/// below), so the UI completes without a button the tray panel would hide.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexLoginComplete {
+    account_id: String,
+    label: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexLoginFailed {
+    message: String,
+}
+
+/// Move a completed staging login into its final per-account profile dir and
+/// return the resolved account id. Shared by the auto-watcher and the manual
+/// `finish_codex_login` fallback.
+fn finalize_codex_login(app_data_dir: &Path, staging_id: &str) -> Result<String, String> {
+    let staging = codex_staging_dir(app_data_dir, staging_id);
+    let auth_path = staging.join("auth.json");
+    let text = std::fs::read_to_string(&auth_path)
+        .map_err(|_| "No Codex login found yet. Finish signing in, then try again.".to_string())?;
+    let account_id =
+        extract_codex_account_id(&text).ok_or("Codex auth.json had no account_id.")?;
+
+    let final_dir = codex_profile_dir(app_data_dir, &account_id);
+    if final_dir.exists() {
+        std::fs::remove_dir_all(&final_dir).ok(); // re-adding the same account overwrites
+    }
+    if let Some(parent) = final_dir.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Couldn't create dir: {e}"))?;
+    }
+    std::fs::rename(&staging, &final_dir)
+        .map_err(|e| format!("Couldn't finalize the profile: {e}"))?;
+    Ok(account_id)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn begin_codex_login(
+    app: tauri::AppHandle,
     state: tauri::State<'_, std::sync::Mutex<crate::AppState>>,
+    label: String,
 ) -> Result<CodexLoginStarted, String> {
     let app_data_dir = state.lock().map_err(|e| e.to_string())?.app_data_dir.clone();
     let staging_id = uuid::Uuid::new_v4().to_string();
@@ -255,14 +296,65 @@ pub fn begin_codex_login(
     std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't create the profile dir: {e}"))?;
 
     // Detached, interactive login into the managed CODEX_HOME (opens a browser).
+    // A Finder/Dock launch inherits a minimal PATH (no Homebrew/npm), so resolve
+    // the user's real login-shell PATH the way the usage plugins do — otherwise
+    // `codex` isn't found even when it's installed.
     #[cfg(target_os = "macos")]
-    std::process::Command::new("codex")
-        .arg("login")
-        .env("CODEX_HOME", &dir)
-        .spawn()
-        .map_err(|_| {
-            "Couldn't launch `codex`. Is the Codex CLI installed and on PATH?".to_string()
+    {
+        let mut cmd = std::process::Command::new("codex");
+        cmd.arg("login").env("CODEX_HOME", &dir);
+        if let Some(path) = crate::plugin_engine::host_api::read_env_from_interactive_shells("PATH")
+        {
+            cmd.env("PATH", path);
+        }
+        cmd.spawn().map_err(|_| {
+            "Couldn't launch `codex`. Is the Codex CLI installed? (npm i -g @openai/codex)"
+                .to_string()
         })?;
+    }
+
+    // Watch the staging dir and finalize on our own, so completion never depends
+    // on the tray panel staying open (it hides the moment the browser takes
+    // focus). Emits `codex:login-complete` / `codex:login-failed` for the UI.
+    let watch_dir = app_data_dir.clone();
+    let watch_staging = staging_id.clone();
+    std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let auth = codex_staging_dir(&watch_dir, &watch_staging).join("auth.json");
+            // Only act once auth.json exists AND carries an account_id — codex may
+            // create the file a moment before it finishes writing the tokens.
+            if auth.exists()
+                && std::fs::read_to_string(&auth)
+                    .ok()
+                    .and_then(|t| extract_codex_account_id(&t))
+                    .is_some()
+            {
+                match finalize_codex_login(&watch_dir, &watch_staging) {
+                    Ok(account_id) => {
+                        let _ = app.emit(
+                            "codex:login-complete",
+                            CodexLoginComplete { account_id, label },
+                        );
+                    }
+                    Err(message) => {
+                        let _ = app.emit("codex:login-failed", CodexLoginFailed { message });
+                    }
+                }
+                return;
+            }
+            if std::time::Instant::now() >= deadline {
+                let _ = app.emit(
+                    "codex:login-failed",
+                    CodexLoginFailed {
+                        message: "Timed out waiting for the Codex sign-in to finish.".to_string(),
+                    },
+                );
+                return;
+            }
+        }
+    });
 
     Ok(CodexLoginStarted { staging_id })
 }
@@ -274,22 +366,7 @@ pub fn finish_codex_login(
     staging_id: String,
 ) -> Result<AccountAdded, String> {
     let app_data_dir = state.lock().map_err(|e| e.to_string())?.app_data_dir.clone();
-    let staging = codex_staging_dir(&app_data_dir, &staging_id);
-    let auth_path = staging.join("auth.json");
-    let text = std::fs::read_to_string(&auth_path)
-        .map_err(|_| "No Codex login found yet. Finish signing in, then try again.".to_string())?;
-    let account_id =
-        extract_codex_account_id(&text).ok_or("Codex auth.json had no account_id.")?;
-
-    let final_dir = codex_profile_dir(&app_data_dir, &account_id);
-    if final_dir.exists() {
-        std::fs::remove_dir_all(&final_dir).ok(); // re-adding the same account overwrites
-    }
-    if let Some(parent) = final_dir.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("Couldn't create dir: {e}"))?;
-    }
-    std::fs::rename(&staging, &final_dir)
-        .map_err(|e| format!("Couldn't finalize the profile: {e}"))?;
+    let account_id = finalize_codex_login(&app_data_dir, &staging_id)?;
     Ok(AccountAdded { account_id })
 }
 
@@ -434,6 +511,33 @@ mod tests {
     fn extract_codex_account_id_none_when_absent() {
         assert_eq!(extract_codex_account_id(r#"{"tokens":{}}"#), None);
         assert_eq!(extract_codex_account_id("garbage"), None);
+    }
+
+    #[test]
+    fn finalize_codex_login_moves_staging_into_profile_dir() {
+        let app_data = tmp_dir("finalize");
+        let staging_id = "stg-1";
+        let staging = codex_staging_dir(&app_data, staging_id);
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(
+            staging.join("auth.json"),
+            r#"{"tokens":{"account_id":"acct_final"}}"#,
+        )
+        .unwrap();
+
+        let account_id = finalize_codex_login(&app_data, staging_id).unwrap();
+        assert_eq!(account_id, "acct_final");
+
+        // Staging is consumed; the profile dir now holds the auth.json.
+        assert!(!staging.exists());
+        let profile = codex_profile_dir(&app_data, "acct_final");
+        assert!(profile.join("auth.json").exists());
+    }
+
+    #[test]
+    fn finalize_codex_login_errors_when_login_not_finished() {
+        let app_data = tmp_dir("finalize-missing");
+        assert!(finalize_codex_login(&app_data, "never-started").is_err());
     }
 
     #[test]
