@@ -99,6 +99,7 @@ export type BetaUpdateProgress = { event: "Started"; data: {
 
 export type CachedPluginSnapshot = {
 	providerId: string,
+	accountId?: string | null,
 	displayName: string,
 	plan: string | null,
 	lines: MetricLine[],
@@ -169,6 +170,7 @@ export type PluginMeta = {
 
 export type PluginOutput = {
 	providerId: string,
+	accountId?: string | null,
 	displayName: string,
 	plan: string | null,
 	lines: MetricLine[],
