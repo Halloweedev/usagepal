@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { ProviderCard } from "@/components/provider-card"
+import type { AccountSnapshot } from "@/hooks/app/group-provider-views"
 import { groupLinesByType } from "@/lib/group-lines-by-type"
 import { formatResetTooltipText } from "@/lib/reset-tooltip"
 import { REFRESH_COOLDOWN_MS } from "@/lib/settings"
@@ -1385,5 +1386,85 @@ describe("groupLinesByType", () => {
     expect(groups[1].lines).toHaveLength(2)
     expect(groups[2].kind).toBe("other")
     expect(groups[2].lines).toHaveLength(1)
+  })
+})
+
+describe("ProviderCard multi-account", () => {
+  function accountSnap(label: string, plan: string): AccountSnapshot {
+    return {
+      accountId: label.toLowerCase(),
+      label,
+      data: {
+        providerId: "claude",
+        accountId: label.toLowerCase(),
+        displayName: "Claude",
+        plan,
+        lines: [],
+        iconUrl: "",
+      },
+      loading: false,
+      error: null,
+      lastManualRefreshAt: null,
+      lastUpdatedAt: 1,
+    }
+  }
+
+  it("renders a dot per account and the active account's label + plan", () => {
+    render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        asCard
+        accounts={[accountSnap("Work", "Max"), accountSnap("Home", "Pro")]}
+      />
+    )
+    expect(screen.getAllByRole("tab")).toHaveLength(2)
+    expect(screen.getByText(/Work/)).toBeInTheDocument()
+    expect(screen.getByText("Max")).toBeInTheDocument()
+  })
+
+  it("clicking a dot switches the visible account", async () => {
+    render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        asCard
+        accounts={[accountSnap("Work", "Max"), accountSnap("Home", "Pro")]}
+      />
+    )
+    await userEvent.click(screen.getAllByRole("tab")[1])
+    expect(screen.getByText(/Home/)).toBeInTheDocument()
+    expect(screen.getByText("Pro")).toBeInTheDocument()
+  })
+
+  it("single account renders no dots and no label separator", () => {
+    render(
+      <ProviderCard
+        name="Codex"
+        displayMode="used"
+        asCard
+        accounts={[
+          {
+            accountId: null,
+            label: null,
+            data: {
+              providerId: "codex",
+              accountId: null,
+              displayName: "Codex",
+              plan: "Plus",
+              lines: [],
+              iconUrl: "",
+            },
+            loading: false,
+            error: null,
+            lastManualRefreshAt: null,
+            lastUpdatedAt: 1,
+          },
+        ]}
+      />
+    )
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument()
+    expect(screen.queryByText(/·/)).not.toBeInTheDocument()
+    expect(screen.getByText("Plus")).toBeInTheDocument()
   })
 })

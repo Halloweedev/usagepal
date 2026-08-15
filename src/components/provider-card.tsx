@@ -1,4 +1,4 @@
-import { Fragment, useMemo } from "react"
+import { Fragment, useMemo, useState } from "react"
 import { ArrowSquareOut, ArrowsClockwise, Fire, Hourglass, WarningCircle } from "@phosphor-icons/react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +10,8 @@ import { SkeletonLines } from "@/components/skeleton-lines"
 import { UsageSparkline } from "@/components/usage-sparkline"
 import { PluginError } from "@/components/plugin-error"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
+import { useHorizontalSwipe } from "@/components/provider-card-swipe"
+import type { AccountSnapshot } from "@/hooks/app/group-provider-views"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { useDarkMode } from "@/hooks/use-dark-mode"
 import { getAdaptiveBarColor } from "@/lib/color"
@@ -58,6 +60,13 @@ interface ProviderCardProps {
   timeFormatMode?: TimeFormatMode
   onResetTimerDisplayModeToggle?: () => void
   onUsageValueToggle?: () => void
+  /** When provided, the card pages across these per-account snapshots: a dot per
+   * account, plus a "· label" suffix on the header. The active account's
+   * plan/lines/loading/error drive the body. >1 entry shows dots + swipe;
+   * 0 or 1 entry renders exactly as a single-account card. */
+  accounts?: AccountSnapshot[]
+  activeIndex?: number
+  onActiveIndexChange?: (index: number) => void
 }
 
 // "behind" (run out soon) renders a flame instead of a dot — see PaceIndicator.
@@ -123,18 +132,18 @@ function formatRelativeTime(diffMs: number): string {
 
 export function ProviderCard({
   name,
-  plan,
+  plan: propPlan,
   links = [],
   showSeparator = true,
   asCard = false,
   iconUrl,
   pluginId,
-  loading = false,
-  error = null,
-  lines = [],
+  loading: propLoading = false,
+  error: propError = null,
+  lines: propLines = [],
   skeletonLines = [],
-  lastManualRefreshAt,
-  lastUpdatedAt,
+  lastManualRefreshAt: propLastManualRefreshAt,
+  lastUpdatedAt: propLastUpdatedAt,
   onRetry,
   scopeFilter = "all",
   displayMode,
@@ -142,7 +151,35 @@ export function ProviderCard({
   timeFormatMode = "auto",
   onResetTimerDisplayModeToggle,
   onUsageValueToggle,
+  accounts,
+  activeIndex: controlledIndex,
+  onActiveIndexChange,
 }: ProviderCardProps) {
+  // Active account is card-local state unless the parent controls it. When
+  // `accounts` is provided, the active account's snapshot overrides the raw
+  // plan/lines/loading/error props so the render body below is unchanged.
+  const [localIndex, setLocalIndex] = useState(0)
+  const accountCount = accounts?.length ?? 0
+  const rawIndex = controlledIndex ?? localIndex
+  const activeIdx = accountCount > 0 ? Math.min(Math.max(rawIndex, 0), accountCount - 1) : 0
+  const activeAccount = accounts && accountCount > 0 ? accounts[activeIdx] : null
+
+  const setActive = (i: number) => {
+    if (onActiveIndexChange) onActiveIndexChange(i)
+    else setLocalIndex(i)
+  }
+
+  // Effective values: active account wins when accounts provided, else raw props.
+  const plan = activeAccount ? (activeAccount.data?.plan ?? undefined) : propPlan
+  const lines = activeAccount ? (activeAccount.data?.lines ?? []) : propLines
+  const loading = activeAccount ? activeAccount.loading : propLoading
+  const error = activeAccount ? activeAccount.error : propError
+  const lastUpdatedAt = activeAccount ? activeAccount.lastUpdatedAt : propLastUpdatedAt
+  const lastManualRefreshAt = activeAccount ? activeAccount.lastManualRefreshAt : propLastManualRefreshAt
+
+  const swipe = useHorizontalSwipe({ index: activeIdx, count: accountCount, onChange: setActive })
+  const showDots = accountCount > 1
+
   const isDark = useDarkMode()
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
@@ -235,10 +272,37 @@ export function ProviderCard({
   }
 
   return (
-    <div>
+    <div
+      onPointerDown={showDots ? swipe.onPointerDown : undefined}
+      onPointerUp={showDots ? swipe.onPointerUp : undefined}
+      onPointerCancel={showDots ? swipe.onPointerCancel : undefined}
+    >
       <div className={asCard ? "pb-1 pt-2" : "py-3"}>
         <div className="flex items-center justify-between mb-2">
           <div className="relative flex items-center">
+            {showDots && (
+              <div
+                className="mr-2 flex items-center gap-1"
+                role="tablist"
+                aria-label={`${name} accounts`}
+              >
+                {accounts!.map((acct, i) => (
+                  <button
+                    key={acct.accountId ?? i}
+                    type="button"
+                    role="tab"
+                    data-account-dot
+                    aria-selected={i === activeIdx}
+                    aria-label={acct.label ?? `Account ${i + 1}`}
+                    onClick={() => setActive(i)}
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full transition-colors",
+                      i === activeIdx ? "bg-foreground" : "bg-muted-foreground/40"
+                    )}
+                  />
+                ))}
+              </div>
+            )}
             {asCard && iconUrl && (
               <ProviderIconMask
                 iconUrl={iconUrl}
@@ -249,6 +313,14 @@ export function ProviderCard({
               />
             )}
             <h2 className="text-lg font-semibold" style={{ transform: "translateZ(0)" }}>{name}</h2>
+            {showDots && activeAccount?.label && (
+              <span
+                className="ml-1.5 text-sm text-muted-foreground truncate max-w-[40%]"
+                data-account-label
+              >
+                · {activeAccount.label}
+              </span>
+            )}
             {onRetry && (
               loading ? (
                 <Button
