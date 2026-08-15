@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { listen, type UnlistenFn } from "@tauri-apps/api/event"
 import {
   type AccountsByProvider,
   type SelectedAccounts,
   loadAccounts,
   loadSelectedAccounts,
+  saveAccounts,
   saveSelectedAccounts,
+  upsertAccount,
 } from "@/lib/settings"
+
+type CodexLoginComplete = { accountId: string; label: string }
 
 /**
  * Reactive source of registered account metadata, keyed by provider. Seeded from
@@ -51,6 +56,35 @@ export function useAccounts(): {
 
   useEffect(() => {
     void reload()
+  }, [reload])
+
+  // The Codex login finishes in the backend (it watches the staging dir and
+  // emits this once `codex login` writes auth.json), so completion doesn't
+  // depend on the add-account dialog — the tray panel hides the moment the
+  // browser takes focus. Persist the metadata here, in an always-mounted hook,
+  // then reload. Idempotent (upsert by accountId) if several instances run.
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined
+    void listen<CodexLoginComplete>("codex:login-complete", async (event) => {
+      try {
+        const current = await loadAccounts()
+        await saveAccounts(
+          upsertAccount(current, "codex", {
+            accountId: event.payload.accountId,
+            label: event.payload.label.trim() || "Codex",
+            order: current.codex?.length ?? 0,
+          })
+        )
+      } catch (error) {
+        console.error("Failed to persist Codex account:", error)
+      }
+      await reload()
+    }).then((fn) => {
+      unlisten = fn
+    })
+    return () => {
+      unlisten?.()
+    }
   }, [reload])
 
   return { accountsByProvider, selectedByProvider, selectAccount, reload }

@@ -381,7 +381,7 @@ fn read_env_from_interactive_shell(program: &str, name: &str) -> Option<String> 
     parse_interactive_shell_env_output(&output, START_MARKER, END_MARKER)
 }
 
-fn read_env_from_interactive_shells(name: &str) -> Option<String> {
+pub(crate) fn read_env_from_interactive_shells(name: &str) -> Option<String> {
     let mut programs: Vec<String> = Vec::new();
 
     if let Some(shell) = shell_from_env() {

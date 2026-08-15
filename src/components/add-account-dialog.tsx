@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
+import { listen, type UnlistenFn } from "@tauri-apps/api/event"
 import { Button } from "@/components/ui/button"
 import type { AccountAdded, CodexLoginStarted } from "@/bindings"
 
@@ -147,16 +148,22 @@ export function AddClaudeAccountDialog({
   )
 }
 
-/** Add a Codex account via a managed `codex login` into a UsagePal-owned profile. */
+/** Add a Codex account via a managed `codex login` into a UsagePal-owned profile.
+ *
+ * The account is finalized in the backend (it watches the staging dir and emits
+ * `codex:login-complete` once `codex login` writes auth.json), and persisted by
+ * the always-mounted `useAccounts` listener — so the flow completes even though
+ * the tray panel hides the instant the browser takes focus. This dialog only
+ * kicks it off and reflects progress; `onSaved` is intentionally unused here. */
 export function AddCodexAccountDialog({
   onClose,
-  onSaved,
+  onSaved: _onSaved,
 }: {
   onClose: () => void
   onSaved: (providerId: string, account: SavedAccount) => void
 }) {
   const [label, setLabel] = useState("")
-  const [stagingId, setStagingId] = useState<string | null>(null)
+  const [waiting, setWaiting] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -165,8 +172,8 @@ export function AddCodexAccountDialog({
     setBusy(true)
     setError(null)
     try {
-      const started = await invoke<CodexLoginStarted>("begin_codex_login")
-      setStagingId(started.stagingId)
+      await invoke<CodexLoginStarted>("begin_codex_login", { label: label.trim() })
+      setWaiting(true)
     } catch (e) {
       setError(String(e))
     } finally {
@@ -174,35 +181,43 @@ export function AddCodexAccountDialog({
     }
   }
 
-  const handleFinish = async () => {
-    if (busy || !stagingId) return
-    setBusy(true)
-    setError(null)
-    try {
-      const result = await invoke<AccountAdded>("finish_codex_login", { stagingId })
-      onSaved("codex", { accountId: result.accountId, label: label.trim() })
-    } catch (e) {
-      setError(String(e))
-      setBusy(false)
+  // Once a login is in flight, close on success and surface a timeout/error.
+  useEffect(() => {
+    if (!waiting) return
+    let unlistenDone: UnlistenFn | undefined
+    let unlistenFail: UnlistenFn | undefined
+    void listen("codex:login-complete", () => onClose()).then((fn) => {
+      unlistenDone = fn
+    })
+    void listen<{ message: string }>("codex:login-failed", (event) => {
+      setError(event.payload.message)
+      setWaiting(false)
+    }).then((fn) => {
+      unlistenFail = fn
+    })
+    return () => {
+      unlistenDone?.()
+      unlistenFail?.()
     }
-  }
+  }, [waiting, onClose])
 
   return (
     <DialogShell title="Add Codex Account" onClose={onClose}>
       <p className="text-sm text-muted-foreground mb-3">
-        Sign in with Codex — a browser window opens. Finish there, then confirm below.
+        {waiting
+          ? "A browser window opened — finish signing in there. UsagePal adds the account automatically, so you can leave this open."
+          : "Sign in with Codex — a browser window opens. UsagePal adds the account once you finish, no need to come back and confirm."}
       </p>
-      <LabelInput value={label} onChange={setLabel} disabled={busy} />
+      <LabelInput value={label} onChange={setLabel} disabled={busy || waiting} />
+      {waiting && !error && (
+        <p className="text-xs text-muted-foreground mt-2">Waiting for the Codex sign-in to finish…</p>
+      )}
       {error && <p className="text-xs text-destructive mt-2">{error}</p>}
       <div className="flex items-center justify-end gap-2 mt-4">
         <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
-          Cancel
+          {waiting ? "Close" : "Cancel"}
         </Button>
-        {stagingId ? (
-          <Button variant="default" size="sm" disabled={busy} onClick={() => void handleFinish()}>
-            I&apos;ve finished signing in
-          </Button>
-        ) : (
+        {!waiting && (
           <Button variant="default" size="sm" disabled={busy} onClick={() => void handleBegin()}>
             Sign in with Codex
           </Button>
