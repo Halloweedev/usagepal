@@ -757,7 +757,21 @@
     return subject || null
   }
 
-  function persistAccessToken(ctx, source, accessToken) {
+  function persistAccessToken(ctx, source, accessToken, managedPath) {
+    if (source === "managed") {
+      // Read-only toward Cursor: keep the refreshed token in UsagePal's own
+      // snapshot file, never Cursor's state.vscdb or keychain.
+      if (!managedPath || !ctx.host.fs || typeof ctx.host.fs.writeText !== "function") return false
+      try {
+        const existing = ctx.util.tryParseJson(ctx.host.fs.readText(managedPath)) || {}
+        const next = { ...existing, accessToken }
+        ctx.host.fs.writeText(managedPath, JSON.stringify(next))
+        return true
+      } catch (e) {
+        ctx.host.log.warn("managed cursor token persist failed for " + managedPath + ": " + String(e))
+        return false
+      }
+    }
     if (source === "keychain") {
       return writeKeychainValue(ctx, KEYCHAIN_ACCESS_TOKEN_SERVICE, accessToken)
     }
@@ -780,7 +794,7 @@
     })
   }
 
-  function refreshToken(ctx, refreshTokenValue, source) {
+  function refreshToken(ctx, refreshTokenValue, source, managedPath) {
     if (!refreshTokenValue) {
       ctx.host.log.warn("refresh skipped: no refresh token")
       return null
@@ -835,7 +849,7 @@
       }
 
       // Persist updated access token to source where auth was loaded from.
-      persistAccessToken(ctx, source, newAccessToken)
+      persistAccessToken(ctx, source, newAccessToken, managedPath)
       ctx.host.log.info("refresh succeeded, token persisted")
 
       // Note: Cursor refresh returns access_token which is used as both
@@ -1003,6 +1017,7 @@
     let accessToken = authState.accessToken
     const refreshTokenValue = authState.refreshToken
     const authSource = authState.source
+    const managedPath = authState.managedPath
 
     if (!accessToken && !refreshTokenValue) {
       ctx.host.log.error("probe failed: no access or refresh token in sqlite/keychain")
@@ -1018,7 +1033,7 @@
       ctx.host.log.info("token needs refresh (expired or expiring soon)")
       let refreshed = null
       try {
-        refreshed = refreshToken(ctx, refreshTokenValue, authSource)
+        refreshed = refreshToken(ctx, refreshTokenValue, authSource, managedPath)
       } catch (e) {
         // If refresh fails but we have an access token, try it anyway
         ctx.host.log.warn("refresh failed but have access token, will try: " + String(e))
@@ -1050,7 +1065,7 @@
         refresh: () => {
           ctx.host.log.info("usage returned 401, attempting refresh")
           didRefresh = true
-          const refreshed = refreshToken(ctx, refreshTokenValue, authSource)
+          const refreshed = refreshToken(ctx, refreshTokenValue, authSource, managedPath)
           if (refreshed) accessToken = refreshed
           return refreshed
         },
