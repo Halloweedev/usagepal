@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { AppShell } from "@/components/app/app-shell"
+import { useAccounts } from "@/hooks/app/use-accounts"
 import { useAppPluginViews } from "@/hooks/app/use-app-plugin-views"
 import { useProbe } from "@/hooks/app/use-probe"
 import { usePaceNotifications } from "@/hooks/app/use-pace-notifications"
@@ -235,12 +236,15 @@ export function MainApp() {
     pluginsMeta,
   })
 
+  const { accountsByProvider } = useAccounts()
+
   const { displayPlugins, navPlugins, selectedPlugin } = useAppPluginViews({
     activeView,
     setActiveView,
     pluginSettings,
     pluginsMeta,
     pluginStates,
+    accountsByProvider,
   })
 
   const pluginSettingsRef = useRef(pluginSettings)

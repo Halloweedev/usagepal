@@ -3,6 +3,11 @@ import type { ActiveView, NavPlugin } from "@/components/side-nav"
 import type { PluginMeta } from "@/lib/plugin-types"
 import type { PluginSettings } from "@/lib/settings"
 import type { PluginState } from "@/hooks/app/types"
+import {
+  type AccountMeta,
+  type GroupedProviderView,
+  groupProviderViews,
+} from "@/hooks/app/group-provider-views"
 
 export type DisplayPluginState = { meta: PluginMeta } & PluginState
 
@@ -12,6 +17,7 @@ type UseAppPluginViewsArgs = {
   pluginSettings: PluginSettings | null
   pluginsMeta: PluginMeta[]
   pluginStates: Record<string, PluginState>
+  accountsByProvider: Record<string, AccountMeta[]>
 }
 
 export function useAppPluginViews({
@@ -20,40 +26,49 @@ export function useAppPluginViews({
   pluginSettings,
   pluginsMeta,
   pluginStates,
+  accountsByProvider,
 }: UseAppPluginViewsArgs) {
-  const displayPlugins = useMemo<DisplayPluginState[]>(() => {
+  const orderedEnabledMeta = useMemo<PluginMeta[]>(() => {
     if (!pluginSettings) return []
     const disabledSet = new Set(pluginSettings.disabled)
     const metaById = new Map(pluginsMeta.map((plugin) => [plugin.id, plugin]))
-
-    return pluginSettings.order
-      .filter((id) => !disabledSet.has(id))
-      .map((id) => {
-        const meta = metaById.get(id)
-        if (!meta) return null
-        const state =
-          pluginStates[id] ?? { data: null, loading: false, error: null, lastManualRefreshAt: null, lastUpdatedAt: null }
-        return { meta, ...state }
-      })
-      .filter((plugin): plugin is DisplayPluginState => Boolean(plugin))
-  }, [pluginSettings, pluginStates, pluginsMeta])
-
-  const navPlugins = useMemo<NavPlugin[]>(() => {
-    if (!pluginSettings) return []
-    const disabledSet = new Set(pluginSettings.disabled)
-    const metaById = new Map(pluginsMeta.map((plugin) => [plugin.id, plugin]))
-
     return pluginSettings.order
       .filter((id) => !disabledSet.has(id))
       .map((id) => metaById.get(id))
       .filter((plugin): plugin is PluginMeta => Boolean(plugin))
-      .map((plugin) => ({
+  }, [pluginSettings, pluginsMeta])
+
+  const groupedPlugins = useMemo<GroupedProviderView[]>(
+    () => groupProviderViews(orderedEnabledMeta, pluginStates, accountsByProvider),
+    [orderedEnabledMeta, pluginStates, accountsByProvider]
+  )
+
+  const displayPlugins = useMemo<DisplayPluginState[]>(
+    () =>
+      groupedPlugins.map(({ meta, accounts }) => {
+        const first = accounts[0]
+        return {
+          meta,
+          data: first.data,
+          loading: first.loading,
+          error: first.error,
+          lastManualRefreshAt: first.lastManualRefreshAt,
+          lastUpdatedAt: first.lastUpdatedAt,
+        }
+      }),
+    [groupedPlugins]
+  )
+
+  const navPlugins = useMemo<NavPlugin[]>(
+    () =>
+      orderedEnabledMeta.map((plugin) => ({
         id: plugin.id,
         name: plugin.name,
         iconUrl: plugin.iconUrl,
         brandColor: plugin.brandColor ?? undefined,
-      }))
-  }, [pluginSettings, pluginsMeta])
+      })),
+    [orderedEnabledMeta]
+  )
 
   useEffect(() => {
     if (activeView === "home" || activeView === "settings") return
@@ -73,6 +88,7 @@ export function useAppPluginViews({
 
   return {
     displayPlugins,
+    groupedPlugins,
     navPlugins,
     selectedPlugin,
   }
