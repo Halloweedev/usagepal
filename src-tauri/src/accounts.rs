@@ -87,15 +87,34 @@ fn resolve_env_overrides(
     let mut env = HashMap::new();
     match provider_id {
         "claude" => {
-            let token = read_json_string_field(&claude_secret_path(account_id)?, "setupToken")?;
-            env.insert("CLAUDE_CODE_OAUTH_TOKEN".to_string(), token);
+            let secret_path = claude_secret_path(account_id)?;
+            let token = read_json_string_field(&secret_path, "setupToken")?;
+            // The account that is the current local Claude login probes like the
+            // default (local credentials → full live usage + real local spend).
+            // Others use the inference-only setup token and are flagged as having
+            // no local logs, so they never show the default login's spend.
+            let stored_identity = read_json_string_field(&secret_path, "localIdentity");
+            for (k, v) in
+                claude_account_env(&token, stored_identity.as_deref(), claude_local_identity().as_deref())
+            {
+                env.insert(k, v);
+            }
         }
         "codex" => {
             let dir = codex_profile_dir(app_data_dir, account_id);
             if !dir.join("auth.json").exists() {
                 return None;
             }
+            // Auth/API probe reads the managed profile.
             env.insert("CODEX_HOME".to_string(), dir.to_string_lossy().to_string());
+            // Spend (ccusage) reads the *real* local home, but only for the
+            // account that is the current local CLI login — its session logs live
+            // there, not in the managed profile. Others get no local logs.
+            let real_home = codex_real_home();
+            let real_home_id = codex_real_home_account_id(real_home.as_deref());
+            for (k, v) in codex_spend_env(account_id, real_home.as_deref(), real_home_id.as_deref()) {
+                env.insert(k, v);
+            }
         }
         "cursor" => {
             let path = cursor_secret_path(account_id)?;
@@ -158,7 +177,14 @@ pub fn save_claude_account(label: String, setup_token: String) -> Result<Account
         std::fs::create_dir_all(dir)
             .map_err(|e| format!("Couldn't create the accounts directory: {e}"))?;
     }
-    write_private_file(&path, &serde_json::json!({ "setupToken": token }).to_string())
+    // Snapshot the current local Claude login so this account can later be
+    // recognised as the local login and show its real `~/.claude` spend. Opaque
+    // setup-tokens carry no identity, so add-time capture is the only signal.
+    let secret = match claude_local_identity() {
+        Some(identity) => serde_json::json!({ "setupToken": token, "localIdentity": identity }),
+        None => serde_json::json!({ "setupToken": token }),
+    };
+    write_private_file(&path, &secret.to_string())
         .map_err(|e| format!("Couldn't save the account: {e}"))?;
     Ok(AccountAdded { account_id })
 }
@@ -235,6 +261,79 @@ fn extract_codex_account_id(auth_json_text: &str) -> Option<String> {
         .get("account_id")?
         .as_str()
         .map(str::to_string)
+}
+
+/// The user's real Codex home (where the CLI writes session logs): `$CODEX_HOME`
+/// if the app inherited one, else `~/.codex`. Distinct from a per-account managed
+/// profile dir under the app-data folder.
+fn codex_real_home() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("CODEX_HOME") {
+        let trimmed = dir.trim();
+        if !trimmed.is_empty() {
+            return Some(PathBuf::from(trimmed));
+        }
+    }
+    dirs::home_dir().map(|home| home.join(".codex"))
+}
+
+/// The ChatGPT `account_id` currently signed in to the real Codex home, if any.
+fn codex_real_home_account_id(real_home: Option<&Path>) -> Option<String> {
+    let text = std::fs::read_to_string(real_home?.join("auth.json")).ok()?;
+    extract_codex_account_id(&text)
+}
+
+/// Identity of the account currently signed in to the local Claude CLI, read
+/// from `~/.claude.json`'s `oauthAccount` — the stable `accountUuid`, falling
+/// back to `emailAddress`. Used to decide which registered account is the local
+/// login (Claude setup-tokens are opaque and carry no identity of their own).
+fn claude_local_identity() -> Option<String> {
+    let path = dirs::home_dir()?.join(".claude.json");
+    let text = std::fs::read_to_string(&path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let oauth = value.get("oauthAccount")?;
+    oauth
+        .get("accountUuid")
+        .and_then(|v| v.as_str())
+        .or_else(|| oauth.get("emailAddress").and_then(|v| v.as_str()))
+        .map(str::to_string)
+}
+
+/// Env for a registered Claude account. When its captured identity matches the
+/// current local login, return an empty map so it probes exactly like the
+/// default account (local credentials → full usage + real spend). Otherwise use
+/// the inference-only setup token and flag local logs unavailable, so it never
+/// shows another login's `~/.claude` spend.
+fn claude_account_env(
+    token: &str,
+    stored_identity: Option<&str>,
+    local_identity: Option<&str>,
+) -> HashMap<String, String> {
+    let matched = matches!((stored_identity, local_identity), (Some(s), Some(l)) if s == l);
+    let mut env = HashMap::new();
+    if !matched {
+        env.insert("CLAUDE_CODE_OAUTH_TOKEN".to_string(), token.to_string());
+        env.insert("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string());
+    }
+    env
+}
+
+/// Extra env for a Codex account's spend (ccusage) source. Local session logs are
+/// not account-tagged, so only the account matching the current local login can
+/// read real spend (from `real_home`); every other registered account is flagged
+/// as having no local logs so the plugin shows a "no local data" state instead of
+/// a misleading $0 or another account's spend.
+fn codex_spend_env(
+    account_id: &str,
+    real_home: Option<&Path>,
+    real_home_account_id: Option<&str>,
+) -> Vec<(String, String)> {
+    match (real_home, real_home_account_id) {
+        (Some(home), Some(real_id)) if real_id == account_id => vec![(
+            "CODEX_CCUSAGE_HOME".to_string(),
+            home.to_string_lossy().to_string(),
+        )],
+        _ => vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())],
+    }
 }
 
 fn codex_staging_dir(app_data_dir: &Path, staging_id: &str) -> PathBuf {
@@ -511,6 +610,56 @@ mod tests {
     fn extract_codex_account_id_none_when_absent() {
         assert_eq!(extract_codex_account_id(r#"{"tokens":{}}"#), None);
         assert_eq!(extract_codex_account_id("garbage"), None);
+    }
+
+    #[test]
+    fn codex_spend_env_points_ccusage_at_real_home_for_the_local_login() {
+        let home = PathBuf::from("/Users/x/.codex");
+        let env = codex_spend_env("acct_1", Some(&home), Some("acct_1"));
+        assert_eq!(
+            env,
+            vec![(
+                "CODEX_CCUSAGE_HOME".to_string(),
+                "/Users/x/.codex".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn claude_account_env_is_empty_for_the_matching_local_login() {
+        // Matched → no overrides → probes like the default (local creds).
+        let env = claude_account_env("tok", Some("uuid-1"), Some("uuid-1"));
+        assert!(env.is_empty());
+    }
+
+    #[test]
+    fn claude_account_env_uses_token_and_flag_for_other_accounts() {
+        let env = claude_account_env("tok", Some("uuid-1"), Some("uuid-2"));
+        assert_eq!(env.get("CLAUDE_CODE_OAUTH_TOKEN").map(String::as_str), Some("tok"));
+        assert_eq!(
+            env.get("USAGEPAL_LOCAL_LOGS_UNAVAILABLE").map(String::as_str),
+            Some("1")
+        );
+        // No captured identity, or no local login → not matched (honest default).
+        assert!(!claude_account_env("tok", None, Some("uuid-2")).is_empty());
+        assert!(!claude_account_env("tok", Some("uuid-1"), None).is_empty());
+    }
+
+    #[test]
+    fn codex_spend_env_flags_no_local_logs_for_other_accounts() {
+        let home = PathBuf::from("/Users/x/.codex");
+        // A different account is signed in locally.
+        let env = codex_spend_env("acct_2", Some(&home), Some("acct_1"));
+        assert_eq!(
+            env,
+            vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())]
+        );
+        // No local login at all.
+        let env = codex_spend_env("acct_2", Some(&home), None);
+        assert_eq!(
+            env,
+            vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())]
+        );
     }
 
     #[test]

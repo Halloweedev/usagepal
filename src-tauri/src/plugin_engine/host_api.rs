@@ -16,8 +16,10 @@ use std::process::Command;
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-const WHITELISTED_ENV_VARS: [&str; 20] = [
+const WHITELISTED_ENV_VARS: [&str; 22] = [
     "CODEX_HOME",
+    "CODEX_CCUSAGE_HOME",
+    "USAGEPAL_LOCAL_LOGS_UNAVAILABLE",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
     "USER_TYPE",

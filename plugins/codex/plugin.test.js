@@ -248,6 +248,42 @@ describe("codex plugin", () => {
     expect(credits).not.toHaveProperty("limit")
   })
 
+  it("shows a 'no local data' spend state when not signed into the local CLI", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "USAGEPAL_LOCAL_LOGS_UNAVAILABLE" ? "1" : null
+    )
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: { reset_after_seconds: 60, used_percent: 10 },
+          secondary_window: { reset_after_seconds: 120, used_percent: 20 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // ccusage is never queried for an account with no local logs.
+    expect(ctx.host.ccusage.query).not.toHaveBeenCalled()
+
+    const today = result.lines.find((l) => l.label === "Today")
+    const yesterday = result.lines.find((l) => l.label === "Yesterday")
+    const month = result.lines.find((l) => l.label === "Last 30 Days")
+    expect(today).toMatchObject({ value: "—" })
+    expect(yesterday).toMatchObject({ value: "—" })
+    expect(month).toMatchObject({ value: "—" })
+    expect(today.subtitle).toBeTruthy()
+  })
+
   it("maps prolite plan to Pro 5x", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({

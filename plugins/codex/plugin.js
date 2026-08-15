@@ -456,7 +456,34 @@
   var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
+  function readEnvString(ctx, name) {
+    try {
+      if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null
+      const value = ctx.host.env.get(name)
+      if (typeof value !== "string") return null
+      const trimmed = value.trim()
+      return trimmed || null
+    } catch (e) {
+      return null
+    }
+  }
+
+  // This account isn't the one signed in to the local Codex CLI, so its spend
+  // logs live under another login we can't read — the host flags it here.
+  function localLogsUnavailable(ctx) {
+    return readEnvString(ctx, "USAGEPAL_LOCAL_LOGS_UNAVAILABLE") === "1"
+  }
+
+  // Where ccusage reads session logs: the real local home for the matched
+  // account (CODEX_CCUSAGE_HOME), else the auth home (default/unregistered case).
+  function readCcusageHome(ctx) {
+    return readEnvString(ctx, "CODEX_CCUSAGE_HOME") || readCodexHome(ctx)
+  }
+
   function queryTokenUsage(ctx) {
+    if (localLogsUnavailable(ctx)) {
+      return { status: "no_local_data", data: null }
+    }
     if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
       return { status: "no_runner", data: null }
     }
@@ -469,7 +496,7 @@
     const d = since.getDate()
     const sinceStr = "" + y + (m < 10 ? "0" : "") + m + (d < 10 ? "0" : "") + d
     const queryOpts = { provider: "codex", since: sinceStr }
-    const codexHome = readCodexHome(ctx)
+    const codexHome = readCcusageHome(ctx)
     if (codexHome) {
       queryOpts.homePath = codexHome
     }
@@ -806,6 +833,23 @@
     }))
   }
 
+  var NO_LOCAL_DATA_COLOR = "#a3a3a3"
+  var NO_LOCAL_DATA_HINT = "No local Codex CLI usage for this account"
+
+  // Spend rows for an account that isn't the local CLI login: show a clear
+  // "no local data" state instead of a misleading $0 or another login's spend.
+  function pushNoLocalDataLines(lines, ctx) {
+    var labels = ["Today", "Yesterday", "Last 30 Days"]
+    for (var i = 0; i < labels.length; i++) {
+      lines.push(ctx.line.text({
+        label: labels[i],
+        value: "—",
+        color: NO_LOCAL_DATA_COLOR,
+        subtitle: i === 0 ? NO_LOCAL_DATA_HINT : null
+      }))
+    }
+  }
+
   function pushDayUsageLine(lines, ctx, label, dayEntry) {
     const tokens = Number(dayEntry && dayEntry.totalTokens) || 0
     const cost = usageCostUsd(dayEntry)
@@ -1131,6 +1175,8 @@
 
         pushUsageChartLine(lines, ctx, tokenUsage.daily)
         pushModelUsageLines(lines, ctx, tokenUsage.daily, now)
+      } else if (tokenUsageResult.status === "no_local_data") {
+        pushNoLocalDataLines(lines, ctx)
       }
 
       if (lines.length === 0) {
