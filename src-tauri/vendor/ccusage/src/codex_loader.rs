@@ -146,6 +146,10 @@ pub(crate) fn visit_codex_session_file(
     let mut previous_totals: Option<CodexRawUsage> = None;
     let mut current_model: Option<String> = None;
     let mut current_model_is_fallback = false;
+    // Tracks the service tier applied to subsequent turns. Codex records tier
+    // changes as `thread_settings_applied` events, so fast pricing is scoped to
+    // the turns that actually ran fast rather than the whole session/history.
+    let mut current_fast_tier = false;
     let fallback_timestamp = file_modified_timestamp(path);
 
     for line in byte_lines(&content) {
@@ -161,6 +165,17 @@ pub(crate) fn visit_codex_session_file(
                 current_model = Some(model);
                 current_model_is_fallback = false;
             }
+            if let Some(fast) = codex_thread_settings_fast_tier(&value) {
+                current_fast_tier = fast;
+            }
+            continue;
+        }
+        if entry_type == Some("thread_settings_applied")
+            || codex_payload_type_is(&value, "thread_settings_applied")
+        {
+            if let Some(fast) = codex_thread_settings_fast_tier(&value) {
+                current_fast_tier = fast;
+            }
             continue;
         }
         if entry_type != Some("event_msg") {
@@ -170,6 +185,7 @@ pub(crate) fn visit_codex_session_file(
                 &fallback_timestamp,
                 &mut current_model,
                 &mut current_model_is_fallback,
+                current_fast_tier,
                 &mut visit,
             )?;
             continue;
@@ -239,18 +255,21 @@ pub(crate) fn visit_codex_session_file(
             reasoning_output_tokens: raw_usage.reasoning_output_tokens,
             total_tokens: raw_usage.total_tokens,
             is_fallback_model,
+            is_fast_tier: current_fast_tier,
         })?;
     }
 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_codex_exec_event(
     session_id: &str,
     value: &Value,
     fallback_timestamp: &str,
     current_model: &mut Option<String>,
     current_model_is_fallback: &mut bool,
+    is_fast_tier: bool,
     visit: &mut impl FnMut(CodexTokenUsageEvent) -> Result<()>,
 ) -> Result<()> {
     let Some(raw_usage) = normalize_headless_codex_usage(value) else {
@@ -282,15 +301,51 @@ fn add_codex_exec_event(
         reasoning_output_tokens: raw_usage.reasoning_output_tokens,
         total_tokens: raw_usage.total_tokens,
         is_fallback_model,
+        is_fast_tier,
     })
 }
 
 fn codex_line_may_contain_usage(line: &[u8]) -> bool {
     memchr::memmem::find(line, b"turn_context").is_some()
         || memchr::memmem::find(line, b"token_count").is_some()
+        || memchr::memmem::find(line, b"thread_settings_applied").is_some()
         || memchr::memmem::find(line, br#""usage":"#).is_some()
         || memchr::memmem::find(line, br#""input_tokens":"#).is_some()
         || memchr::memmem::find(line, br#""prompt_tokens":"#).is_some()
+}
+
+/// Returns whether the given `thread_settings_applied` / `turn_context` entry
+/// switches to the fast (priority) service tier, or `None` when the entry does
+/// not mention a service tier (leaving the previously applied tier in effect).
+fn codex_thread_settings_fast_tier(value: &Value) -> Option<bool> {
+    find_service_tier(value).map(|tier| {
+        let tier = tier.to_ascii_lowercase();
+        tier.contains("fast") || tier.contains("priority")
+    })
+}
+
+fn find_service_tier(value: &Value) -> Option<String> {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(tier)) = map.get("service_tier") {
+                let tier = tier.trim();
+                if !tier.is_empty() {
+                    return Some(tier.to_string());
+                }
+            }
+            map.values().find_map(find_service_tier)
+        }
+        Value::Array(items) => items.iter().find_map(find_service_tier),
+        _ => None,
+    }
+}
+
+fn codex_payload_type_is(value: &Value, expected: &str) -> bool {
+    value
+        .get("payload")
+        .and_then(|payload| payload.get("type"))
+        .and_then(Value::as_str)
+        == Some(expected)
 }
 
 fn parsed_model_is_missing(
@@ -530,6 +585,7 @@ mod tests {
             reasoning_output_tokens: 0,
             total_tokens: 150,
             is_fallback_model: false,
+            is_fast_tier: false,
         }
     }
 

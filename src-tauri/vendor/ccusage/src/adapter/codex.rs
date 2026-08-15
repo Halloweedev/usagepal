@@ -1,6 +1,5 @@
 use std::{
     collections::BTreeMap,
-    env, fs,
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
     sync::Mutex,
@@ -37,8 +36,7 @@ pub(crate) fn run(args: AgentCommandArgs) -> Result<()> {
     let shared = args.shared;
     let pricing = PricingMap::load(shared.offline, log_level() != Some(0));
     let groups = load_groups(&shared, args.kind)?;
-    let speed = resolve_codex_speed(args.codex_speed);
-    let output = report_from_groups(&groups, args.kind, &pricing, speed);
+    let output = report_from_groups(&groups, args.kind, &pricing, args.codex_speed);
     if wants_json(&shared) {
         return print_json_or_jq(output, shared.jq.as_deref());
     }
@@ -72,49 +70,6 @@ pub(crate) fn report_from_groups(
     json!({
         rows_key(kind): rows,
         "totals": totals,
-    })
-}
-
-pub(crate) fn resolve_codex_speed(requested: CodexSpeed) -> CodexSpeed {
-    match requested {
-        CodexSpeed::Auto => {
-            if detect_codex_fast_service_tier() {
-                CodexSpeed::Fast
-            } else {
-                CodexSpeed::Standard
-            }
-        }
-        speed => speed,
-    }
-}
-
-fn detect_codex_fast_service_tier() -> bool {
-    codex_home_paths().iter().any(|path| {
-        fs::read_to_string(path.join("config.toml"))
-            .ok()
-            .is_some_and(|content| codex_config_requests_fast_service_tier(&content))
-    })
-}
-
-fn codex_home_paths() -> Vec<PathBuf> {
-    if let Ok(paths) = crate::env_var("CODEX_HOME") {
-        return paths
-            .split(',')
-            .map(str::trim)
-            .filter(|path| !path.is_empty())
-            .map(PathBuf::from)
-            .collect();
-    }
-    crate::home::home_dir()
-        .map(|home| vec![home.join(".codex")])
-        .unwrap_or_default()
-}
-
-fn codex_config_requests_fast_service_tier(content: &str) -> bool {
-    content.lines().any(|line| {
-        let setting = line.split('#').next().unwrap_or_default().trim();
-        setting.starts_with("service_tier")
-            && (setting.contains("fast") || setting.contains("priority"))
     })
 }
 
@@ -306,6 +261,11 @@ fn accumulate_codex_event_into_group(
     model_usage.reasoning_output_tokens += event.reasoning_output_tokens;
     model_usage.total_tokens += event.total_tokens;
     model_usage.is_fallback |= event.is_fallback_model;
+    if event.is_fast_tier {
+        model_usage.fast_input_tokens += event.input_tokens;
+        model_usage.fast_cached_input_tokens += event.cached_input_tokens;
+        model_usage.fast_output_tokens += event.output_tokens;
+    }
 }
 
 fn create_dedupe_shards() -> Vec<Mutex<FxHashSet<CodexEventKey>>> {
@@ -357,6 +317,9 @@ fn merge_groups(target: &mut BTreeMap<String, CodexGroup>, source: BTreeMap<Stri
             target_usage.reasoning_output_tokens += usage.reasoning_output_tokens;
             target_usage.total_tokens += usage.total_tokens;
             target_usage.is_fallback |= usage.is_fallback;
+            target_usage.fast_input_tokens += usage.fast_input_tokens;
+            target_usage.fast_cached_input_tokens += usage.fast_cached_input_tokens;
+            target_usage.fast_output_tokens += usage.fast_output_tokens;
         }
     }
 }
@@ -528,25 +491,47 @@ pub(crate) fn calculate_codex_model_cost(
     let Some(pricing) = pricing.find(model) else {
         return 0.0;
     };
-    let non_cached_input = usage.input_tokens.saturating_sub(usage.cached_input_tokens);
-    let multiplier = if matches!(speed, CodexSpeed::Fast) {
-        if pricing.fast_multiplier == 1.0 {
-            2.0
-        } else {
-            pricing.fast_multiplier
-        }
+    let multiplier = if pricing.fast_multiplier == 1.0 {
+        2.0
     } else {
-        1.0
+        pricing.fast_multiplier
     };
     let cache_read = if pricing.cache_read_explicit {
         pricing.cache_read
     } else {
         pricing.input
     };
-    (non_cached_input as f64 * pricing.input
-        + usage.cached_input_tokens as f64 * cache_read
-        + usage.output_tokens as f64 * pricing.output)
-        * multiplier
+
+    // Split each metric into the portion that ran fast and the portion that ran
+    // standard. `Fast`/`Standard` on the CLI force the whole report; `Auto`
+    // (the default) honours the per-turn tier captured while loading, so a
+    // config toggle never reprices past turns.
+    let (fast_input, fast_cached, fast_output) = match speed {
+        CodexSpeed::Fast => (
+            usage.input_tokens,
+            usage.cached_input_tokens,
+            usage.output_tokens,
+        ),
+        CodexSpeed::Standard => (0, 0, 0),
+        CodexSpeed::Auto => (
+            usage.fast_input_tokens.min(usage.input_tokens),
+            usage.fast_cached_input_tokens.min(usage.cached_input_tokens),
+            usage.fast_output_tokens.min(usage.output_tokens),
+        ),
+    };
+    let std_input = usage.input_tokens - fast_input;
+    let std_cached = usage.cached_input_tokens - fast_cached;
+    let std_output = usage.output_tokens - fast_output;
+
+    let cost_of = |input: u64, cached: u64, output: u64| {
+        let non_cached_input = input.saturating_sub(cached);
+        non_cached_input as f64 * pricing.input
+            + cached as f64 * cache_read
+            + output as f64 * pricing.output
+    };
+
+    cost_of(std_input, std_cached, std_output)
+        + cost_of(fast_input, fast_cached, fast_output) * multiplier
 }
 
 fn print_table(output: &Value, kind: AgentReportKind, shared: &SharedArgs) {
@@ -708,6 +693,80 @@ mod tests {
     }
 
     #[test]
+    fn prices_fast_tier_per_turn_from_session_logs_ignoring_config() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("ccusage-codex-fast-tier-{suffix}"));
+        let sessions_dir = root.join("sessions");
+        fs::create_dir_all(&sessions_dir).unwrap();
+        // A config.toml requesting the fast/priority tier must be irrelevant now:
+        // pricing is driven purely by the per-turn session logs.
+        fs::write(root.join("config.toml"), "service_tier = \"priority\"\n").unwrap();
+        fs::write(
+            sessions_dir.join("session.jsonl"),
+            [
+                // Standard turn (before any thread_settings_applied event).
+                r#"{"timestamp":"2026-01-02T00:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"model":"gpt-5.3-codex","last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}"#,
+                // Switch this session to the fast/priority tier.
+                r#"{"timestamp":"2026-01-02T00:01:00.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","service_tier":"priority"}}"#,
+                // Fast turn (runs after the switch).
+                r#"{"timestamp":"2026-01-02T00:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"model":"gpt-5.3-codex","last_token_usage":{"input_tokens":200,"cached_input_tokens":0,"output_tokens":20,"reasoning_output_tokens":0,"total_tokens":220}}}}"#,
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+
+        let mut pricing = PricingMap::default();
+        pricing.load_json(
+            r#"{
+                "gpt-5.3-codex": {
+                    "input_cost_per_token": 0.00000175,
+                    "output_cost_per_token": 0.000014,
+                    "cache_read_input_token_cost": 0.000000175
+                }
+            }"#,
+        );
+
+        let shared = SharedArgs {
+            timezone: Some("UTC".to_string()),
+            ..SharedArgs::default()
+        };
+        let groups =
+            load_groups_from_directory(&sessions_dir, &shared, AgentReportKind::Session).unwrap();
+        fs::remove_dir_all(root).unwrap();
+
+        assert_eq!(groups.len(), 1);
+        let group = groups.values().next().unwrap();
+        let model = group.models.get("gpt-5.3-codex").unwrap();
+        assert_eq!(model.input_tokens, 300);
+        assert_eq!(model.output_tokens, 30);
+        // Only the second turn (200 in / 20 out) ran fast.
+        assert_eq!(model.fast_input_tokens, 200);
+        assert_eq!(model.fast_output_tokens, 20);
+
+        // Standard turn: 100 * input + 10 * output.
+        let standard_turn = 100.0 * 0.00000175 + 10.0 * 0.000014;
+        // Fast turn base cost doubled by the default fast multiplier.
+        let fast_turn = (200.0 * 0.00000175 + 20.0 * 0.000014) * 2.0;
+        let expected_auto = standard_turn + fast_turn;
+
+        let auto = calculate_group_cost(group, &pricing, CodexSpeed::Auto);
+        assert!(
+            (auto - expected_auto).abs() < 1e-12,
+            "auto={auto} expected={expected_auto}"
+        );
+
+        // Forcing Standard reprices every turn at 1x, proving only the fast turn
+        // carried the multiplier under Auto.
+        let all_standard = standard_turn + (200.0 * 0.00000175 + 20.0 * 0.000014);
+        let standard = calculate_group_cost(group, &pricing, CodexSpeed::Standard);
+        assert!((standard - all_standard).abs() < 1e-12);
+        assert!(auto > standard);
+    }
+
+    #[test]
     fn reports_non_cached_codex_input_separately_from_cached_input() {
         let pricing = PricingMap::default();
         let report = report_json(
@@ -721,6 +780,7 @@ mod tests {
                 reasoning_output_tokens: 0,
                 total_tokens: 105,
                 is_fallback_model: false,
+                is_fast_tier: false,
             }],
             AgentReportKind::Daily,
             Some("UTC"),
@@ -760,6 +820,9 @@ mod tests {
             reasoning_output_tokens: 0,
             total_tokens: 105,
             is_fallback: false,
+            fast_input_tokens: 0,
+            fast_cached_input_tokens: 0,
+            fast_output_tokens: 0,
         };
 
         let cost = calculate_codex_model_cost("gpt-test", &usage, &pricing, CodexSpeed::Standard);
@@ -786,6 +849,9 @@ mod tests {
             reasoning_output_tokens: 0,
             total_tokens: 105,
             is_fallback: false,
+            fast_input_tokens: 0,
+            fast_cached_input_tokens: 0,
+            fast_output_tokens: 0,
         };
 
         let standard =
@@ -822,6 +888,7 @@ mod tests {
                 reasoning_output_tokens: 2,
                 total_tokens: 147,
                 is_fallback_model: false,
+                is_fast_tier: false,
             },
             CodexTokenUsageEvent {
                 session_id: "/workspace/api/session-a.jsonl".to_string(),
@@ -833,6 +900,7 @@ mod tests {
                 reasoning_output_tokens: 0,
                 total_tokens: 80,
                 is_fallback_model: true,
+                is_fast_tier: false,
             },
             CodexTokenUsageEvent {
                 session_id: "/workspace/web/session-b.jsonl".to_string(),
@@ -844,6 +912,7 @@ mod tests {
                 reasoning_output_tokens: 0,
                 total_tokens: 12,
                 is_fallback_model: false,
+                is_fast_tier: false,
             },
             CodexTokenUsageEvent {
                 session_id: "ignored-missing-model".to_string(),
@@ -855,6 +924,7 @@ mod tests {
                 reasoning_output_tokens: 0,
                 total_tokens: 1_998,
                 is_fallback_model: false,
+                is_fast_tier: false,
             },
         ];
 
