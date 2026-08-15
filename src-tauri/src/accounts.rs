@@ -293,6 +293,46 @@ pub fn finish_codex_login(
     Ok(AccountAdded { account_id })
 }
 
+fn delete_account_secret(
+    app_data_dir: &Path,
+    provider_id: &str,
+    account_id: &str,
+) -> Result<(), String> {
+    match provider_id {
+        "codex" => {
+            let dir = codex_profile_dir(app_data_dir, account_id);
+            if dir.exists() {
+                std::fs::remove_dir_all(&dir)
+                    .map_err(|e| format!("Couldn't remove profile: {e}"))?;
+            }
+        }
+        "claude" | "cursor" => {
+            let path = if provider_id == "claude" {
+                claude_secret_path(account_id)
+            } else {
+                cursor_secret_path(account_id)
+            }
+            .ok_or("No home directory available.")?;
+            if path.exists() {
+                std::fs::remove_file(&path).map_err(|e| format!("Couldn't remove secret: {e}"))?;
+            }
+        }
+        _ => return Err(format!("Unknown provider: {provider_id}")),
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn remove_account(
+    state: tauri::State<'_, std::sync::Mutex<crate::AppState>>,
+    provider_id: String,
+    account_id: String,
+) -> Result<(), String> {
+    let app_data_dir = state.lock().map_err(|e| e.to_string())?.app_data_dir.clone();
+    delete_account_secret(&app_data_dir, &provider_id, &account_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,6 +434,16 @@ mod tests {
     fn extract_codex_account_id_none_when_absent() {
         assert_eq!(extract_codex_account_id(r#"{"tokens":{}}"#), None);
         assert_eq!(extract_codex_account_id("garbage"), None);
+    }
+
+    #[test]
+    fn delete_account_secret_removes_codex_profile_dir() {
+        let app_data = tmp_dir("rm-codex");
+        let dir = codex_profile_dir(&app_data, "c9");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("auth.json"), "{}").unwrap();
+        delete_account_secret(&app_data, "codex", "c9").unwrap();
+        assert!(!dir.exists());
     }
 
     #[test]

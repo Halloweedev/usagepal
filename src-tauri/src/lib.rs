@@ -899,7 +899,8 @@ pub fn run() {
             accounts::save_claude_account,
             accounts::snapshot_cursor_account,
             accounts::begin_codex_login,
-            accounts::finish_codex_login
+            accounts::finish_codex_login,
+            accounts::remove_account
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,
@@ -1121,7 +1122,8 @@ fn export_bindings() {
             accounts::save_claude_account,
             accounts::snapshot_cursor_account,
             accounts::begin_codex_login,
-            accounts::finish_codex_login
+            accounts::finish_codex_login,
+            accounts::remove_account
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,
