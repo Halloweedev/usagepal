@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.7.69-beta.3
+
+Polishes the multi-account cards from beta feedback: added accounts load right away, swiping is smoother, you can add an account from the card itself, and switching accounts no longer spams "usage reset" alerts.
+
+### New Features
+- Add another account for a provider straight from its card — a "+" next to the plan badge opens the add flow, instead of digging through Settings by @Halloweedev
+
+### Bug Fixes
+- A newly added account now loads its usage immediately, instead of showing an empty card until the next manual refresh by @Halloweedev
+- Switching between accounts of the same provider no longer fires repeated "Back to 0% used" notifications — each account tracks its own alert state by @Halloweedev
+
+### Changes
+- Swiping between accounts now follows your finger and slides to the next card, with a quick flick recognised too, so paging is easier to land; the account dots moved beside the plan badge and the "·" between the provider and account name is gone by @Halloweedev
+
+---
+
 ## v0.7.69-beta.2
 
 Fixes adding a Codex account when UsagePal is launched from Finder.
