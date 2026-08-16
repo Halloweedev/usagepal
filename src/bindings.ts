@@ -72,6 +72,7 @@ export const commands = {
 	saveOpencodeGoKey: (key: string) => typedError<null, string>(__TAURI_INVOKE("save_opencode_go_key", { key })),
 	clearOpencodeGoKey: () => typedError<null, string>(__TAURI_INVOKE("clear_opencode_go_key")),
 	saveClaudeAccount: (label: string, setupToken: string) => typedError<AccountAdded, string>(__TAURI_INVOKE("save_claude_account", { label, setupToken })),
+	saveOpencodeGoAccount: (label: string, apiKey: string) => typedError<AccountAdded, string>(__TAURI_INVOKE("save_opencode_go_account", { label, apiKey })),
 	snapshotCursorAccount: (label: string) => typedError<AccountAdded, string>(__TAURI_INVOKE("snapshot_cursor_account", { label })),
 	beginCodexLogin: (label: string) => typedError<CodexLoginStarted, string>(__TAURI_INVOKE("begin_codex_login", { label })),
 	finishCodexLogin: (stagingId: string) => typedError<AccountAdded, string>(__TAURI_INVOKE("finish_codex_login", { stagingId })),

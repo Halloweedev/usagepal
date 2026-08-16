@@ -12,15 +12,24 @@
 
 UsagePal checks these sources in order:
 
-1. A key saved in UsagePal Settings
-2. The `opencode-go` key from `~/.local/share/opencode/auth.json`
-3. The `OPENCODE_API_KEY` environment variable
+1. A key saved for the account you're tracking (see Multiple accounts below)
+2. A key saved in UsagePal Settings
+3. The `opencode-go` key from `~/.local/share/opencode/auth.json`
+4. The `OPENCODE_API_KEY` environment variable
 
 UsagePal stores a key entered in Settings at `~/.config/usagepal/opencode-go.json`. It does not
 change OpenCode's auth file. The saved key is never read back into the app interface.
 
 The plugin is detected when the UsagePal key file or OpenCode auth file exists, or when
 `OPENCODE_API_KEY` is set.
+
+## Multiple accounts
+
+OpenCode Go supports registering several API keys, each tracked as its own card. When you add an
+account from its card or from Settings, UsagePal stores that account's key in an owner-only file
+under `~/.config/usagepal/accounts/opencode-go/` and uses it for that account's usage — it never
+touches the shared Settings key or OpenCode's own auth file. Because usage comes from the account
+API (keyed by the API key), each account reports its own limits, with no local-log attribution.
 
 ## Usage Bars
 

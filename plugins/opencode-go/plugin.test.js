@@ -76,7 +76,7 @@ describe("opencode-go plugin", () => {
     const ctx = makeCtx();
     ctx.host.fs.writeText(CONFIG_PATH, JSON.stringify({ apiKey: "settings-key" }));
     setAuth(ctx);
-    ctx.host.env.get.mockReturnValue("env-key");
+    ctx.host.env.get.mockImplementation((name) => name === "OPENCODE_API_KEY" ? "env-key" : null);
     setSuccess(ctx);
 
     (await loadPlugin()).probe(ctx);
@@ -90,6 +90,19 @@ describe("opencode-go plugin", () => {
 
     (await loadPlugin()).probe(ctx);
     expect(ctx.host.http.request.mock.calls[0][0].headers.Authorization).toBe("Bearer env-key");
+  });
+
+  it("prefers a per-account managed key over all shared sources", async () => {
+    const ctx = makeCtx();
+    ctx.host.fs.writeText(CONFIG_PATH, JSON.stringify({ apiKey: "settings-key" }));
+    setAuth(ctx);
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "USAGEPAL_OPENCODE_GO_API_KEY" ? "account-key" : "env-key"
+    );
+    setSuccess(ctx);
+
+    (await loadPlugin()).probe(ctx);
+    expect(ctx.host.http.request.mock.calls[0][0].headers.Authorization).toBe("Bearer account-key");
   });
 
   it("requires a key instead of using local history", async () => {

@@ -7,7 +7,7 @@ import { emitAccountsChanged } from "@/hooks/app/use-accounts"
 import { loadAccounts, saveAccounts, upsertAccount } from "@/lib/settings"
 
 /** Providers that support multiple accounts (and therefore an add flow). */
-export const ADD_ACCOUNT_PROVIDERS = ["claude", "codex", "cursor"]
+export const ADD_ACCOUNT_PROVIDERS = ["claude", "codex", "cursor", "opencode-go"]
 
 /** Metadata handed back to the parent so it can persist label + id in settings.json. */
 export type SavedAccount = { accountId: string; label: string }
@@ -276,6 +276,76 @@ export function AddCursorAccountDialog({
   )
 }
 
+/** Add an OpenCode Go account from an API key. */
+export function AddOpenCodeGoAccountDialog({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void
+  onSaved: (providerId: string, account: SavedAccount) => void
+}) {
+  const [label, setLabel] = useState("")
+  const [apiKey, setApiKey] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSave = async () => {
+    const trimmedKey = apiKey.trim()
+    if (!trimmedKey || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await invoke<AccountAdded>("save_opencode_go_account", {
+        label: label.trim(),
+        apiKey: trimmedKey,
+      })
+      onSaved("opencode-go", { accountId: result.accountId, label: label.trim() })
+    } catch (e) {
+      setError(String(e))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <DialogShell title="Add OpenCode Go Account" onClose={onClose}>
+      <p className="text-sm text-muted-foreground mb-3">
+        Paste an OpenCode Go API key to track this account.
+      </p>
+      <div className="space-y-2">
+        <LabelInput value={label} onChange={setLabel} disabled={busy} />
+        <input
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="OpenCode Go API key"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void handleSave()
+          }}
+          disabled={busy}
+          className={inputClass}
+          aria-label="API key"
+        />
+      </div>
+      {error && <p className="text-xs text-destructive mt-2">{error}</p>}
+      <div className="flex items-center justify-end gap-2 mt-4">
+        <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="default"
+          size="sm"
+          disabled={busy || apiKey.trim().length === 0}
+          onClick={() => void handleSave()}
+        >
+          Add account
+        </Button>
+      </div>
+    </DialogShell>
+  )
+}
+
 /**
  * Renders the right add-account dialog for `providerId` and persists the account
  * metadata on save, then broadcasts the change so every mounted `useAccounts`
@@ -306,5 +376,7 @@ export function AddAccountDialogHost({
   if (providerId === "claude") return <AddClaudeAccountDialog onClose={onClose} onSaved={onSaved} />
   if (providerId === "codex") return <AddCodexAccountDialog onClose={onClose} onSaved={onSaved} />
   if (providerId === "cursor") return <AddCursorAccountDialog onClose={onClose} onSaved={onSaved} />
+  if (providerId === "opencode-go")
+    return <AddOpenCodeGoAccountDialog onClose={onClose} onSaved={onSaved} />
   return null
 }

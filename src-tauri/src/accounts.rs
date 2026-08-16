@@ -50,6 +50,10 @@ fn cursor_secret_path(account_id: &str) -> Option<PathBuf> {
     config_accounts_dir("cursor").map(|d| d.join(format!("{account_id}.json")))
 }
 
+fn opencode_go_secret_path(account_id: &str) -> Option<PathBuf> {
+    config_accounts_dir("opencode-go").map(|d| d.join(format!("{account_id}.json")))
+}
+
 pub(crate) fn codex_profile_dir(app_data_dir: &Path, account_id: &str) -> PathBuf {
     app_data_dir.join("accounts").join("codex").join(account_id)
 }
@@ -126,6 +130,16 @@ fn resolve_env_overrides(
                 path.to_string_lossy().to_string(),
             );
         }
+        "opencode-go" => {
+            let path = opencode_go_secret_path(account_id)?;
+            let api_key = read_json_string_field(&path, "apiKey")?;
+            // A per-account key wins over the shared Settings key / OpenCode
+            // auth / ambient OPENCODE_API_KEY so each card reports its own usage.
+            env.insert(
+                "USAGEPAL_OPENCODE_GO_API_KEY".to_string(),
+                api_key,
+            );
+        }
         _ => return None,
     }
     Some(env)
@@ -185,6 +199,25 @@ pub fn save_claude_account(label: String, setup_token: String) -> Result<Account
         None => serde_json::json!({ "setupToken": token }),
     };
     write_private_file(&path, &secret.to_string())
+        .map_err(|e| format!("Couldn't save the account: {e}"))?;
+    Ok(AccountAdded { account_id })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn save_opencode_go_account(label: String, api_key: String) -> Result<AccountAdded, String> {
+    let key = api_key.trim();
+    if key.is_empty() {
+        return Err("API key is empty.".to_string());
+    }
+    let _ = label; // label is persisted by the frontend in settings.json
+    let account_id = uuid::Uuid::new_v4().to_string();
+    let path = opencode_go_secret_path(&account_id).ok_or("No home directory available.")?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("Couldn't create the accounts directory: {e}"))?;
+    }
+    write_private_file(&path, &serde_json::json!({ "apiKey": key }).to_string())
         .map_err(|e| format!("Couldn't save the account: {e}"))?;
     Ok(AccountAdded { account_id })
 }
@@ -482,11 +515,11 @@ fn delete_account_secret(
                     .map_err(|e| format!("Couldn't remove profile: {e}"))?;
             }
         }
-        "claude" | "cursor" => {
-            let path = if provider_id == "claude" {
-                claude_secret_path(account_id)
-            } else {
-                cursor_secret_path(account_id)
+        "claude" | "cursor" | "opencode-go" => {
+            let path = match provider_id {
+                "claude" => claude_secret_path(account_id),
+                "cursor" => cursor_secret_path(account_id),
+                _ => opencode_go_secret_path(account_id),
             }
             .ok_or("No home directory available.")?;
             if path.exists() {
@@ -582,6 +615,18 @@ mod tests {
         assert_eq!(
             read_json_string_field(&path, "setupToken").as_deref(),
             Some("sk-ant-oat01-XXX")
+        );
+    }
+
+    #[test]
+    fn opencode_go_secret_roundtrips_api_key() {
+        let dir = tmp_dir("opencode-go-secret");
+        let path = dir.join("acc.json");
+        write_private_file(&path, &serde_json::json!({ "apiKey": "opck-abc123" }).to_string())
+            .unwrap();
+        assert_eq!(
+            read_json_string_field(&path, "apiKey").as_deref(),
+            Some("opck-abc123")
         );
     }
 
