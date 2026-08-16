@@ -23,6 +23,11 @@ export const commands = {
 	 *  then `open`s the bundle, yielding a single clean instance. If the bundle
 	 *  path can't be resolved we fall back to a plain exit (matching the old
 	 *  failure mode rather than risking a stuck process).
+	 * 
+	 *  `open -n` (new instance) is deliberate: right after this process dies,
+	 *  LaunchServices can still consider the bundle "running" and answer a plain
+	 *  `open` by doing nothing, so the app intermittently never comes back.
+	 *  Forcing a fresh instance sidesteps that race.
 	 */
 	relaunchApp: () => __TAURI_INVOKE<void>("relaunch_app"),
 	startProbeBatch: (batchId: string | null, pluginIds: string[] | null) => typedError<ProbeBatchStarted, string>(__TAURI_INVOKE("start_probe_batch", { batchId, pluginIds })),
