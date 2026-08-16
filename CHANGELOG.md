@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.69-beta.8
+
+Fixes an intermittent update bug where the app would quit but not relaunch after installing an update.
+
+### Bug Fixes
+- The app now reliably relaunches after installing an update — forcing a fresh launch avoids a race with LaunchServices that occasionally left the app closed after it quit by @Halloweedev
+
+---
+
 ## v0.7.69-beta.7
 
 Track several OpenCode Go accounts, each with its own API key and its own usage card.
