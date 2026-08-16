@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.69-beta.7
+
+Track several OpenCode Go accounts, each with its own API key and its own usage card.
+
+### New Features
+- OpenCode Go now supports multiple accounts — add them by API key from the card's "+" or Settings, and each account reports its own Go usage instead of sharing one key by @Halloweedev
+
+---
+
 ## v0.7.69-beta.6
 
 Multi-account cards now show each account's real local usage instead of $0 or another account's spend.
