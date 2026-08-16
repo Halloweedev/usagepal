@@ -4,6 +4,9 @@
   const AUTH_PATH = "~/.local/share/opencode/auth.json";
   const CONFIG_PATH = "~/.config/usagepal/opencode-go.json";
   const ENV_NAME = "OPENCODE_API_KEY";
+  // Per-account key injected by the host for registered accounts. It wins over
+  // every shared source so a registered account always probes with its own key.
+  const ACCOUNT_KEY_ENV = "USAGEPAL_OPENCODE_GO_API_KEY";
   const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
   const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -31,15 +34,22 @@
     }
   }
 
+  function readEnvString(ctx, name) {
+    const value = ctx.host.env.get(name);
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  }
+
   function loadApiKey(ctx) {
+    const accountKey = readEnvString(ctx, ACCOUNT_KEY_ENV);
+    if (accountKey) return accountKey;
+
     const configured = keyFromJsonFile(ctx, CONFIG_PATH, null);
     if (configured) return configured;
 
     const openCodeAuth = keyFromJsonFile(ctx, AUTH_PATH, PROVIDER_ID);
     if (openCodeAuth) return openCodeAuth;
 
-    const envValue = ctx.host.env.get(ENV_NAME);
-    return typeof envValue === "string" && envValue.trim() ? envValue.trim() : null;
+    return readEnvString(ctx, ENV_NAME);
   }
 
   function readPeriod(ctx, usage, name) {
