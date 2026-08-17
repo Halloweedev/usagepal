@@ -181,9 +181,9 @@ fn run_probe_with_timeout(
         }
 
         let globals = ctx.globals();
-        let plugin_obj: Object = match globals.get("__openusage_plugin") {
+        let plugin_obj: Object = match globals.get("__usagepal_plugin") {
             Ok(obj) => obj,
-            Err(_) => return error_output(plugin, "missing __openusage_plugin".to_string()),
+            Err(_) => return error_output(plugin, "missing __usagepal_plugin".to_string()),
         };
 
         let probe_fn: rquickjs::Function = match plugin_obj.get("probe") {
@@ -192,7 +192,7 @@ fn run_probe_with_timeout(
         };
 
         let probe_ctx: Value = globals
-            .get("__openusage_ctx")
+            .get("__usagepal_ctx")
             .unwrap_or_else(|_| Value::new_undefined(ctx.clone()));
 
         let result_value: Value = match probe_fn.call((probe_ctx,)) {
@@ -816,7 +816,7 @@ mod tests {
     fn run_probe_returns_thrown_string_from_sync_error() {
         let plugin = test_plugin(
             r#"
-            globalThis.__openusage_plugin = {
+            globalThis.__usagepal_plugin = {
                 probe() {
                     throw "boom";
                 }
@@ -831,7 +831,7 @@ mod tests {
     fn run_probe_returns_thrown_string_from_async_error() {
         let plugin = test_plugin(
             r#"
-            globalThis.__openusage_plugin = {
+            globalThis.__usagepal_plugin = {
                 probe: async function () {
                     throw "boom";
                 }
@@ -846,7 +846,7 @@ mod tests {
     fn run_probe_times_out_cpu_bound_script() {
         let plugin = test_plugin(
             r#"
-            globalThis.__openusage_plugin = {
+            globalThis.__usagepal_plugin = {
                 probe() {
                     while (true) {}
                 }
@@ -868,7 +868,7 @@ mod tests {
     #[test]
     fn run_probe_default_account_leaves_account_id_none() {
         let plugin = test_plugin(
-            "globalThis.__openusage_plugin = { id: 'test', probe: () => ({ plan: 'P', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
+            "globalThis.__usagepal_plugin = { id: 'test', probe: () => ({ plan: 'P', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
         );
         let output = run_probe(&plugin, &temp_app_dir("acct-none"), "0.0.0");
         assert_eq!(output.account_id, None);
@@ -878,7 +878,7 @@ mod tests {
     fn run_probe_for_account_stamps_account_id() {
         use crate::plugin_engine::account::AccountSpec;
         let plugin = test_plugin(
-            "globalThis.__openusage_plugin = { id: 'test', probe: () => ({ plan: 'P', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
+            "globalThis.__usagepal_plugin = { id: 'test', probe: () => ({ plan: 'P', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
         );
         let account = AccountSpec {
             account_id: "work".to_string(),
@@ -893,7 +893,7 @@ mod tests {
         use crate::plugin_engine::account::AccountSpec;
         // Probe reads CODEX_HOME via ctx.host.env and echoes it back as the plan.
         let plugin = test_plugin(
-            "globalThis.__openusage_plugin = { id: 'test', probe: (ctx) => ({ plan: ctx.host.env.get('CODEX_HOME') || 'MISSING', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
+            "globalThis.__usagepal_plugin = { id: 'test', probe: (ctx) => ({ plan: ctx.host.env.get('CODEX_HOME') || 'MISSING', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
         );
         let mut env = std::collections::HashMap::new();
         env.insert("CODEX_HOME".to_string(), "/tmp/usagepal/acct".to_string());
@@ -927,7 +927,7 @@ mod tests {
     fn bar_chart_line_round_trips_from_builder() {
         let plugin = test_plugin(
             r#"
-            globalThis.__openusage_plugin = {
+            globalThis.__usagepal_plugin = {
                 probe(ctx) {
                     return {
                         lines: [
@@ -957,7 +957,7 @@ mod tests {
         // is native and runs after the JS deadline interrupt can fire.
         let plugin = test_plugin(
             r#"
-            globalThis.__openusage_plugin = {
+            globalThis.__usagepal_plugin = {
                 probe(ctx) {
                     var points = [];
                     for (var i = 0; i < 5000; i++) {

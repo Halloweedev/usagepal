@@ -3,7 +3,7 @@ import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 // Minimal credential + usage stubs so the probe reaches the ccusage path.
@@ -33,7 +33,7 @@ function localDayKey(date) {
 
 describe("claude plugin ccusage usage trend", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
   })
 

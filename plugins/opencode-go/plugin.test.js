@@ -16,7 +16,7 @@ const payload = {
 
 const loadPlugin = async () => {
   await import("./plugin.js");
-  return globalThis.__openusage_plugin;
+  return globalThis.__usagepal_plugin;
 };
 
 function setAuth(ctx, key = "go-auth-key") {
@@ -29,7 +29,7 @@ function setSuccess(ctx) {
 
 describe("opencode-go plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin;
+    delete globalThis.__usagepal_plugin;
     vi.resetModules();
   });
 

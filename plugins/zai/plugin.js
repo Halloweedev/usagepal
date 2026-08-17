@@ -188,5 +188,5 @@
     return { plan, lines }
   }
 
-  globalThis.__openusage_plugin = { id: "zai", probe }
+  globalThis.__usagepal_plugin = { id: "zai", probe }
 })()

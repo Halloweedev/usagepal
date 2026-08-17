@@ -255,5 +255,5 @@
     return { lines: lines };
   }
 
-  globalThis.__openusage_plugin = { id: "synthetic", probe: probe };
+  globalThis.__usagepal_plugin = { id: "synthetic", probe: probe };
 })();

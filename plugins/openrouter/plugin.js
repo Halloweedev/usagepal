@@ -215,7 +215,7 @@
     return { plan, lines }
   }
 
-  globalThis.__openusage_plugin = {
+  globalThis.__usagepal_plugin = {
     id: "openrouter",
     probe,
     __test: {

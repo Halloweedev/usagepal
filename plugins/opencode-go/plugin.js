@@ -141,7 +141,7 @@
     return { plan: "Go", lines: buildLines(ctx, fetchUsage(ctx, apiKey)) };
   }
 
-  globalThis.__openusage_plugin = {
+  globalThis.__usagepal_plugin = {
     id: PROVIDER_ID,
     probe,
     __test: { keyFromObject, loadApiKey, parseUsage, buildLines },

@@ -3,7 +3,7 @@ import { makePluginTestContext } from "../test-helpers.js";
 
 const loadPlugin = async () => {
   await import("./plugin.js");
-  return globalThis.__openusage_plugin;
+  return globalThis.__usagepal_plugin;
 };
 
 function makeUsageResponse(overrides = {}) {
@@ -58,7 +58,7 @@ function mockUsageOk(ctx, body) {
 
 describe("copilot plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin;
+    delete globalThis.__usagepal_plugin;
     if (vi.resetModules) vi.resetModules();
   });
 

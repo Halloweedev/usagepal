@@ -27,7 +27,7 @@ Compare the PR against main across these dimensions:
 
 **Structure & conventions:**
 - Does `plugin.json` match our schema? (schemaVersion, id, name, version, entry, icon, brandColor, lines)
-- Does `plugin.js` use the IIFE pattern with `globalThis.__openusage_plugin = { id, probe }`?
+- Does `plugin.js` use the IIFE pattern with `globalThis.__usagepal_plugin = { id, probe }`?
 - Does `probe(ctx)` return `{ plan, lines }` using `ctx.line.*` helpers?
 - Are shared utilities used where they exist? (`ctx.util.toIso`, `ctx.util.needsRefreshByExpiry`, `ctx.util.retryOnceOnAuth`, `ctx.util.request`, etc.)
 - Does `icon.svg` use `fill="currentColor"` and reasonable dimensions?

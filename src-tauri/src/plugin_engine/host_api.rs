@@ -373,8 +373,8 @@ fn shell_from_env() -> Option<String> {
 }
 
 fn read_env_from_interactive_shell(program: &str, name: &str) -> Option<String> {
-    const START_MARKER: &str = "__OPENUSAGE_ENV_START__";
-    const END_MARKER: &str = "__OPENUSAGE_ENV_END__";
+    const START_MARKER: &str = "__USAGEPAL_ENV_START__";
+    const END_MARKER: &str = "__USAGEPAL_ENV_END__";
 
     let script = format!(
         "printf '{}\\n'; printenv {}; printf '{}\\n'",
@@ -733,7 +733,7 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     inject_ccusage(ctx, &host, plugin_id, deadline)?;
 
     probe_ctx.set("host", host)?;
-    globals.set("__openusage_ctx", probe_ctx)?;
+    globals.set("__usagepal_ctx", probe_ctx)?;
 
     Ok(())
 }
@@ -1076,8 +1076,8 @@ fn inject_http<'js>(
     ctx.eval::<(), _>(
         r#"
         (function() {
-            // Will be patched after __openusage_ctx is set.
-            if (typeof __openusage_ctx !== "undefined") {
+            // Will be patched after __usagepal_ctx is set.
+            if (typeof __usagepal_ctx !== "undefined") {
                 void 0;
             }
         })();
@@ -1094,8 +1094,8 @@ pub fn patch_http_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     ctx.eval::<(), _>(
         r#"
         (function() {
-            var rawFn = __openusage_ctx.host.http._requestRaw;
-            __openusage_ctx.host.http.request = function(req) {
+            var rawFn = __usagepal_ctx.host.http._requestRaw;
+            __usagepal_ctx.host.http.request = function(req) {
                 var json = JSON.stringify({
                     url: req.url,
                     method: req.method || "GET",
@@ -1113,12 +1113,12 @@ pub fn patch_http_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     )
 }
 
-/// Inject utility APIs (line builders, formatters, base64, jwt) onto __openusage_ctx
+/// Inject utility APIs (line builders, formatters, base64, jwt) onto __usagepal_ctx
 pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     ctx.eval::<(), _>(
         r#"
         (function() {
-            var ctx = __openusage_ctx;
+            var ctx = __usagepal_ctx;
 
             // Line builders (options object API)
             ctx.line = {
@@ -1634,8 +1634,8 @@ pub fn patch_ls_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     ctx.eval::<(), _>(
         r#"
         (function() {
-            var rawFn = __openusage_ctx.host.ls._discoverRaw;
-            __openusage_ctx.host.ls.discover = function(opts) {
+            var rawFn = __usagepal_ctx.host.ls._discoverRaw;
+            __usagepal_ctx.host.ls.discover = function(opts) {
                 var optsJson;
                 try { optsJson = JSON.stringify(opts); } catch (e) { return null; }
                 var json = rawFn(optsJson);
@@ -1972,8 +1972,8 @@ pub fn patch_ccusage_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     ctx.eval::<(), _>(
         r#"
         (function() {
-            var rawFn = __openusage_ctx.host.ccusage._queryRaw;
-            __openusage_ctx.host.ccusage.query = function(opts) {
+            var rawFn = __usagepal_ctx.host.ccusage._queryRaw;
+            __usagepal_ctx.host.ccusage.query = function(opts) {
                 var result = rawFn(JSON.stringify(opts || {}));
                 try {
                     var parsed = JSON.parse(result);
@@ -2550,44 +2550,44 @@ mod tests {
         let stdout = concat!(
             "startup banner\n",
             "\u{1b}[31mplugin failed\u{1b}[0m\n",
-            "__OPENUSAGE_ENV_START__\n",
+            "__USAGEPAL_ENV_START__\n",
             "  sk-test-key-12345  \n",
-            "__OPENUSAGE_ENV_END__\n",
+            "__USAGEPAL_ENV_END__\n",
             "\u{1b}[32muser@host\u{1b}[0m\n"
         );
         let value =
-            extract_marked_value(stdout, "__OPENUSAGE_ENV_START__", "__OPENUSAGE_ENV_END__");
+            extract_marked_value(stdout, "__USAGEPAL_ENV_START__", "__USAGEPAL_ENV_END__");
         assert_eq!(value.as_deref(), Some("sk-test-key-12345"));
     }
 
     #[test]
     fn extract_marked_value_strips_inline_terminal_sequences_from_marked_value() {
         let stdout = concat!(
-            "__OPENUSAGE_ENV_START__\n",
+            "__USAGEPAL_ENV_START__\n",
             "\u{1b}[?1000l\n",
             "  sk-test-key-12345\u{1b}[?2004h\r\n",
-            "__OPENUSAGE_ENV_END__\n"
+            "__USAGEPAL_ENV_END__\n"
         );
         let value =
-            extract_marked_value(stdout, "__OPENUSAGE_ENV_START__", "__OPENUSAGE_ENV_END__");
+            extract_marked_value(stdout, "__USAGEPAL_ENV_START__", "__USAGEPAL_ENV_END__");
         assert_eq!(value.as_deref(), Some("sk-test-key-12345"));
     }
 
     #[test]
     fn extract_marked_value_returns_none_when_marked_value_is_empty() {
-        let stdout = "__OPENUSAGE_ENV_START__\n  \n__OPENUSAGE_ENV_END__\n";
+        let stdout = "__USAGEPAL_ENV_START__\n  \n__USAGEPAL_ENV_END__\n";
         let value =
-            extract_marked_value(stdout, "__OPENUSAGE_ENV_START__", "__OPENUSAGE_ENV_END__");
+            extract_marked_value(stdout, "__USAGEPAL_ENV_START__", "__USAGEPAL_ENV_END__");
         assert!(value.is_none());
     }
 
     #[test]
     fn parse_interactive_shell_env_output_does_not_fallback_to_end_marker_for_empty_value() {
-        let stdout = "__OPENUSAGE_ENV_START__\n  \n__OPENUSAGE_ENV_END__\n";
+        let stdout = "__USAGEPAL_ENV_START__\n  \n__USAGEPAL_ENV_END__\n";
         let value = parse_interactive_shell_env_output(
             stdout,
-            "__OPENUSAGE_ENV_START__",
-            "__OPENUSAGE_ENV_END__",
+            "__USAGEPAL_ENV_START__",
+            "__USAGEPAL_ENV_END__",
         );
         assert!(value.is_none());
     }
@@ -2597,8 +2597,8 @@ mod tests {
         let stdout = "\u{1b}[?1000l\n  sk-test-key-12345\u{1b}[?2004h\r\n";
         let value = parse_interactive_shell_env_output(
             stdout,
-            "__OPENUSAGE_ENV_START__",
-            "__OPENUSAGE_ENV_END__",
+            "__USAGEPAL_ENV_START__",
+            "__USAGEPAL_ENV_END__",
         );
         assert_eq!(value.as_deref(), Some("sk-test-key-12345"));
     }
@@ -2611,7 +2611,7 @@ mod tests {
             let app_data = std::env::temp_dir();
             inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
             let globals = ctx.globals();
-            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let probe_ctx: Object = globals.get("__usagepal_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
             let crypto: Object = host.get("crypto").expect("crypto");
             let _decrypt: Function = crypto.get("decryptAes256Gcm").expect("decryptAes256Gcm");
@@ -2628,7 +2628,7 @@ mod tests {
             let app_data = std::env::temp_dir();
             inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
             let js_expr = format!(
-                r#"__openusage_ctx.host.crypto.decryptAes256Gcm("{}", "{}")"#,
+                r#"__usagepal_ctx.host.crypto.decryptAes256Gcm("{}", "{}")"#,
                 envelope, key_b64
             );
             let decrypted: String = ctx.eval(js_expr).expect("js decrypt");
@@ -2645,7 +2645,7 @@ mod tests {
             inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
             // Vector: `printf '%s' 'hello' | shasum -a 256`
             let result: String = ctx
-                .eval(r#"__openusage_ctx.host.crypto.sha256Hex("hello")"#)
+                .eval(r#"__usagepal_ctx.host.crypto.sha256Hex("hello")"#)
                 .expect("js sha256");
             assert_eq!(
                 result,
@@ -2653,7 +2653,7 @@ mod tests {
             );
 
             let empty: String = ctx
-                .eval(r#"__openusage_ctx.host.crypto.sha256Hex("")"#)
+                .eval(r#"__usagepal_ctx.host.crypto.sha256Hex("")"#)
                 .expect("js sha256 empty");
             assert_eq!(
                 empty,
@@ -2670,7 +2670,7 @@ mod tests {
             let app_data = std::env::temp_dir();
             inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
             let globals = ctx.globals();
-            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let probe_ctx: Object = globals.get("__usagepal_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
             let keychain: Object = host.get("keychain").expect("keychain");
             let _read: Function = keychain
@@ -2700,7 +2700,7 @@ mod tests {
                 .eval(
                     r#"
                     try {
-                        __openusage_ctx.host.keychain.readGenericPassword("__openusage_missing_service__");
+                        __usagepal_ctx.host.keychain.readGenericPassword("__usagepal_missing_service__");
                         "ok";
                     } catch (e) {
                         String(e);
@@ -2799,7 +2799,7 @@ mod tests {
             let app_data = std::env::temp_dir();
             inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
             let globals = ctx.globals();
-            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let probe_ctx: Object = globals.get("__usagepal_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
             let env: Object = host.get("env").expect("env");
             let get: Function = env.get("get").expect("get");
@@ -2810,7 +2810,7 @@ mod tests {
                     get.call((name.to_string(),)).expect("get whitelisted var");
                 assert_eq!(value, expected, "{name} should match host env resolver");
 
-                let js_expr = format!(r#"__openusage_ctx.host.env.get("{}")"#, name);
+                let js_expr = format!(r#"__usagepal_ctx.host.env.get("{}")"#, name);
                 let js_value: Option<String> = ctx.eval(js_expr).expect("js get whitelisted var");
                 assert_eq!(
                     js_value, expected,
@@ -2819,7 +2819,7 @@ mod tests {
             }
 
             let blocked: Option<String> = get
-                .call(("__OPENUSAGE_TEST_NOT_WHITELISTED__".to_string(),))
+                .call(("__USAGEPAL_TEST_NOT_WHITELISTED__".to_string(),))
                 .expect("get blocked var");
             assert!(
                 blocked.is_none(),
@@ -2827,7 +2827,7 @@ mod tests {
             );
 
             let js_blocked: Option<String> = ctx
-                .eval(r#"__openusage_ctx.host.env.get("__OPENUSAGE_TEST_NOT_WHITELISTED__")"#)
+                .eval(r#"__usagepal_ctx.host.env.get("__USAGEPAL_TEST_NOT_WHITELISTED__")"#)
                 .expect("js get blocked var");
             assert!(
                 js_blocked.is_none(),
@@ -2867,7 +2867,7 @@ mod tests {
             let app_data = std::env::temp_dir();
             inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
             let globals = ctx.globals();
-            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let probe_ctx: Object = globals.get("__usagepal_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
             let env: Object = host.get("env").expect("env");
             let get: Function = env.get("get").expect("get");
@@ -2880,7 +2880,7 @@ mod tests {
             );
 
             let js_value: Option<String> = ctx
-                .eval(r#"__openusage_ctx.host.env.get("ZAI_API_KEY")"#)
+                .eval(r#"__usagepal_ctx.host.env.get("ZAI_API_KEY")"#)
                 .expect("js get");
             assert_eq!(
                 js_value.as_deref(),
@@ -2913,7 +2913,7 @@ mod tests {
             inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
 
             let input_rate: f64 = ctx
-                .eval(r#"__openusage_ctx.host.pricing.lookup("claude-sonnet-4-5-20250929").input"#)
+                .eval(r#"__usagepal_ctx.host.pricing.lookup("claude-sonnet-4-5-20250929").input"#)
                 .expect("js pricing lookup for known model");
             assert!(
                 input_rate > 0.0,
@@ -2925,7 +2925,7 @@ mod tests {
             // `null`, never `0` and never an object of zeroes. A `$0` that means
             // "we don't know" is indistinguishable from a `$0` that means "free".
             let is_null: bool = ctx
-                .eval(r#"__openusage_ctx.host.pricing.lookup("nope-9000") === null"#)
+                .eval(r#"__usagepal_ctx.host.pricing.lookup("nope-9000") === null"#)
                 .expect("js pricing lookup for unknown model");
             assert!(
                 is_null,
@@ -2938,7 +2938,7 @@ mod tests {
             // equality with `null` above. This line exists so a future change
             // that returns `0` instead of `null` fails loudly here too.
             let typeof_result: String = ctx
-                .eval(r#"typeof __openusage_ctx.host.pricing.lookup("nope-9000")"#)
+                .eval(r#"typeof __usagepal_ctx.host.pricing.lookup("nope-9000")"#)
                 .expect("js typeof unknown model result");
             assert_eq!(
                 typeof_result, "object",

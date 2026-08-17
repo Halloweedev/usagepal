@@ -311,5 +311,5 @@
     return { plan: plan, lines: lines };
   }
 
-  globalThis.__openusage_plugin = { id: "copilot", probe };
+  globalThis.__usagepal_plugin = { id: "copilot", probe };
 })();

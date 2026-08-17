@@ -3,7 +3,7 @@ import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 const makeJwt = (payload) => [
@@ -16,7 +16,7 @@ const MANAGED_PATH = "~/.config/usagepal/accounts/cursor/user123.json"
 
 describe("cursor plugin — managed account seam", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
   })
 

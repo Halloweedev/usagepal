@@ -12,7 +12,7 @@ let plugin = null
 
 beforeAll(async () => {
   await import("./plugin.js")
-  plugin = globalThis.__openusage_plugin
+  plugin = globalThis.__usagepal_plugin
 })
 
 beforeEach(() => {

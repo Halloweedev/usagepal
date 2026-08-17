@@ -5,12 +5,12 @@ const CRED_PATH = "~/.kimi/credentials/kimi-code.json"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 describe("kimi plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
   })
 

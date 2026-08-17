@@ -54,7 +54,7 @@ mod tests {
         {
             super::application_registration_result(Err(
                 mac_notification_sys::error::ApplicationError::AlreadySet(
-                    "com.robinebers.openusage.test".to_string(),
+                    "com.halloweed.usagepal.test".to_string(),
                 )
                 .into(),
             ))
@@ -63,7 +63,7 @@ mod tests {
 
         #[cfg(not(target_os = "macos"))]
         {
-            super::register_application_identifier("com.robinebers.openusage.test")
+            super::register_application_identifier("com.halloweed.usagepal.test")
                 .expect("non-macOS registration should be a no-op");
         }
     }

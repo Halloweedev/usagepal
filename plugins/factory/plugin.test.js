@@ -4,7 +4,7 @@ import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 // Helper to create a valid JWT with configurable expiry
@@ -29,7 +29,7 @@ function makeEncryptedAuthV2(payload) {
 
 describe("factory plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
   })
 
@@ -1026,7 +1026,7 @@ describe("factory plugin", () => {
         }),
       })
 
-      delete globalThis.__openusage_plugin
+      delete globalThis.__usagepal_plugin
       vi.resetModules()
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
@@ -1102,7 +1102,7 @@ describe("factory plugin", () => {
         }
       })
 
-      delete globalThis.__openusage_plugin
+      delete globalThis.__usagepal_plugin
       vi.resetModules()
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)

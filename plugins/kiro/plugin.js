@@ -379,5 +379,5 @@
     }
     return buildOutput(ctx, snapshot, nowMs)
   }
-  globalThis.__openusage_plugin = { id: "kiro", probe }
+  globalThis.__usagepal_plugin = { id: "kiro", probe }
 })()

@@ -483,5 +483,5 @@
     return { plan: plan, lines: lines }
   }
 
-  globalThis.__openusage_plugin = { id: "factory", probe }
+  globalThis.__usagepal_plugin = { id: "factory", probe }
 })()

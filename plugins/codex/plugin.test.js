@@ -4,7 +4,7 @@ import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 const makeJwt = (payload) => [
@@ -15,7 +15,7 @@ const makeJwt = (payload) => [
 
 describe("codex plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
   })
 
@@ -2039,7 +2039,7 @@ describe("codex plugin", () => {
       }
       return { status: 401, headers: {}, bodyText: "" }
     })
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
     plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Token revoked")
@@ -2064,7 +2064,7 @@ describe("codex plugin", () => {
         }
       })
 
-      delete globalThis.__openusage_plugin
+      delete globalThis.__usagepal_plugin
       vi.resetModules()
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
