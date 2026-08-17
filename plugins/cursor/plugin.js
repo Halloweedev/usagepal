@@ -1250,7 +1250,7 @@
     return { plan: plan, lines: lines }
   }
 
-  globalThis.__openusage_plugin = {
+  globalThis.__usagepal_plugin = {
     id: "cursor",
     probe,
     __test: {

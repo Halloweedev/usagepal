@@ -9,7 +9,7 @@ const CN_FALLBACK_USAGE_URL = "https://api.minimaxi.com/v1/token_plan/remains"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 function setEnv(ctx, envValues) {
@@ -38,7 +38,7 @@ function successPayload(overrides) {
 
 describe("minimax plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
   })
 

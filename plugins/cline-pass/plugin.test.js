@@ -3,7 +3,7 @@ import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 // Far-future expiry so normal tests don't trigger the refresh path.
@@ -162,7 +162,7 @@ const findLine = (result, label) => result.lines.find((l) => l.label === label)
 
 describe("cline-pass plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     if (vi.resetModules) vi.resetModules()
   })
 
@@ -416,7 +416,7 @@ describe("cline-pass plugin", () => {
 
 describe("cline-pass share graph", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     if (vi.resetModules) vi.resetModules()
   })
 

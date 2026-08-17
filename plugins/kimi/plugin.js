@@ -354,5 +354,5 @@
     }
   }
 
-  globalThis.__openusage_plugin = { id: "kimi", probe }
+  globalThis.__usagepal_plugin = { id: "kimi", probe }
 })()

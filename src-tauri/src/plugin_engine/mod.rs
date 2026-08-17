@@ -247,7 +247,7 @@ mod tests {
         fs::write(
             plugin_dir.join("plugin.js"),
             format!(
-                r#"globalThis.__openusage_plugin = {{ id: "{}", probe: () => ({{ lines: [] }}) }}"#,
+                r#"globalThis.__usagepal_plugin = {{ id: "{}", probe: () => ({{ lines: [] }}) }}"#,
                 id
             ),
         )
