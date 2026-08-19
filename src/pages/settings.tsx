@@ -16,7 +16,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useState, type ReactNode } from "react";
-import { ArrowSquareOut, Key } from "@phosphor-icons/react";
+import { ArrowSquareOut, Key, UsersThree } from "@phosphor-icons/react";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -24,12 +25,23 @@ import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { ClinePassKeyDialog } from "@/components/clinepass-key-dialog";
 import { OpenRouterKeyDialog } from "@/components/openrouter-key-dialog";
 import { OpenCodeGoKeyDialog } from "@/components/opencode-go-key-dialog";
+import {
+  AddClaudeAccountDialog,
+  AddCodexAccountDialog,
+  AddCursorAccountDialog,
+  type SavedAccount,
+} from "@/components/add-account-dialog";
+import { useAccounts } from "@/hooks/app/use-accounts";
 import { SettingsAdvancedSection } from "@/components/settings-advanced-section";
 import { SupporterSection } from "@/components/supporter-section";
 import { ProviderIconMask } from "@/components/provider-icon-mask";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
   AUTO_UPDATE_OPTIONS,
+  loadAccounts,
+  removeAccountMeta,
+  saveAccounts,
+  upsertAccount,
   DISPLAY_MODE_OPTIONS,
   MENUBAR_ICON_STYLE_OPTIONS,
   MENUBAR_METRIC_OPTIONS,
@@ -283,6 +295,129 @@ function MultiMenubarStylePreview({
   );
 }
 
+const ACCOUNT_PROVIDERS = ["claude", "codex", "cursor"];
+
+/** Per-provider account manager: lists registered accounts (label + Remove) and
+ * opens the right add-account dialog. Metadata is persisted frontend-side; the
+ * secret lives in a Rust-owned file removed via `remove_account`. */
+function AccountsManagerDialog({
+  providerId,
+  providerName,
+  onClose,
+  onChanged,
+}: {
+  providerId: string;
+  providerName: string;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const { accountsByProvider, reload } = useAccounts();
+  const [addOpen, setAddOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const accounts = accountsByProvider[providerId] ?? [];
+
+  const handleSaved = async (savedProvider: string, account: SavedAccount) => {
+    const current = await loadAccounts();
+    await saveAccounts(
+      upsertAccount(current, savedProvider, {
+        accountId: account.accountId,
+        label: account.label,
+        order: 0,
+      })
+    );
+    setAddOpen(false);
+    await reload();
+    onChanged();
+  };
+
+  const handleRemove = async (accountId: string) => {
+    setError(null);
+    try {
+      await invoke("remove_account", { providerId, accountId });
+      const current = await loadAccounts();
+      await saveAccounts(removeAccountMeta(current, providerId, accountId));
+      await reload();
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-card rounded-lg border shadow-xl p-5 max-w-xs w-full mx-4 animate-in fade-in zoom-in-95 duration-200">
+        <h2 className="text-base font-semibold mb-1">{providerName} Accounts</h2>
+        <p className="text-sm text-muted-foreground mb-3">
+          Each account gets its own usage card.
+        </p>
+
+        <div className="space-y-1" data-testid="accounts-list">
+          {accounts.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No accounts added yet.</p>
+          ) : (
+            accounts.map((account) => (
+              <div
+                key={account.accountId}
+                className="flex items-center gap-2 rounded-md bg-muted/50 px-2.5 py-1.5"
+              >
+                <span className="flex-1 text-sm truncate">
+                  {account.label || account.accountId}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Remove ${account.label || account.accountId}`}
+                  onClick={() => void handleRemove(account.accountId)}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {error && <p className="text-xs text-destructive mt-2">{error}</p>}
+
+        <div className="flex items-center justify-between gap-2 mt-4">
+          <Button variant="default" size="sm" onClick={() => setAddOpen(true)}>
+            Add account
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+
+      {addOpen && (
+        <span onClick={(e) => e.stopPropagation()}>
+          {providerId === "claude" ? (
+            <AddClaudeAccountDialog
+              onClose={() => setAddOpen(false)}
+              onSaved={(p, a) => void handleSaved(p, a)}
+            />
+          ) : providerId === "codex" ? (
+            <AddCodexAccountDialog
+              onClose={() => setAddOpen(false)}
+              onSaved={(p, a) => void handleSaved(p, a)}
+            />
+          ) : (
+            <AddCursorAccountDialog
+              onClose={() => setAddOpen(false)}
+              onSaved={(p, a) => void handleSaved(p, a)}
+            />
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function SortablePluginItem({
   plugin,
   onToggle,
@@ -306,6 +441,8 @@ function SortablePluginItem({
 
   const referralUrl = getReferralUrl(plugin.id);
   const hasManagedApiKey = pluginHasManagedApiKey(plugin.id);
+  const supportsAccounts = ACCOUNT_PROVIDERS.includes(plugin.id);
+  const [accountsDialogOpen, setAccountsDialogOpen] = useState(false);
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   // True when the dialog was opened by enabling the plugin, so cancelling can undo that enable.
   const [openedViaEnable, setOpenedViaEnable] = useState(false);
@@ -369,6 +506,22 @@ function SortablePluginItem({
         {plugin.name}
       </span>
 
+      {supportsAccounts && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Manage ${plugin.name} accounts`}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.currentTarget.blur();
+            setAccountsDialogOpen(true);
+          }}
+        >
+          <UsersThree className="h-3 w-3 opacity-70" />
+        </Button>
+      )}
+
       {hasManagedApiKey && (
         <Button
           type="button"
@@ -410,6 +563,17 @@ function SortablePluginItem({
           onCheckedChange={handleToggle}
         />
       </span>
+
+      {accountsDialogOpen && (
+        <span onClick={(e) => e.stopPropagation()}>
+          <AccountsManagerDialog
+            providerId={plugin.id}
+            providerName={plugin.name}
+            onClose={() => setAccountsDialogOpen(false)}
+            onChanged={() => {}}
+          />
+        </span>
+      )}
 
       {keyDialogOpen && (
         <span onClick={(e) => e.stopPropagation()}>

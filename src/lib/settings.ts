@@ -242,6 +242,49 @@ export async function savePluginSettings(settings: PluginSettings): Promise<void
   await store.save();
 }
 
+// Multi-account metadata: id/label/order per provider, persisted frontend-side.
+// Secrets live in Rust-owned 0o600 files, never here.
+export type AccountMeta = { accountId: string; label: string; order: number };
+export type AccountsByProvider = Record<string, AccountMeta[]>;
+
+const ACCOUNTS_KEY = "accounts";
+
+export async function loadAccounts(): Promise<AccountsByProvider> {
+  const stored = await store.get<AccountsByProvider>(ACCOUNTS_KEY);
+  return stored && typeof stored === "object" ? stored : {};
+}
+
+export async function saveAccounts(accounts: AccountsByProvider): Promise<void> {
+  await store.set(ACCOUNTS_KEY, accounts);
+  await store.save();
+}
+
+export function upsertAccount(
+  accounts: AccountsByProvider,
+  providerId: string,
+  meta: AccountMeta
+): AccountsByProvider {
+  const existing = accounts[providerId] ?? [];
+  const idx = existing.findIndex((a) => a.accountId === meta.accountId);
+  const next =
+    idx >= 0
+      ? existing.map((a) => (a.accountId === meta.accountId ? meta : a))
+      : [...existing, { ...meta, order: existing.length }];
+  return { ...accounts, [providerId]: next };
+}
+
+export function removeAccountMeta(
+  accounts: AccountsByProvider,
+  providerId: string,
+  accountId: string
+): AccountsByProvider {
+  const next = (accounts[providerId] ?? []).filter((a) => a.accountId !== accountId);
+  const copy = { ...accounts };
+  if (next.length === 0) delete copy[providerId];
+  else copy[providerId] = next;
+  return copy;
+}
+
 /** Apply an onboarding provider selection: `keep` ids leave the disabled list,
  * `drop` ids join it. Pure — callers persist via savePluginSettings. */
 export function mergeProviderSelection(
