@@ -71,6 +71,11 @@ export const commands = {
 	opencodeGoKeyStatus: () => __TAURI_INVOKE<OpenCodeGoKeyStatus>("opencode_go_key_status"),
 	saveOpencodeGoKey: (key: string) => typedError<null, string>(__TAURI_INVOKE("save_opencode_go_key", { key })),
 	clearOpencodeGoKey: () => typedError<null, string>(__TAURI_INVOKE("clear_opencode_go_key")),
+	saveClaudeAccount: (label: string, setupToken: string) => typedError<AccountAdded, string>(__TAURI_INVOKE("save_claude_account", { label, setupToken })),
+	snapshotCursorAccount: (label: string) => typedError<AccountAdded, string>(__TAURI_INVOKE("snapshot_cursor_account", { label })),
+	beginCodexLogin: () => typedError<CodexLoginStarted, string>(__TAURI_INVOKE("begin_codex_login")),
+	finishCodexLogin: (stagingId: string) => typedError<AccountAdded, string>(__TAURI_INVOKE("finish_codex_login", { stagingId })),
+	removeAccount: (providerId: string, accountId: string) => typedError<null, string>(__TAURI_INVOKE("remove_account", { providerId, accountId })),
 };
 
 /** Events */
@@ -81,6 +86,10 @@ export const events = {
 };
 
 /* Types */
+export type AccountAdded = {
+	accountId: string,
+};
+
 export type BarChartPoint = {
 	label: string,
 	value: number | null,
@@ -109,6 +118,10 @@ export type CachedPluginSnapshot = {
 export type ClinePassKeyStatus = {
 	saved: boolean,
 	fromEnv: boolean,
+};
+
+export type CodexLoginStarted = {
+	stagingId: string,
 };
 
 /**  Which sources currently hold a key — drives the API Keys card state without exposing the key. */
