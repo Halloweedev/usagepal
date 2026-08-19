@@ -137,8 +137,14 @@ fn resolve_env_overrides(
             // auth / ambient OPENCODE_API_KEY so each card reports its own usage.
             env.insert(
                 "USAGEPAL_OPENCODE_GO_API_KEY".to_string(),
-                api_key,
+                api_key.clone(),
             );
+            // Local spend (opencode.db) is machine-wide, so only the account
+            // whose key matches the local CLI login may read it; others get the
+            // no-local-logs flag and render "—" rows.
+            for (k, v) in opencode_go_spend_env(&api_key, opencode_go_local_login_key().as_deref()) {
+                env.insert(k, v);
+            }
         }
         _ => return None,
     }
@@ -365,6 +371,35 @@ fn codex_spend_env(
             "CODEX_CCUSAGE_HOME".to_string(),
             home.to_string_lossy().to_string(),
         )],
+        _ => vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())],
+    }
+}
+
+/// The API key currently signed in to the local OpenCode CLI, if any. Read from
+/// `~/.local/share/opencode/auth.json`'s `opencode-go.key` field — the same
+/// field the plugin's `loadApiKey` reads for the default (unregistered) probe.
+fn opencode_go_local_login_key() -> Option<String> {
+    let path = dirs::home_dir()?.join(".local/share/opencode/auth.json");
+    let text = std::fs::read_to_string(&path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    value
+        .get("opencode-go")?
+        .get("key")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+/// Extra env for an OpenCode Go account's local spend source. The local
+/// `opencode.db` is machine-wide with no per-key attribution, so only the
+/// account whose API key matches the current local CLI login can read real
+/// spend; every other registered account is flagged as having no local logs so
+/// the plugin shows a "no local data" state instead of another login's spend.
+fn opencode_go_spend_env(
+    account_key: &str,
+    real_login_key: Option<&str>,
+) -> Vec<(String, String)> {
+    match real_login_key {
+        Some(real_key) if real_key == account_key => vec![],
         _ => vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())],
     }
 }
@@ -705,6 +740,68 @@ mod tests {
             env,
             vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())]
         );
+    }
+
+    #[test]
+    fn opencode_go_spend_env_is_empty_for_the_matching_local_login() {
+        // Matched key → no overrides → the plugin reads the local database.
+        let env = opencode_go_spend_env("go-key-1", Some("go-key-1"));
+        assert!(env.is_empty());
+    }
+
+    #[test]
+    fn opencode_go_spend_env_flags_no_local_logs_for_other_accounts() {
+        // A different key is signed in locally.
+        let env = opencode_go_spend_env("go-key-2", Some("go-key-1"));
+        assert_eq!(
+            env,
+            vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())]
+        );
+        // No local login at all.
+        let env = opencode_go_spend_env("go-key-2", None);
+        assert_eq!(
+            env,
+            vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())]
+        );
+    }
+
+    #[test]
+    fn opencode_go_local_login_key_reads_nested_auth_field() {
+        let dir = tmp_dir("opencode-auth");
+        let auth = dir.join(".local/share/opencode/auth.json");
+        fs::create_dir_all(auth.parent().unwrap()).unwrap();
+        fs::write(
+            &auth,
+            r#"{"opencode-go":{"type":"api","key":"go-key-1"},"other":{"key":"nope"}}"#,
+        )
+        .unwrap();
+
+        // Point the helper at the temp file by overriding HOME.
+        let original_home = std::env::var_os("HOME");
+        unsafe { std::env::set_var("HOME", &dir) };
+        let key = opencode_go_local_login_key();
+        if let Some(home) = original_home {
+            unsafe { std::env::set_var("HOME", home) };
+        } else {
+            unsafe { std::env::remove_var("HOME") };
+        }
+
+        assert_eq!(key, Some("go-key-1".to_string()));
+    }
+
+    #[test]
+    fn opencode_go_local_login_key_none_when_absent() {
+        let dir = tmp_dir("opencode-auth-missing");
+        let original_home = std::env::var_os("HOME");
+        unsafe { std::env::set_var("HOME", &dir) };
+        let key = opencode_go_local_login_key();
+        if let Some(home) = original_home {
+            unsafe { std::env::set_var("HOME", home) };
+        } else {
+            unsafe { std::env::remove_var("HOME") };
+        }
+
+        assert_eq!(key, None);
     }
 
     #[test]

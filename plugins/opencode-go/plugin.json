@@ -39,6 +39,26 @@
       "label": "Monthly",
       "scope": "overview",
       "escalateAtPercent": 98
+    },
+    {
+      "type": "text",
+      "label": "Today",
+      "scope": "detail"
+    },
+    {
+      "type": "text",
+      "label": "Yesterday",
+      "scope": "detail"
+    },
+    {
+      "type": "text",
+      "label": "Last 30 Days",
+      "scope": "detail"
+    },
+    {
+      "type": "barChart",
+      "label": "Usage Trend",
+      "scope": "detail"
     }
   ]
 }

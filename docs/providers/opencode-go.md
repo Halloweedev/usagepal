@@ -29,7 +29,12 @@ OpenCode Go supports registering several API keys, each tracked as its own card.
 account from its card or from Settings, UsagePal stores that account's key in an owner-only file
 under `~/.config/usagepal/accounts/opencode-go/` and uses it for that account's usage — it never
 touches the shared Settings key or OpenCode's own auth file. Because usage comes from the account
-API (keyed by the API key), each account reports its own limits, with no local-log attribution.
+API (keyed by the API key), each account reports its own limits.
+
+Local spend is different: the local OpenCode database is machine-wide and not tagged by API key, so
+only the account whose key matches the one signed in to the local OpenCode CLI
+(`~/.local/share/opencode/auth.json`, `opencode-go.key`) reads real local usage. Every other
+registered account shows "No local OpenCode CLI usage" instead of another login's spend.
 
 ## Usage Bars
 
@@ -42,6 +47,22 @@ The API supplies the percentage used and exact reset time for:
 UsagePal displays these values directly. It does not estimate limits from local history, token
 prices, or the local OpenCode database.
 
+## Local Usage
+
+On top of the web quota bars, UsagePal reads the local OpenCode history
+(`~/.local/share/opencode/opencode.db`, read-only) and shows spend lines for the account that is the
+current local CLI login:
+
+- **Today / Yesterday:** tokens and cost for those days (for example, "$0.50 · 1K")
+- **Last 30 Days:** the 31-day window total
+- **Usage Trend:** a daily token bar chart of the same window
+- **Per-model lines:** each model's share of the window (for example, "88.2% · 30d $0.75")
+
+Costs come from the values OpenCode stored with each message — UsagePal does not price tokens
+itself. The database query runs only after the web quota fetch, with a 15-second timeout; a slow
+or locked database skips the local lines without affecting the quota bars. When the tracked
+account isn't the local CLI login, Today / Yesterday / Last 30 Days show "—" instead.
+
 ## Failure Behavior
 
 If an update fails after a successful fetch, UsagePal keeps the last successful result visible and
@@ -50,3 +71,6 @@ local estimates.
 
 If no previous result exists, UsagePal shows a friendly error for a missing or invalid key, a
 missing Go subscription, an unreachable service, or an invalid API response.
+
+If the local database read fails (missing database, locked file, or a probe timeout), the quota
+bars still render and the local lines are simply omitted — the web quota is the source of truth.
