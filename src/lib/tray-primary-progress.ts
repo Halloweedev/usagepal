@@ -1,6 +1,6 @@
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
-import type { PluginSettings } from "@/lib/settings"
-import { DEFAULT_DISPLAY_MODE, type DisplayMode } from "@/lib/settings"
+import type { AccountsByProvider, PluginSettings, SelectedAccounts } from "@/lib/settings"
+import { DEFAULT_DISPLAY_MODE, type DisplayMode, resolveSelectedAccountId } from "@/lib/settings"
 import { clamp01 } from "@/lib/utils"
 import { selectEscalatedLine } from "@/lib/metric-escalation"
 
@@ -26,6 +26,24 @@ function isUsableProgressLine(line: PluginOutput["lines"][number]): line is Usab
   return line.type === "progress" && line.used != null && line.limit != null
 }
 
+/**
+ * The `pluginStates` key the tray should read for a provider. Probe/cache state
+ * is keyed `providerId::accountId` (see `stateKey` in use-probe-state) once a
+ * provider has registered accounts, so the bare `providerId` key is empty for
+ * those providers. The tray follows the same persisted selection the card UI
+ * shows (`resolveSelectedAccountId`: the chosen account, else the primary
+ * lowest-`order` one); with no registered accounts it falls back to the bare
+ * `providerId` — keeping the single-account path byte-for-byte unchanged.
+ */
+export function resolveTrayStateKey(
+  providerId: string,
+  accountsByProvider: AccountsByProvider,
+  selectedByProvider: SelectedAccounts = {},
+): string {
+  const accountId = resolveSelectedAccountId(providerId, accountsByProvider, selectedByProvider)
+  return accountId ? `${providerId}::${accountId}` : providerId
+}
+
 export function getTrayPrimaryBars(args: {
   pluginsMeta: PluginMeta[]
   pluginSettings: PluginSettings | null
@@ -34,6 +52,8 @@ export function getTrayPrimaryBars(args: {
   displayMode?: DisplayMode
   pluginId?: string
   preferWeekly?: boolean
+  accountsByProvider?: AccountsByProvider
+  selectedByProvider?: SelectedAccounts
 }): TrayPrimaryBar[] {
   const {
     pluginsMeta,
@@ -43,6 +63,8 @@ export function getTrayPrimaryBars(args: {
     displayMode = DEFAULT_DISPLAY_MODE,
     pluginId,
     preferWeekly = false,
+    accountsByProvider = {},
+    selectedByProvider = {},
   } = args
   if (!pluginSettings) return []
 
@@ -64,7 +86,7 @@ export function getTrayPrimaryBars(args: {
     // provider is intentionally skipped.
     if (!meta.primaryCandidates || meta.primaryCandidates.length === 0) continue
 
-    const state = pluginStates[id]
+    const state = pluginStates[resolveTrayStateKey(id, accountsByProvider, selectedByProvider)]
     const data = state?.data ?? null
 
     let fraction: number | undefined
@@ -135,6 +157,8 @@ export function getTrayWeeklyFraction(args: {
   pluginSettings: PluginSettings | null
   pluginStates: Record<string, PluginState | undefined>
   displayMode?: DisplayMode
+  accountsByProvider?: AccountsByProvider
+  selectedByProvider?: SelectedAccounts
 }): number | undefined {
   const {
     pluginId,
@@ -142,6 +166,8 @@ export function getTrayWeeklyFraction(args: {
     pluginSettings,
     pluginStates,
     displayMode = DEFAULT_DISPLAY_MODE,
+    accountsByProvider = {},
+    selectedByProvider = {},
   } = args
   if (!pluginSettings) return undefined
   if (pluginSettings.disabled.includes(pluginId)) return undefined
@@ -150,7 +176,7 @@ export function getTrayWeeklyFraction(args: {
   const weeklyLabel = meta?.weeklyCandidate
   if (!weeklyLabel) return undefined
 
-  const data = pluginStates[pluginId]?.data ?? null
+  const data = pluginStates[resolveTrayStateKey(pluginId, accountsByProvider, selectedByProvider)]?.data ?? null
   if (!data) return undefined
 
   const metricLine = data.lines.find(
@@ -197,6 +223,8 @@ export function getTrayMultiProviderMetrics(args: {
   pluginSettings: PluginSettings | null
   pluginStates: Record<string, PluginState | undefined>
   displayMode?: DisplayMode
+  accountsByProvider?: AccountsByProvider
+  selectedByProvider?: SelectedAccounts
 }): TrayMultiProviderMetrics {
   const {
     pluginId,
@@ -204,6 +232,8 @@ export function getTrayMultiProviderMetrics(args: {
     pluginSettings,
     pluginStates,
     displayMode = DEFAULT_DISPLAY_MODE,
+    accountsByProvider = {},
+    selectedByProvider = {},
   } = args
   if (!pluginSettings) return {}
   if (pluginSettings.disabled.includes(pluginId)) return {}
@@ -211,7 +241,7 @@ export function getTrayMultiProviderMetrics(args: {
   const meta = pluginsMeta.find((p) => p.id === pluginId)
   const multiTrayLines = meta?.multiTrayLines ?? []
   if (multiTrayLines.length > 0) {
-    const data = pluginStates[pluginId]?.data ?? null
+    const data = pluginStates[resolveTrayStateKey(pluginId, accountsByProvider, selectedByProvider)]?.data ?? null
     return {
       sessionFraction: multiTrayLines[0]
         ? getProgressLineFraction(data, multiTrayLines[0], displayMode)
@@ -230,6 +260,8 @@ export function getTrayMultiProviderMetrics(args: {
     displayMode,
     pluginId,
     preferWeekly: false,
+    accountsByProvider,
+    selectedByProvider,
   })[0]?.fraction
 
   const weeklyFraction = getTrayWeeklyFraction({
@@ -238,6 +270,8 @@ export function getTrayMultiProviderMetrics(args: {
     pluginSettings,
     pluginStates,
     displayMode,
+    accountsByProvider,
+    selectedByProvider,
   })
 
   return { sessionFraction, weeklyFraction }

@@ -52,6 +52,7 @@ import { useAppUiStore } from "@/stores/app-ui-store"
 function createProps(): AppContentProps {
   return {
     displayPlugins: [],
+    groupedPlugins: [],
     settingsPlugins: [],
     selectedPlugin: {
       meta: {

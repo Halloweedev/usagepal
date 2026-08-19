@@ -4,7 +4,35 @@ import type { PluginSettings } from "@/lib/settings"
 import {
   buildTraySettingsPreview,
   getMultiTrayProviderIds,
+  resolveTrayStateKey,
 } from "@/hooks/app/use-tray-icon"
+
+describe("resolveTrayStateKey", () => {
+  it("returns providerId when the provider has no registered accounts", () => {
+    expect(resolveTrayStateKey("codex", {})).toBe("codex")
+  })
+  it("returns the primary (order-0) account's composite key when nothing is selected", () => {
+    const accountsByProvider = {
+      claude: [
+        { accountId: "home", label: "Home", order: 1 },
+        { accountId: "work", label: "Work", order: 0 },
+      ],
+    }
+    expect(resolveTrayStateKey("claude", accountsByProvider)).toBe("claude::work")
+  })
+
+  it("follows the persisted selection when present", () => {
+    const accountsByProvider = {
+      claude: [
+        { accountId: "home", label: "Home", order: 1 },
+        { accountId: "work", label: "Work", order: 0 },
+      ],
+    }
+    expect(resolveTrayStateKey("claude", accountsByProvider, { claude: "home" })).toBe(
+      "claude::home",
+    )
+  })
+})
 
 const pluginsMeta: PluginMeta[] = [
   {
@@ -146,6 +174,89 @@ describe("buildTraySettingsPreview", () => {
       sessionFraction: 0.42,
       weeklyFraction: 0.18,
     })
+  })
+
+  it("reads the primary account's composite-key state when accounts are registered", () => {
+    const preview = buildTraySettingsPreview({
+      pluginsMeta,
+      pluginSettings: { order: ["claude"], disabled: [] },
+      pluginStates: {
+        // Decoy under the bare providerId — must be ignored once accounts exist.
+        claude: {
+          data: {
+            providerId: "claude",
+            lines: [{ type: "progress", label: "Session", used: 10, limit: 100 }],
+          },
+          loading: false,
+          error: null,
+        },
+        "claude::work": {
+          data: {
+            providerId: "claude",
+            lines: [{ type: "progress", label: "Session", used: 70, limit: 100 }],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+      displayMode: "used",
+      menubarMetric: "default",
+      activeView: "claude",
+      lastTrayProviderId: null,
+      accountsByProvider: {
+        claude: [
+          { accountId: "home", label: "Home", order: 1 },
+          { accountId: "work", label: "Work", order: 0 },
+        ],
+      },
+    })
+
+    expect(preview.providerBars[0]?.fraction).toBe(0.7)
+    expect(preview.providerPercentText).toBe("70%")
+    expect(preview.bars[0]?.fraction).toBe(0.7)
+    expect(preview.multiProviders[0]).toMatchObject({ id: "claude", sessionText: "70%" })
+  })
+
+  it("follows the persisted selection over the primary account", () => {
+    const preview = buildTraySettingsPreview({
+      pluginsMeta,
+      pluginSettings: { order: ["claude"], disabled: [] },
+      pluginStates: {
+        // order-0 primary — must be ignored once "home" is selected.
+        "claude::work": {
+          data: {
+            providerId: "claude",
+            lines: [{ type: "progress", label: "Session", used: 10, limit: 100 }],
+          },
+          loading: false,
+          error: null,
+        },
+        "claude::home": {
+          data: {
+            providerId: "claude",
+            lines: [{ type: "progress", label: "Session", used: 85, limit: 100 }],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+      displayMode: "used",
+      menubarMetric: "default",
+      activeView: "claude",
+      lastTrayProviderId: null,
+      accountsByProvider: {
+        claude: [
+          { accountId: "work", label: "Work", order: 0 },
+          { accountId: "home", label: "Home", order: 1 },
+        ],
+      },
+      selectedByProvider: { claude: "home" },
+    })
+
+    expect(preview.providerBars[0]?.fraction).toBe(0.85)
+    expect(preview.providerPercentText).toBe("85%")
+    expect(preview.bars[0]?.fraction).toBe(0.85)
+    expect(preview.multiProviders[0]).toMatchObject({ id: "claude", sessionText: "85%" })
   })
 
   it("uses Total usage for Cursor provider and bars preview", () => {

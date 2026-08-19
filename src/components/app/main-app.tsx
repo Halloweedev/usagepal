@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { AppShell } from "@/components/app/app-shell"
+import { useAccounts } from "@/hooks/app/use-accounts"
 import { useAppPluginViews } from "@/hooks/app/use-app-plugin-views"
 import { useProbe } from "@/hooks/app/use-probe"
 import { usePaceNotifications } from "@/hooks/app/use-pace-notifications"
@@ -124,6 +125,8 @@ export function MainApp() {
     void hydrateShareSettings()
   }, [hydrateShareSettings])
 
+  const { accountsByProvider, selectedByProvider, selectAccount } = useAccounts()
+
   const { scheduleTrayIconUpdate, traySettingsPreview } = useTrayIcon({
     pluginsMeta,
     pluginSettings,
@@ -134,6 +137,8 @@ export function MainApp() {
     multiTrayProviderCount,
     multiTrayDisplayMode,
     activeView,
+    accountsByProvider,
+    selectedByProvider,
   })
 
   useEffect(() => {
@@ -235,12 +240,14 @@ export function MainApp() {
     pluginsMeta,
   })
 
-  const { displayPlugins, navPlugins, selectedPlugin } = useAppPluginViews({
+  const { displayPlugins, groupedPlugins, navPlugins, selectedPlugin } = useAppPluginViews({
     activeView,
     setActiveView,
     pluginSettings,
     pluginsMeta,
     pluginStates,
+    accountsByProvider,
+    selectedByProvider,
   })
 
   const pluginSettingsRef = useRef(pluginSettings)
@@ -297,6 +304,7 @@ export function MainApp() {
       onRefreshAll={handleRefreshAll}
       navPlugins={navPlugins}
       displayPlugins={displayPlugins}
+      groupedPlugins={groupedPlugins}
       settingsPlugins={settingsPlugins}
       autoUpdateNextAt={autoUpdateNextAt}
       betaUpdatesEnabled={betaUpdatesEnabled}
@@ -309,6 +317,7 @@ export function MainApp() {
         onRetryPlugin: handleRetryPlugin,
         onReorder: handleReorder,
         onToggle: handleToggle,
+        onSelectAccount: selectAccount,
         onAutoUpdateIntervalChange: handleAutoUpdateIntervalChange,
         onBetaUpdatesEnabledChange: handleBetaUpdatesEnabledChange,
         onThemeModeChange: handleThemeModeChange,
