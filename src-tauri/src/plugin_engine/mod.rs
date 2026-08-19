@@ -1,3 +1,4 @@
+pub mod account;
 pub mod ccusage;
 pub mod host_api;
 pub mod manifest;

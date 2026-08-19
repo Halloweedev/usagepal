@@ -80,6 +80,9 @@ pub struct AppState {
     pub plugins: Vec<Arc<plugin_engine::manifest::LoadedPlugin>>,
     pub app_data_dir: PathBuf,
     pub app_version: String,
+    /// Registered accounts per provider. Empty until the add-account flows
+    /// (a later plan) populate it — so single-account probing is unchanged.
+    pub accounts: plugin_engine::account::AccountRegistry,
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -301,12 +304,13 @@ async fn start_probe_batch(
         })
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    let (plugins, app_data_dir, app_version) = {
+    let (plugins, app_data_dir, app_version, accounts) = {
         let locked = state.lock().map_err(|e| e.to_string())?;
         (
             locked.plugins.clone(),
             locked.app_data_dir.clone(),
             locked.app_version.clone(),
+            locked.accounts.clone(),
         )
     };
 
@@ -348,6 +352,8 @@ async fn start_probe_batch(
         .map(|plugin| plugin.manifest.id.clone())
         .collect();
 
+    let probe_units = plugin_engine::account::expand_probe_units(&selected_plugins, &accounts);
+
     log::info!(
         "probe batch {} starting: {:?}",
         batch_id,
@@ -356,7 +362,7 @@ async fn start_probe_batch(
 
     run_probe_batch(
         app_handle,
-        selected_plugins,
+        probe_units,
         app_data_dir,
         app_version,
         batch_id.clone(),
@@ -380,13 +386,13 @@ async fn start_probe_batch(
 /// `probe:result` (matched by batch id), so they pass false.
 fn run_probe_batch(
     app_handle: tauri::AppHandle,
-    selected_plugins: Vec<Arc<plugin_engine::manifest::LoadedPlugin>>,
+    probe_units: Vec<plugin_engine::account::ProbeUnit>,
     app_data_dir: PathBuf,
     app_version: String,
     batch_id: String,
     emit_usage_updated: bool,
 ) {
-    let selected_count = selected_plugins.len();
+    let selected_count = probe_units.len();
     let worker_count = probe_worker_count(selected_count);
     if worker_count < selected_count {
         log::info!(
@@ -399,7 +405,7 @@ fn run_probe_batch(
 
     let remaining = Arc::new(AtomicUsize::new(selected_count));
     let probe_queue = Arc::new(Mutex::new(
-        selected_plugins.into_iter().collect::<VecDeque<_>>(),
+        probe_units.into_iter().collect::<VecDeque<_>>(),
     ));
 
     for _ in 0..worker_count {
@@ -414,20 +420,25 @@ fn run_probe_batch(
 
         tauri::async_runtime::spawn_blocking(move || {
             loop {
-                let plugin = {
+                let unit = {
                     let mut queue = queue
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
                     queue.pop_front()
                 };
 
-                let Some(plugin) = plugin else {
+                let Some(unit) = unit else {
                     break;
                 };
 
-                let plugin_id = plugin.manifest.id.clone();
+                let plugin_id = unit.plugin.manifest.id.clone();
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
+                    plugin_engine::runtime::run_probe_for_account(
+                        &unit.plugin,
+                        &data_dir,
+                        &version,
+                        &unit.account,
+                    )
                 }));
 
                 match result {
@@ -539,6 +550,7 @@ fn start_auto_update_scheduler(
     app_data_dir: PathBuf,
     app_version: String,
     detected_ids: HashSet<String>,
+    accounts: plugin_engine::account::AccountRegistry,
 ) {
     let known_plugin_ids: Vec<String> = plugins.iter().map(|p| p.manifest.id.clone()).collect();
 
@@ -604,9 +616,10 @@ fn start_auto_update_scheduler(
                 batch_id,
                 selected.len()
             );
+            let probe_units = plugin_engine::account::expand_probe_units(&selected, &accounts);
             run_probe_batch(
                 app_handle.clone(),
-                selected,
+                probe_units,
                 app_data_dir.clone(),
                 app_version.clone(),
                 batch_id,
@@ -989,6 +1002,7 @@ pub fn run() {
                 plugins: plugin_arcs,
                 app_data_dir: app_data_dir.clone(),
                 app_version: app.package_info().version.to_string(),
+                accounts: plugin_engine::account::AccountRegistry::default(),
             }));
 
             local_http_api::init(&app_data_dir, known_plugin_ids, detected_ids.clone());
@@ -1002,6 +1016,7 @@ pub fn run() {
                 app_data_dir.clone(),
                 version.clone(),
                 detected_ids,
+                plugin_engine::account::AccountRegistry::default(),
             );
 
             tray::create(app.handle())?;
@@ -1144,6 +1159,57 @@ mod tests {
         assert_eq!(super::macos_bundle_path(Path::new("/usr/bin/usagepal")), None);
         // Deep enough, but the resolved ancestor isn't a `.app`.
         assert_eq!(super::macos_bundle_path(Path::new("/a/b/c/d/usagepal")), None);
+    }
+
+    fn test_loaded_plugin(
+        id: &str,
+    ) -> std::sync::Arc<crate::plugin_engine::manifest::LoadedPlugin> {
+        use crate::plugin_engine::manifest::{LoadedPlugin, PluginManifest};
+        std::sync::Arc::new(LoadedPlugin {
+            manifest: PluginManifest {
+                schema_version: 1,
+                id: id.to_string(),
+                name: id.to_string(),
+                version: "0.0.0".to_string(),
+                entry: "plugin.js".to_string(),
+                icon: "icon.svg".to_string(),
+                brand_color: None,
+                lines: vec![],
+                links: vec![],
+                detect: vec![],
+                multi_tray_lines: vec![],
+                tray_primary_label: None,
+            },
+            plugin_dir: std::path::PathBuf::from("."),
+            entry_script: String::new(),
+            icon_data_url: String::new(),
+        })
+    }
+
+    #[test]
+    fn probe_batch_expands_one_unit_per_account() {
+        use crate::plugin_engine::account::{AccountRegistry, AccountSpec, expand_probe_units};
+        use std::collections::HashMap;
+
+        let plugins = vec![test_loaded_plugin("claude"), test_loaded_plugin("codex")];
+        let mut map = HashMap::new();
+        map.insert(
+            "claude".to_string(),
+            vec![
+                AccountSpec { account_id: "work".to_string(), env_overrides: HashMap::new() },
+                AccountSpec { account_id: "home".to_string(), env_overrides: HashMap::new() },
+            ],
+        );
+        let registry = AccountRegistry(map);
+
+        let units = expand_probe_units(&plugins, &registry);
+        // claude → 2 accounts, codex → 1 default = 3 probe units
+        assert_eq!(units.len(), 3);
+        let codex_default = units
+            .iter()
+            .find(|u| u.plugin.manifest.id == "codex")
+            .unwrap();
+        assert_eq!(codex_default.account.output_account_id(), None);
     }
 
     #[test]

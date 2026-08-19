@@ -409,6 +409,19 @@ fn read_env_from_interactive_shells(name: &str) -> Option<String> {
     None
 }
 
+/// Resolve an env var for a probe. A host-injected per-account override wins over
+/// (and bypasses the whitelist of) the process-env path, since the host controls
+/// overrides. Falls back to the whitelisted process/interactive-shell resolution.
+fn env_lookup(name: &str, overrides: &HashMap<String, String>) -> Option<String> {
+    if let Some(value) = overrides.get(name) {
+        return Some(value.clone());
+    }
+    if !WHITELISTED_ENV_VARS.contains(&name) {
+        return None;
+    }
+    resolve_env_value(name)
+}
+
 fn resolve_env_value(name: &str) -> Option<String> {
     // Prefer the current process env (fast + supports launchctl/terminal-launch).
     if let Some(value) = read_env_from_process(name) {
@@ -669,6 +682,7 @@ pub(crate) fn inject_host_api<'js>(
         app_data_dir,
         app_version,
         ProbeDeadline::none(),
+        &HashMap::new(),
     )
 }
 
@@ -678,6 +692,7 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     app_data_dir: &PathBuf,
     app_version: &str,
     deadline: ProbeDeadline,
+    env_overrides: &HashMap<String, String>,
 ) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     let probe_ctx = Object::new(ctx.clone())?;
@@ -707,7 +722,7 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     inject_fs(ctx, &host)?;
     inject_pricing(ctx, &host)?;
     inject_crypto(ctx, &host)?;
-    inject_env(ctx, &host, plugin_id)?;
+    inject_env(ctx, &host, plugin_id, env_overrides)?;
     inject_http(ctx, &host, plugin_id, deadline)?;
     inject_keychain(ctx, &host, plugin_id)?;
     inject_sqlite(ctx, &host)?;
@@ -900,16 +915,18 @@ fn inject_crypto<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
     Ok(())
 }
 
-fn inject_env<'js>(ctx: &Ctx<'js>, host: &Object<'js>, _plugin_id: &str) -> rquickjs::Result<()> {
+fn inject_env<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    _plugin_id: &str,
+    env_overrides: &HashMap<String, String>,
+) -> rquickjs::Result<()> {
     let env_obj = Object::new(ctx.clone())?;
+    let overrides = env_overrides.clone();
     env_obj.set(
         "get",
         Function::new(ctx.clone(), move |name: String| -> Option<String> {
-            if !WHITELISTED_ENV_VARS.contains(&name.as_str()) {
-                return None;
-            }
-
-            resolve_env_value(&name)
+            env_lookup(&name, &overrides)
         })?,
     )?;
     host.set("env", env_obj)?;
@@ -2393,6 +2410,30 @@ fn expand_path(path: &str) -> String {
 mod tests {
     use super::*;
     use rquickjs::{Context, Function, Object, Runtime};
+
+    #[test]
+    fn env_lookup_prefers_override_over_process_env() {
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert("CODEX_HOME".to_string(), "/tmp/usagepal/work".to_string());
+        assert_eq!(
+            env_lookup("CODEX_HOME", &overrides),
+            Some("/tmp/usagepal/work".to_string())
+        );
+    }
+
+    #[test]
+    fn env_lookup_override_bypasses_whitelist() {
+        // A non-whitelisted name still resolves when the host injects it.
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert("UP_ACCOUNT_TAG".to_string(), "abc".to_string());
+        assert_eq!(env_lookup("UP_ACCOUNT_TAG", &overrides), Some("abc".to_string()));
+    }
+
+    #[test]
+    fn env_lookup_returns_none_for_unwhitelisted_without_override() {
+        let overrides = std::collections::HashMap::new();
+        assert_eq!(env_lookup("DEFINITELY_NOT_WHITELISTED_XYZ", &overrides), None);
+    }
 
     fn encrypt_aes_256_gcm_envelope_for_test(key: &[u8], plaintext: &str) -> String {
         let iv = [7_u8; 16];

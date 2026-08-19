@@ -3,6 +3,7 @@ use crate::plugin_engine::manifest::LoadedPlugin;
 use rquickjs::{Array, Context, Ctx, Error, Object, Promise, Runtime, Value};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -66,6 +67,8 @@ pub enum MetricLine {
 #[serde(rename_all = "camelCase")]
 pub struct PluginOutput {
     pub provider_id: String,
+    #[serde(default)]
+    pub account_id: Option<String>,
     pub display_name: String,
     pub plan: Option<String>,
     pub lines: Vec<MetricLine>,
@@ -73,12 +76,29 @@ pub struct PluginOutput {
 }
 
 pub fn run_probe(plugin: &LoadedPlugin, app_data_dir: &PathBuf, app_version: &str) -> PluginOutput {
-    run_probe_with_timeout(
+    run_probe_for_account(
+        plugin,
+        app_data_dir,
+        app_version,
+        &crate::plugin_engine::account::AccountSpec::default_single(),
+    )
+}
+
+pub fn run_probe_for_account(
+    plugin: &LoadedPlugin,
+    app_data_dir: &PathBuf,
+    app_version: &str,
+    account: &crate::plugin_engine::account::AccountSpec,
+) -> PluginOutput {
+    let mut output = run_probe_with_timeout(
         plugin,
         app_data_dir,
         app_version,
         Duration::from_secs(PROBE_TIMEOUT_SECS),
-    )
+        &account.env_overrides,
+    );
+    output.account_id = account.output_account_id();
+    output
 }
 
 fn run_probe_with_timeout(
@@ -86,6 +106,7 @@ fn run_probe_with_timeout(
     app_data_dir: &PathBuf,
     app_version: &str,
     timeout: Duration,
+    env_overrides: &HashMap<String, String>,
 ) -> PluginOutput {
     let fallback = error_output(plugin, "runtime error".to_string());
     let timeout_message = probe_timeout_message(timeout);
@@ -118,6 +139,7 @@ fn run_probe_with_timeout(
             &app_data,
             app_version,
             deadline,
+            env_overrides,
         )
         .is_err()
         {
@@ -227,6 +249,7 @@ fn run_probe_with_timeout(
 
         PluginOutput {
             provider_id: plugin_id,
+            account_id: None,
             display_name,
             plan,
             lines,
@@ -689,6 +712,7 @@ fn parse_bar_chart_line<'js>(
 fn error_output(plugin: &LoadedPlugin, message: String) -> PluginOutput {
     PluginOutput {
         provider_id: plugin.manifest.id.clone(),
+        account_id: None,
         display_name: plugin.manifest.name.clone(),
         plan: None,
         lines: vec![error_line(message)],
@@ -835,9 +859,47 @@ mod tests {
             &temp_app_dir("timeout"),
             "0.0.0",
             Duration::from_millis(5),
+            &std::collections::HashMap::new(),
         );
 
         assert_eq!(error_text(output), "probe timed out after 5ms");
+    }
+
+    #[test]
+    fn run_probe_default_account_leaves_account_id_none() {
+        let plugin = test_plugin(
+            "globalThis.__openusage_plugin = { id: 'test', probe: () => ({ plan: 'P', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
+        );
+        let output = run_probe(&plugin, &temp_app_dir("acct-none"), "0.0.0");
+        assert_eq!(output.account_id, None);
+    }
+
+    #[test]
+    fn run_probe_for_account_stamps_account_id() {
+        use crate::plugin_engine::account::AccountSpec;
+        let plugin = test_plugin(
+            "globalThis.__openusage_plugin = { id: 'test', probe: () => ({ plan: 'P', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
+        );
+        let account = AccountSpec {
+            account_id: "work".to_string(),
+            env_overrides: std::collections::HashMap::new(),
+        };
+        let output = run_probe_for_account(&plugin, &temp_app_dir("acct-work"), "0.0.0", &account);
+        assert_eq!(output.account_id, Some("work".to_string()));
+    }
+
+    #[test]
+    fn run_probe_for_account_injects_env_override_into_plugin() {
+        use crate::plugin_engine::account::AccountSpec;
+        // Probe reads CODEX_HOME via ctx.host.env and echoes it back as the plan.
+        let plugin = test_plugin(
+            "globalThis.__openusage_plugin = { id: 'test', probe: (ctx) => ({ plan: ctx.host.env.get('CODEX_HOME') || 'MISSING', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
+        );
+        let mut env = std::collections::HashMap::new();
+        env.insert("CODEX_HOME".to_string(), "/tmp/usagepal/acct".to_string());
+        let account = AccountSpec { account_id: "a".to_string(), env_overrides: env };
+        let output = run_probe_for_account(&plugin, &temp_app_dir("acct-env"), "0.0.0", &account);
+        assert_eq!(output.plan.as_deref(), Some("/tmp/usagepal/acct"));
     }
 
     #[test]
@@ -920,6 +982,7 @@ mod tests {
     fn is_rate_limited_output_detects_status_badge() {
         let output = PluginOutput {
             provider_id: "claude".to_string(),
+            account_id: None,
             display_name: "Claude".to_string(),
             plan: None,
             lines: vec![MetricLine::Badge {
@@ -937,6 +1000,7 @@ mod tests {
     fn is_rate_limited_output_ignores_successful_probes() {
         let output = PluginOutput {
             provider_id: "claude".to_string(),
+            account_id: None,
             display_name: "Claude".to_string(),
             plan: None,
             lines: vec![MetricLine::Progress {
