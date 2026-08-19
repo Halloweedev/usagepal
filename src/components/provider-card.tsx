@@ -294,14 +294,6 @@ export function ProviderCard({
               />
             )}
             <h2 className="text-lg font-semibold" style={{ transform: "translateZ(0)" }}>{name}</h2>
-            {showDots && activeAccount?.label && (
-              <span
-                className="ml-1.5 text-sm text-muted-foreground truncate max-w-[40%]"
-                data-account-label
-              >
-                {activeAccount.label}
-              </span>
-            )}
             {onRetry && (
               loading ? (
                 <Button

@@ -1,15 +1,14 @@
+import { useMemo } from "react"
 import { ADD_ACCOUNT_PROVIDERS } from "@/components/add-account-dialog"
 import { ModelsTodayStrip } from "@/components/models-today-strip"
 import { ProviderCard } from "@/components/provider-card"
 import type { GroupedProviderView } from "@/hooks/app/group-provider-views"
-import type { PluginDisplayState } from "@/lib/plugin-types"
 import type { DisplayMode, ResetTimerDisplayMode, TimeFormatMode } from "@/lib/settings"
+import type { TodayModelsSource } from "@/lib/today-models"
 
 interface OverviewPageProps {
-  /** Flat, first-account-per-provider state — drives the spend strip only. */
-  plugins: PluginDisplayState[]
   /** One entry per provider carrying its ordered account snapshots — drives the
-   * paginated cards. */
+   * paginated cards and the spend strip. */
   groupedPlugins: GroupedProviderView[]
   onRetryPlugin?: (pluginId: string) => void
   /** Persist the account a provider shows (card + tray follow it). */
@@ -24,8 +23,19 @@ interface OverviewPageProps {
   onUsageValueToggle?: () => void
 }
 
+/** Flatten every account into a strip source so the strip counts every
+ * account's stats, not just the one the card currently shows. buildModelUsage
+ * merges same-provider sources into one combined entry ("all Codex in one"). */
+export function buildStripSources(groupedPlugins: GroupedProviderView[]): TodayModelsSource[] {
+  return groupedPlugins.flatMap((group) =>
+    group.accounts.map((account) => ({
+      meta: group.meta,
+      data: account.data,
+    }))
+  )
+}
+
 export function OverviewPage({
-  plugins,
   groupedPlugins,
   onRetryPlugin,
   onSelectAccount,
@@ -37,6 +47,8 @@ export function OverviewPage({
   onResetTimerDisplayModeToggle,
   onUsageValueToggle,
 }: OverviewPageProps) {
+  const stripSources = useMemo(() => buildStripSources(groupedPlugins), [groupedPlugins])
+
   return (
     <div className="pb-3">
       {groupedPlugins.length === 0 ? (
@@ -48,7 +60,7 @@ export function OverviewPage({
           {overviewSpendStripEnabled && (
             <section className="mb-3 pt-2">
               <h3 className="text-lg font-semibold mb-2">Quick Usage Overview</h3>
-              <ModelsTodayStrip plugins={plugins} />
+              <ModelsTodayStrip plugins={stripSources} />
             </section>
           )}
           {groupedPlugins.map((group, index) => (

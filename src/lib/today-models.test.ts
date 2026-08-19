@@ -483,6 +483,35 @@ describe("buildModelUsage — periods", () => {
     expect(usage.providers).toHaveLength(2)
   })
 
+  it("merges multiple accounts of one provider into a single combined entry", () => {
+    const work: TodayModelsSource = makeSource("codex", "Codex", "#74AA9C", [
+      modelLine("Today", "$3.20 · 1M"),
+      modelLine("GPT-5.4", "80% · Today $3.20"),
+    ])
+    const home: TodayModelsSource = makeSource("codex", "Codex", "#74AA9C", [
+      modelLine("Today", "$1.80 · 0.6M"),
+      modelLine("GPT-5.4", "80% · Today $1.80"),
+    ])
+    const usage = buildModelUsage([work, home], "today")
+
+    // One combined provider entry with both accounts' spend and tokens.
+    expect(usage.providers).toHaveLength(1)
+    expect(usage.providers[0]).toMatchObject({
+      id: "codex",
+      name: "Codex",
+      todayCost: 5.0,
+      tokenCount: 1.6e6,
+    })
+    // Models merge across accounts by name.
+    expect(usage.models).toHaveLength(1)
+    expect(usage.models[0]).toMatchObject({ name: "GPT-5.4", todayCost: 5.0 })
+  })
+
+  it("keeps the plain provider key when a source has no account identity", () => {
+    const usage = buildModelUsage([codex], "today")
+    expect(usage.providers[0]).toMatchObject({ id: "codex", name: "Codex" })
+  })
+
   it("lists both providers when a model is used on OpenCode Go and ClinePass", () => {
     const opencode = makeSource("opencode-go", "OpenCode Go", "#000000", [
       modelLine("GLM 5.2", "100% · Today $4.00"),

@@ -124,7 +124,6 @@ export function AppContent({
   if (activeView === "home") {
     return (
       <OverviewPage
-        plugins={displayPlugins}
         groupedPlugins={groupedPlugins}
         onRetryPlugin={onRetryPlugin}
         onSelectAccount={onSelectAccount}
