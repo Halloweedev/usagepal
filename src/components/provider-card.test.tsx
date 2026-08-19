@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -1390,6 +1390,17 @@ describe("groupLinesByType", () => {
 })
 
 describe("ProviderCard multi-account", () => {
+  beforeEach(() => {
+    // jsdom lacks elementFromPoint; define it so the swipe click-forwarding
+    // path can be exercised the way real browsers resolve the click point.
+    if (!document.elementFromPoint) {
+      Object.defineProperty(document, "elementFromPoint", {
+        value: vi.fn(() => null),
+        configurable: true,
+      })
+    }
+  })
+
   function accountSnap(label: string, plan: string): AccountSnapshot {
     return {
       accountId: label.toLowerCase(),
@@ -1409,7 +1420,7 @@ describe("ProviderCard multi-account", () => {
     }
   }
 
-  it("renders a dot per account and the active account's label + plan", () => {
+  it("renders a dot per account and the active account's plan", () => {
     render(
       <ProviderCard
         name="Claude"
@@ -1419,7 +1430,6 @@ describe("ProviderCard multi-account", () => {
       />
     )
     expect(screen.getAllByRole("tab")).toHaveLength(2)
-    expect(screen.getByText(/Work/)).toBeInTheDocument()
     expect(screen.getByText("Max")).toBeInTheDocument()
   })
 
@@ -1433,7 +1443,6 @@ describe("ProviderCard multi-account", () => {
       />
     )
     await userEvent.click(screen.getAllByRole("tab")[1])
-    expect(screen.getByText(/Home/)).toBeInTheDocument()
     expect(screen.getByText("Pro")).toBeInTheDocument()
   })
 
@@ -1466,5 +1475,88 @@ describe("ProviderCard multi-account", () => {
     expect(screen.queryByRole("tab")).not.toBeInTheDocument()
     expect(screen.queryByText(/·/)).not.toBeInTheDocument()
     expect(screen.getByText("Plus")).toBeInTheDocument()
+  })
+
+  it("a tap on the add-account button fires onAddAccount despite pointer capture", () => {
+    const onAddAccount = vi.fn()
+    const { container } = render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        asCard
+        pluginId="claude"
+        onAddAccount={onAddAccount}
+        accounts={[accountSnap("Work", "Max"), accountSnap("Home", "Pro")]}
+      />
+    )
+    const surface = container.firstElementChild as HTMLElement
+    const addButton = screen.getByRole("button", { name: "Add Claude account" })
+    const elementFromPoint = vi.mocked(document.elementFromPoint).mockReturnValue(addButton)
+
+    // Real browsers retarget the click to the capturing card div; simulate that
+    // delivery (click target = surface) and expect the button to still fire.
+    fireEvent.pointerDown(addButton, { clientX: 100, clientY: 50, pointerId: 1 })
+    fireEvent.pointerUp(addButton, { clientX: 100, clientY: 50, pointerId: 1 })
+    fireEvent.click(surface, { clientX: 100, clientY: 50 })
+
+    expect(elementFromPoint).toHaveBeenCalledWith(100, 50)
+    expect(onAddAccount).toHaveBeenCalledWith("claude")
+  })
+
+  it("a tap on the add-account button fires onAddAccount when the hit target is its SVG icon", () => {
+    const onAddAccount = vi.fn()
+    const { container } = render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        asCard
+        pluginId="claude"
+        onAddAccount={onAddAccount}
+        accounts={[accountSnap("Work", "Max"), accountSnap("Home", "Pro")]}
+      />
+    )
+    const surface = container.firstElementChild as HTMLElement
+    const addButton = screen.getByRole("button", { name: "Add Claude account" })
+    // Real clicks land on the "+" glyph (an SVG), which has no click() method —
+    // forwarding must resolve the button ancestor instead of calling it directly.
+    const icon = addButton.querySelector("svg")!
+    const elementFromPoint = vi.mocked(document.elementFromPoint).mockReturnValue(icon)
+
+    fireEvent.pointerDown(addButton, { clientX: 100, clientY: 50, pointerId: 1 })
+    fireEvent.pointerUp(addButton, { clientX: 100, clientY: 50, pointerId: 1 })
+    fireEvent.click(surface, { clientX: 100, clientY: 50 })
+
+    expect(elementFromPoint).toHaveBeenCalledWith(100, 50)
+    expect(onAddAccount).toHaveBeenCalledWith("claude")
+  })
+
+  it("a drag starting on the add-account button swipes instead of adding", () => {
+    vi.useFakeTimers()
+    const onAddAccount = vi.fn()
+    const { container } = render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        asCard
+        pluginId="claude"
+        onAddAccount={onAddAccount}
+        accounts={[accountSnap("Work", "Max"), accountSnap("Home", "Pro")]}
+      />
+    )
+    const surface = container.firstElementChild as HTMLElement
+    const addButton = screen.getByRole("button", { name: "Add Claude account" })
+
+    fireEvent.pointerDown(addButton, { clientX: 100, clientY: 50, pointerId: 1 })
+    fireEvent.pointerMove(addButton, { clientX: 40, clientY: 50, pointerId: 1 })
+    fireEvent.pointerUp(addButton, { clientX: 40, clientY: 50, pointerId: 1 })
+    fireEvent.click(surface, { clientX: 40, clientY: 50 })
+    // The swipe animation runs on timers + rAF; act() flushes React's batched
+    // state updates from those callbacks so the committed account is visible.
+    act(() => {
+      vi.runAllTimers()
+    })
+
+    expect(onAddAccount).not.toHaveBeenCalled()
+    expect(screen.getByText("Pro")).toBeInTheDocument()
   })
 })

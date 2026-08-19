@@ -95,6 +95,7 @@ export function useHorizontalSwipe({
   const widthRef = useRef(0)
   const movedRef = useRef(false)
   const animatingRef = useRef(false)
+  const forwardingRef = useRef(false)
   const rafRef = useRef<number | null>(null)
   const timerRef = useRef<number | null>(null)
 
@@ -187,6 +188,40 @@ export function useHorizontalSwipe({
       e.preventDefault()
       e.stopPropagation()
       movedRef.current = false
+      return
+    }
+
+    // With pointer capture, the browser retargets the click to the card div, so
+    // the real control under the pointer never receives it. Resolve the element
+    // at the click point and forward the interaction there. The forwarded click
+    // re-enters this handler (the hit point still resolves the icon under it),
+    // so `forwardingRef` suppresses a second forward — otherwise it would loop.
+    if (forwardingRef.current) return
+    const realTarget = document.elementFromPoint?.(e.clientX, e.clientY)
+    if (
+      realTarget &&
+      realTarget !== e.target &&
+      e.currentTarget.contains(realTarget)
+    ) {
+      // The hit target is often the icon inside a button (e.g. the "+" glyph),
+      // and SVG elements have no click() method — resolve the nearest
+      // interactive ancestor so the click lands on the control itself.
+      const clickable =
+        realTarget instanceof Element
+          ? (realTarget.closest("button, a, [role='button']") ?? realTarget)
+          : null
+      if (clickable && clickable !== e.currentTarget) {
+        // The forwarded click re-enters this handler with the same coordinates
+        // (elementFromPoint still resolves the icon), so suppress re-forwarding
+        // while it dispatches — otherwise it would loop forever.
+        forwardingRef.current = true
+        try {
+          ;(clickable as HTMLElement).click()
+        } finally {
+          forwardingRef.current = false
+        }
+        e.stopPropagation()
+      }
     }
   }
 
