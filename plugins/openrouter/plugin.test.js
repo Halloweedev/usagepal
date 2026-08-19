@@ -127,7 +127,7 @@ describe("openrouter plugin", () => {
     const ctx = makeCtx()
     mockEnvKey(ctx, "k")
     mockEndpoints(ctx, {
-      key: { data: { is_free_tier: true, usage: 12, limit: 50 } },
+      key: { data: { is_free_tier: true, usage: 12, limit: 50, limit_remaining: 38 } },
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -136,6 +136,31 @@ describe("openrouter plugin", () => {
     expect(keyLimit.used).toBe(12)
     expect(keyLimit.limit).toBe(50)
     expect(result.plan).toBe("Free tier")
+  })
+
+  it("derives Key Limit used from limit minus limit_remaining, not lifetime usage", async () => {
+    const ctx = makeCtx()
+    mockEnvKey(ctx, "k")
+    mockEndpoints(ctx, {
+      key: { data: { is_free_tier: false, usage: 12, limit: 5, limit_remaining: 3 } },
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const keyLimit = findLine(result, "Key Limit")
+    expect(keyLimit.type).toBe("progress")
+    expect(keyLimit.used).toBe(2)
+    expect(keyLimit.limit).toBe(5)
+  })
+
+  it("omits the Key Limit meter for an unlimited key (limit null)", async () => {
+    const ctx = makeCtx()
+    mockEnvKey(ctx, "k")
+    mockEndpoints(ctx, {
+      key: { data: { is_free_tier: false, usage: 40, limit: null } },
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(findLine(result, "Key Limit")).toBeUndefined()
   })
 
   it("still renders the balance when /key fails", async () => {

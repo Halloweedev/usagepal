@@ -81,6 +81,41 @@ const QUOTA_RESPONSE_WITH_WEEKLY = {
   },
 }
 
+const QUOTA_RESPONSE_CREDIT_LIMIT = {
+  code: 200,
+  data: {
+    limits: [
+      {
+        type: "CREDIT_LIMIT",
+        usage: 800000000,
+        currentValue: 1900000,
+        percentage: 42,
+        nextResetTime: 1738368000000,
+        unit: 3,
+        number: 5,
+      },
+      {
+        type: "CREDIT_LIMIT",
+        usage: 1600000000,
+        currentValue: 4800000,
+        percentage: 63,
+        nextResetTime: 1738972800000,
+        unit: 6,
+        number: 7,
+      },
+      {
+        type: "TIME_LIMIT",
+        usage: 4000,
+        currentValue: 1095,
+        percentage: 27,
+        remaining: 2905,
+        unit: 5,
+        number: 1,
+      },
+    ],
+  },
+}
+
 const QUOTA_RESPONSE_NO_TIME_LIMIT = {
   code: 200,
   data: {
@@ -526,6 +561,38 @@ describe("zai plugin", () => {
     expect(session.resetsAt).toBe(new Date(1738368000000).toISOString())
     expect(weekly).toBeTruthy()
     expect(weekly.used).toBe(75)
+    expect(weekly.resetsAt).toBe(new Date(1738972800000).toISOString())
+  })
+
+  it("renders Session and Weekly from CREDIT_LIMIT payload (renamed from TOKENS_LIMIT)", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE_CREDIT_LIMIT) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const session = result.lines.find((l) => l.label === "Session")
+    expect(session).toBeTruthy()
+    expect(session.type).toBe("progress")
+    expect(session.used).toBe(42)
+    expect(session.limit).toBe(100)
+    expect(session.format).toEqual({ kind: "percent" })
+    expect(session.periodDurationMs).toBe(5 * 60 * 60 * 1000)
+    expect(session.resetsAt).toBe(new Date(1738368000000).toISOString())
+
+    const weekly = result.lines.find((l) => l.label === "Weekly")
+    expect(weekly).toBeTruthy()
+    expect(weekly.type).toBe("progress")
+    expect(weekly.used).toBe(63)
+    expect(weekly.limit).toBe(100)
+    expect(weekly.format).toEqual({ kind: "percent" })
+    expect(weekly.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
     expect(weekly.resetsAt).toBe(new Date(1738972800000).toISOString())
   })
 })

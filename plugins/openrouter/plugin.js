@@ -175,7 +175,9 @@
     if (limit !== null && limit > 0) {
       lines.push(ctx.line.progress({
         label: "Key Limit",
-        used: Math.max(0, num(data.usage) || 0),
+        // `usage` is lifetime spend and never resets; the meter should track the current window,
+        // so derive used from the credit limit minus what's left of it.
+        used: Math.max(0, limit - Math.max(0, num(data.limit_remaining) || 0)),
         limit: limit,
         format: { kind: "dollars" },
         periodDurationMs: MONTH_MS,
