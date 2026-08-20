@@ -1,29 +1,50 @@
 (function () {
-  var CLOUD_SERVICE = "exa.seat_management_pb.SeatManagementService"
-  var DEFAULT_API_SERVER_URL = "https://server.codeium.com"
-  var CLOUD_COMPAT_VERSION = "1.108.2"
-  var CREDENTIALS_PATH = "~/.local/share/devin/credentials.toml"
-  var APP_AUTH_SOURCES = [
-    {
-      source: "Devin app",
-      stateDb: "~/Library/Application Support/Devin/User/globalStorage/state.vscdb",
-    },
-    {
-      source: "Devin - Next app",
-      stateDb: "~/Library/Application Support/Devin - Next/User/globalStorage/state.vscdb",
-    },
-  ]
-  var LOGIN_HINT = "Run devin auth login or sign in to Devin and try again."
-  var QUOTA_HINT = "Devin quota data unavailable. Try again later."
-  var DAY_MS = 24 * 60 * 60 * 1000
-  var WEEK_MS = 7 * DAY_MS
+  const CLOUD_SERVICE = "exa.seat_management_pb.SeatManagementService"
+  const DEFAULT_API_SERVER_URL = "https://server.codeium.com"
+  const CLOUD_COMPAT_VERSION = "1.108.2"
+  const LOGIN_HINT = "Run devin auth login or sign in to Devin and try again."
+  const QUOTA_HINT = "Devin quota data unavailable. Try again later."
+  const DAY_MS = 24 * 60 * 60 * 1000
+  const WEEK_MS = 7 * DAY_MS
+
+  function normalizePlatform(platform) {
+    if (platform === "darwin") return "macos"
+    if (platform === "win32") return "windows"
+    return platform
+  }
+
+  function credentialsPaths(ctx) {
+    const platform = normalizePlatform(ctx.app.platform)
+    if (platform === "windows") {
+      return ["~/AppData/Roaming/devin/credentials.toml"]
+    }
+    return ["~/.local/share/devin/credentials.toml"]
+  }
+
+  function appAuthSources(ctx) {
+    const platform = normalizePlatform(ctx.app.platform)
+    const appNames = ["Devin", "Devin - Next"]
+
+    let makePath
+    if (platform === "macos") {
+      makePath = (name) => "~/Library/Application Support/" + name + "/User/globalStorage/state.vscdb"
+    } else if (platform === "linux") {
+      makePath = (name) => "~/.config/" + name + "/User/globalStorage/state.vscdb"
+    } else if (platform === "windows") {
+      makePath = (name) => "~/AppData/Roaming/" + name + "/User/globalStorage/state.vscdb"
+    } else {
+      makePath = (name) => "~/Library/Application Support/" + name + "/User/globalStorage/state.vscdb"
+    }
+
+    return appNames.map((name) => ({ source: name + " app", stateDb: makePath(name) }))
+  }
 
   function readFiniteNumber(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : null
     if (typeof value !== "string") return null
-    var trimmed = value.trim()
+    const trimmed = value.trim()
     if (!trimmed) return null
-    var parsed = Number(trimmed)
+    const parsed = Number(trimmed)
     return Number.isFinite(parsed) ? parsed : null
   }
 
@@ -35,24 +56,24 @@
   }
 
   function readTomlString(text, key) {
-    var lines = String(text || "").split(/\r?\n/)
-    var prefix = new RegExp("^\\s*" + key + "\\s*=\\s*(.*)$")
-    for (var i = 0; i < lines.length; i++) {
-      var match = prefix.exec(lines[i])
+    const lines = String(text || "").split(/\r?\n/)
+    const prefix = new RegExp("^\\s*" + key + "\\s*=\\s*(.*)$")
+    for (let i = 0; i < lines.length; i++) {
+      const match = prefix.exec(lines[i])
       if (!match) continue
-      var value = match[1].trim()
+      let value = match[1].trim()
       if (!value) return null
       if (value[0] === '"' || value[0] === "'") {
-        var quote = value[0]
-        var out = ""
-        for (var j = 1; j < value.length; j++) {
-          var ch = value[j]
+        const quote = value[0]
+        let out = ""
+        for (let j = 1; j < value.length; j++) {
+          const ch = value[j]
           if (ch === quote && value[j - 1] !== "\\") return out.trim() || null
           out += ch
         }
         return null
       }
-      var commentIndex = value.indexOf("#")
+      const commentIndex = value.indexOf("#")
       if (commentIndex >= 0) value = value.slice(0, commentIndex).trim()
       return value || null
     }
@@ -61,7 +82,7 @@
 
   function cleanApiServerUrl(value) {
     if (typeof value !== "string") return null
-    var trimmed = value.trim().replace(/\/+$/, "")
+    const trimmed = value.trim().replace(/\/+$/, "")
     if (!/^https:\/\//.test(trimmed)) return null
     return trimmed
   }
@@ -76,7 +97,7 @@
 
   function readHost(value) {
     if (typeof value !== "string") return null
-    var match = /^https?:\/\/([^/]+)/.exec(value.trim())
+    const match = /^https?:\/\/([^/]+)/.exec(value.trim())
     return match ? match[1] : null
   }
 
@@ -85,12 +106,12 @@
   }
 
   function logQuotaDiagnostics(ctx, auth, userStatus) {
-    var planStatus = (userStatus && userStatus.planStatus) || {}
-    var planInfo = planStatus.planInfo || {}
-    var devinInfo = planInfo.devinInfo || {}
-    var apiServerHost = readHost(auth.apiServerUrl || DEFAULT_API_SERVER_URL)
-    var webappHost = readHost(devinInfo.webappHost) || devinInfo.webappHost || null
-    var devinApiHost = readHost(devinInfo.apiUrl)
+    const planStatus = (userStatus && userStatus.planStatus) || {}
+    const planInfo = planStatus.planInfo || {}
+    const devinInfo = planInfo.devinInfo || {}
+    const apiServerHost = readHost(auth.apiServerUrl || DEFAULT_API_SERVER_URL)
+    const webappHost = readHost(devinInfo.webappHost) || devinInfo.webappHost || null
+    const devinApiHost = readHost(devinInfo.apiUrl)
 
     ctx.host.log.info(
       "Devin quota diagnostics" +
@@ -108,7 +129,16 @@
         " hasDailyReset=" + String(hasOwn(planStatus, "dailyQuotaResetAtUnix")) +
         " hasWeeklyReset=" + String(hasOwn(planStatus, "weeklyQuotaResetAtUnix")) +
         " hasTopUpStatus=" + String(hasOwn(planStatus, "topUpStatus")) +
-        " availablePromptCredits=" + valueOrMissing(planStatus.availablePromptCredits) +
+        " hasPlanStart=" + String(hasOwn(planStatus, "planStart")) +
+        " hasPlanEnd=" + String(hasOwn(planStatus, "planEnd")) +
+        " hasAcuConsumed=" + String(hasOwn(planStatus, "acuConsumed")) +
+        " hasAcuLimit=" + String(hasOwn(planStatus, "acuLimit")) +
+        " hasAvailablePromptCredits=" + String(hasOwn(planStatus, "availablePromptCredits")) +
+        " hasUsedPromptCredits=" + String(hasOwn(planStatus, "usedPromptCredits")) +
+        " hasAvailableFlowCredits=" + String(hasOwn(planStatus, "availableFlowCredits")) +
+        " hasUsedFlowCredits=" + String(hasOwn(planStatus, "usedFlowCredits")) +
+        " hasAvailableFlexCredits=" + String(hasOwn(planStatus, "availableFlexCredits")) +
+        " hasUsedFlexCredits=" + String(hasOwn(planStatus, "usedFlexCredits")) +
         " canUseCli=" + String(devinInfo.canUseCli === true) +
         " canUseCascade=" + String(devinInfo.canUseCascade === true) +
         " devinReviewEnabled=" + String(devinInfo.devinReviewEnabled === true) +
@@ -118,34 +148,54 @@
   }
 
   function loadCredentialsFile(ctx) {
-    if (!ctx.host.fs.exists(CREDENTIALS_PATH)) return null
-    try {
-      var text = ctx.host.fs.readText(CREDENTIALS_PATH)
-      var apiKey = readTomlString(text, "windsurf_api_key")
-      if (!apiKey) {
-        ctx.host.log.warn("Devin credentials missing windsurf_api_key")
-        return null
+    const paths = credentialsPaths(ctx)
+    for (let i = 0; i < paths.length; i++) {
+      const path = paths[i]
+      if (!ctx.host.fs.exists(path)) continue
+      try {
+        const text = ctx.host.fs.readText(path)
+        const apiKey = readTomlString(text, "windsurf_api_key")
+        if (!apiKey) {
+          ctx.host.log.warn("Devin credentials missing windsurf_api_key at " + path)
+          continue
+        }
+        return {
+          apiKey: apiKey,
+          apiServerUrl: cleanApiServerUrl(readTomlString(text, "api_server_url")),
+          source: "credentials.toml",
+        }
+      } catch (e) {
+        ctx.host.log.warn("failed to read Devin credentials at " + path + ": " + String(e))
       }
+    }
+    return null
+  }
+
+  function loadEnvAuth(ctx) {
+    try {
+      if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null
+      const apiKey = ctx.host.env.get("DEVIN_API_KEY")
+      if (typeof apiKey !== "string" || !apiKey.trim()) return null
       return {
-        apiKey: apiKey,
-        apiServerUrl: cleanApiServerUrl(readTomlString(text, "api_server_url")),
-        source: "credentials.toml",
+        apiKey: apiKey.trim(),
+        apiServerUrl: null,
+        source: "env:DEVIN_API_KEY",
       }
     } catch (e) {
-      ctx.host.log.warn("failed to read Devin credentials: " + String(e))
+      ctx.host.log.warn("failed to read DEVIN_API_KEY env: " + String(e))
       return null
     }
   }
 
   function readAppAuth(ctx, variant) {
     try {
-      var rows = ctx.host.sqlite.query(
+      const rows = ctx.host.sqlite.query(
         variant.stateDb,
         "SELECT value FROM ItemTable WHERE key = 'windsurfAuthStatus' LIMIT 1"
       )
-      var parsed = ctx.util.tryParseJson(rows)
+      const parsed = ctx.util.tryParseJson(rows)
       if (!parsed || !parsed.length || !parsed[0].value) return null
-      var auth = ctx.util.tryParseJson(parsed[0].value)
+      const auth = ctx.util.tryParseJson(parsed[0].value)
       if (!auth || !auth.apiKey) return null
       return {
         apiKey: auth.apiKey,
@@ -159,9 +209,9 @@
   }
 
   function callCloud(ctx, auth) {
-    var apiServerUrl = effectiveApiServerUrl(auth)
+    const apiServerUrl = effectiveApiServerUrl(auth)
     try {
-      var resp = ctx.host.http.request({
+      const resp = ctx.host.http.request({
         method: "POST",
         url: apiServerUrl + "/" + CLOUD_SERVICE + "/GetUserStatus",
         headers: {
@@ -195,8 +245,8 @@
   }
 
   function tryAuth(ctx, auth) {
-    var data = callCloud(ctx, auth)
-    if (data && data.__usagepalAuthError) {
+    const data = callCloud(ctx, auth)
+    if (data && data.__openusageAuthError) {
       return { authFailure: true }
     }
     if (!data || !data.userStatus) return {}
@@ -214,13 +264,13 @@
   }
 
   function unixSecondsToIso(ctx, value) {
-    var seconds = readFiniteNumber(value)
+    const seconds = readFiniteNumber(value)
     if (seconds === null) return null
     return ctx.util.toIso(seconds * 1000)
   }
 
   function formatDollarsFromMicros(value) {
-    var micros = readFiniteNumber(value)
+    let micros = readFiniteNumber(value)
     if (micros === null) return null
     if (!Number.isFinite(micros)) return null
     if (micros < 0) micros = 0
@@ -234,7 +284,7 @@
 
   function buildUsedQuotaLine(ctx, label, used, resetsAt, periodDurationMs) {
     if (used === null) return null
-    var line = {
+    const line = {
       label: label,
       used: clampPercent(used),
       limit: 100,
@@ -245,36 +295,182 @@
     return ctx.line.progress(line)
   }
 
-  function buildOutput(ctx, userStatus) {
-    var planStatus = (userStatus && userStatus.planStatus) || {}
+  function planPeriodMs(ctx, planStatus) {
+    const start = readFiniteNumber(planStatus.planStart)
+    const end = readFiniteNumber(planStatus.planEnd)
+    if (start === null || end === null) return null
+    const ms = (end - start) * 1000
+    return Number.isFinite(ms) && ms > 0 ? ms : null
+  }
 
-    var planInfo = planStatus.planInfo || {}
-    var planName = typeof planInfo.planName === "string" && planInfo.planName.trim()
+  function buildAcuLine(ctx, planStatus, reset, periodDurationMs) {
+    const consumed = readFiniteNumber(planStatus.acuConsumed)
+    const limit = readFiniteNumber(planStatus.acuLimit)
+    if (consumed === null && limit === null) return null
+
+    if (limit > 0) {
+      const used = ((consumed || 0) / limit) * 100
+      const line = {
+        label: "ACU used",
+        used: clampPercent(used),
+        limit: 100,
+        format: { kind: "percent" },
+        periodDurationMs: periodDurationMs,
+      }
+      if (reset) line.resetsAt = reset
+      return ctx.line.progress(line)
+    }
+
+    if (consumed !== null && consumed > 0) {
+      return ctx.line.text({ label: "ACU used", value: consumed.toFixed(2) + " ACU" })
+    }
+
+    return null
+  }
+
+  function buildCreditLine(ctx, label, used, available, reset, periodDurationMs) {
+    if (used === null && available === null) return null
+
+    if (used !== null && used < 0) {
+      return ctx.line.badge({ label: label, text: "Unlimited", color: "#a3a3a3" })
+    }
+    if (available !== null && available < 0) {
+      return ctx.line.badge({ label: label, text: "Unlimited", color: "#a3a3a3" })
+    }
+
+    const total = used !== null && available !== null ? used + available : null
+    if (total !== null && total > 0) {
+      const line = {
+        label: label,
+        used: clampPercent((used / total) * 100),
+        limit: 100,
+        format: { kind: "percent" },
+        periodDurationMs: periodDurationMs,
+      }
+      if (reset) line.resetsAt = reset
+      return ctx.line.progress(line)
+    }
+
+    if (used !== null && used > 0) {
+      return ctx.line.text({ label: label, value: String(used) + " used" })
+    }
+    if (available !== null && available > 0) {
+      return ctx.line.text({ label: label, value: String(available) + " available" })
+    }
+
+    return null
+  }
+
+  function buildPaceBadge(ctx, progressLine) {
+    if (!progressLine || progressLine.type !== "progress") return null
+    const nowMs = ctx.util.parseDateMs(ctx.nowIso)
+    const resetsAtMs = progressLine.resetsAt ? ctx.util.parseDateMs(progressLine.resetsAt) : null
+    const periodDurationMs = progressLine.periodDurationMs
+    if (
+      nowMs === null ||
+      resetsAtMs === null ||
+      !Number.isFinite(periodDurationMs) ||
+      !Number.isFinite(progressLine.used) ||
+      !Number.isFinite(progressLine.limit)
+    ) {
+      return null
+    }
+
+    const periodStartMs = resetsAtMs - periodDurationMs
+    const elapsedMs = nowMs - periodStartMs
+    if (elapsedMs <= 0 || nowMs >= resetsAtMs) return null
+
+    if (progressLine.used === 0) {
+      return ctx.line.badge({ label: "Pace", text: "Ahead", color: "#22c55e" })
+    }
+    if (progressLine.used >= progressLine.limit) {
+      return ctx.line.badge({ label: "Pace", text: "Behind", color: "#ef4444" })
+    }
+
+    const elapsedFraction = elapsedMs / periodDurationMs
+    if (elapsedFraction < 0.05) return null
+
+    const projectedUsage = (progressLine.used / elapsedMs) * periodDurationMs
+    if (projectedUsage <= progressLine.limit * 0.8) {
+      return ctx.line.badge({ label: "Pace", text: "Ahead", color: "#22c55e" })
+    }
+    if (projectedUsage <= progressLine.limit) {
+      return ctx.line.badge({ label: "Pace", text: "On track", color: "#a3a3a3" })
+    }
+    return ctx.line.badge({ label: "Pace", text: "Behind", color: "#ef4444" })
+  }
+
+  function buildOutput(ctx, userStatus) {
+    const planStatus = (userStatus && userStatus.planStatus) || {}
+    const planInfo = planStatus.planInfo || {}
+    const planName = typeof planInfo.planName === "string" && planInfo.planName.trim()
       ? planInfo.planName.trim()
       : "Unknown"
 
-    var hideDailyQuota = planInfo.hideDailyQuota === true
-    var dailyRemaining = readFiniteNumber(planStatus.dailyQuotaRemainingPercent)
-    var weeklyRemaining = readFiniteNumber(planStatus.weeklyQuotaRemainingPercent)
-    var dailyReset = !hideDailyQuota ? unixSecondsToIso(ctx, planStatus.dailyQuotaResetAtUnix) : null
-    var weeklyReset = unixSecondsToIso(ctx, planStatus.weeklyQuotaResetAtUnix)
-    var extraUsageBalance = formatDollarsFromMicros(planStatus.overageBalanceMicros)
+    const hideDailyQuota = planInfo.hideDailyQuota === true
+    const dailyRemaining = readFiniteNumber(planStatus.dailyQuotaRemainingPercent)
+    const weeklyRemaining = readFiniteNumber(planStatus.weeklyQuotaRemainingPercent)
+    const dailyReset = !hideDailyQuota ? unixSecondsToIso(ctx, planStatus.dailyQuotaResetAtUnix) : null
+    const weeklyReset = unixSecondsToIso(ctx, planStatus.weeklyQuotaResetAtUnix)
 
-    var dailyLine = !hideDailyQuota
+    const planEnd = unixSecondsToIso(ctx, planStatus.planEnd)
+    const planPeriod = planPeriodMs(ctx, planStatus)
+
+    const dailyLine = !hideDailyQuota && dailyRemaining !== null
       ? buildQuotaLine(ctx, "Daily quota", dailyRemaining, dailyReset, DAY_MS)
       : null
-    var weeklyLine = weeklyRemaining !== null
-      ? buildQuotaLine(ctx, "Weekly quota", weeklyRemaining, weeklyReset, WEEK_MS)
-      : hideDailyQuota
-        ? buildUsedQuotaLine(ctx, "Weekly quota", dailyRemaining, weeklyReset, WEEK_MS)
-        : null
 
-    var lines = []
-    if (dailyLine) lines.push(dailyLine)
-    if (weeklyLine) lines.push(weeklyLine)
-    if (extraUsageBalance) {
-      lines.push(ctx.line.text({ label: "Extra usage balance", value: extraUsageBalance }))
+    let weeklyLine = null
+    if (weeklyRemaining !== null) {
+      weeklyLine = buildQuotaLine(ctx, "Weekly quota", weeklyRemaining, weeklyReset, WEEK_MS)
+    } else if (hideDailyQuota && dailyRemaining !== null) {
+      ctx.host.log.info("Devin weekly quota mapped from daily because weeklyQuotaRemainingPercent is missing")
+      weeklyLine = buildUsedQuotaLine(ctx, "Weekly quota", dailyRemaining, weeklyReset, WEEK_MS)
     }
+
+    const acuLine = buildAcuLine(ctx, planStatus, planEnd, planPeriod)
+
+    const promptLine = buildCreditLine(
+      ctx,
+      "Prompt credits",
+      readFiniteNumber(planStatus.usedPromptCredits),
+      readFiniteNumber(planStatus.availablePromptCredits),
+      planEnd,
+      planPeriod
+    )
+    const flowLine = buildCreditLine(
+      ctx,
+      "Flow credits",
+      readFiniteNumber(planStatus.usedFlowCredits),
+      readFiniteNumber(planStatus.availableFlowCredits),
+      planEnd,
+      planPeriod
+    )
+    const onDemandLine = buildCreditLine(
+      ctx,
+      "On-demand credits",
+      readFiniteNumber(planStatus.usedFlexCredits),
+      readFiniteNumber(planStatus.availableFlexCredits),
+      planEnd,
+      planPeriod
+    )
+
+    const extraUsageBalance = formatDollarsFromMicros(planStatus.overageBalanceMicros)
+    const extraUsageLine = extraUsageBalance
+      ? ctx.line.text({ label: "Extra usage balance", value: extraUsageBalance })
+      : null
+
+    const paceBadge = buildPaceBadge(ctx, weeklyLine || acuLine)
+
+    const lines = []
+    if (acuLine) lines.push(acuLine)
+    if (weeklyLine) lines.push(weeklyLine)
+    if (dailyLine) lines.push(dailyLine)
+    if (promptLine) lines.push(promptLine)
+    if (flowLine) lines.push(flowLine)
+    if (onDemandLine) lines.push(onDemandLine)
+    if (extraUsageLine) lines.push(extraUsageLine)
+    if (paceBadge) lines.push(paceBadge)
 
     if (!lines.length) throw QUOTA_HINT
 
@@ -285,15 +481,24 @@
   }
 
   function probe(ctx) {
-    var sawApiKey = false
-    var sawAuthFailure = false
-    var attempts = []
+    let sawApiKey = false
+    let sawAuthFailure = false
+    const attempts = []
 
-    var credentials = loadCredentialsFile(ctx)
+    const envAuth = loadEnvAuth(ctx)
+    if (envAuth) {
+      sawApiKey = true
+      attempts.push(authFingerprint(envAuth))
+      const envAttempt = tryAuth(ctx, envAuth)
+      if (envAttempt.output) return envAttempt.output
+      if (envAttempt.authFailure) sawAuthFailure = true
+    }
+
+    const credentials = loadCredentialsFile(ctx)
     if (credentials) {
       sawApiKey = true
       attempts.push(authFingerprint(credentials))
-      var credentialsAttempt = tryAuth(ctx, credentials)
+      const credentialsAttempt = tryAuth(ctx, credentials)
       if (credentialsAttempt.output) return credentialsAttempt.output
       if (credentialsAttempt.authFailure) sawAuthFailure = true
     }
@@ -302,13 +507,14 @@
     // hasn't already rejected, so a stale token in one install doesn't mask a
     // valid one in another. Read each state DB only when we reach it, so a working
     // earlier source short-circuits before we touch a later install's DB.
-    for (var i = 0; i < APP_AUTH_SOURCES.length; i++) {
-      var appAuth = readAppAuth(ctx, APP_AUTH_SOURCES[i])
+    const appSources = appAuthSources(ctx)
+    for (let i = 0; i < appSources.length; i++) {
+      const appAuth = readAppAuth(ctx, appSources[i])
       if (!appAuth) continue
       if (alreadyAttempted(attempts, appAuth)) continue
       sawApiKey = true
       attempts.push(authFingerprint(appAuth))
-      var appAttempt = tryAuth(ctx, appAuth)
+      const appAttempt = tryAuth(ctx, appAuth)
       if (appAttempt.output) return appAttempt.output
       if (appAttempt.authFailure) sawAuthFailure = true
     }
@@ -323,12 +529,24 @@
   }
 
   function alreadyAttempted(attempts, auth) {
-    var fingerprint = authFingerprint(auth)
-    for (var i = 0; i < attempts.length; i++) {
+    const fingerprint = authFingerprint(auth)
+    for (let i = 0; i < attempts.length; i++) {
       if (attempts[i] === fingerprint) return true
     }
     return false
   }
 
-  globalThis.__usagepal_plugin = { id: "devin", probe: probe }
+  globalThis.__openusage_plugin = {
+    id: "devin",
+    probe: probe,
+    __test: {
+      normalizePlatform,
+      credentialsPaths,
+      appAuthSources,
+      buildOutput,
+      buildPaceBadge,
+      buildCreditLine,
+      buildAcuLine,
+    },
+  }
 })()
