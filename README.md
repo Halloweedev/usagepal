@@ -53,7 +53,7 @@ UsagePal lives in your menu bar and shows you how much of your AI coding subscri
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
 - [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
 - [**OpenRouter**](docs/providers/openrouter.md) / credits, balance, daily/weekly/monthly spend, key limit
-- [**Devin**](docs/providers/devin.md) / weekly quota, extra usage
+- [**Devin**](docs/providers/devin.md) / weekly quota, daily quota, ACU, extra usage, on-demand credits
 - [**Z.ai**](docs/providers/zai.md) / session, weekly, web searches
 
 Community contributions welcome. Want a provider that's not listed? [Open an issue.](https://github.com/Halloweedev/usagepal/issues/new)

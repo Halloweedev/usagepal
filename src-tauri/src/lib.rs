@@ -155,9 +155,18 @@ fn init_panel(app_handle: tauri::AppHandle) {
 #[tauri::command]
 #[specta::specta]
 fn hide_panel(app_handle: tauri::AppHandle) {
-    use tauri_nspanel::ManagerExt;
-    if let Ok(panel) = app_handle.get_webview_panel("main") {
-        panel.hide();
+    #[cfg(target_os = "macos")]
+    {
+        use tauri_nspanel::ManagerExt;
+        if let Ok(panel) = app_handle.get_webview_panel("main") {
+            panel.hide();
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        if let Some(window) = app_handle.get_webview_window("main") {
+            let _ = window.hide();
+        }
     }
 }
 
@@ -241,6 +250,7 @@ fn quit_app(app_handle: tauri::AppHandle) {
 /// Derive the macOS `.app` bundle path from the running executable, which lives
 /// at `<Name>.app/Contents/MacOS/<bin>` — three ancestors up. Returns `None`
 /// for a non-bundle layout (e.g. a bare `cargo run` binary).
+#[cfg(any(target_os = "macos", test))]
 fn macos_bundle_path(exe: &std::path::Path) -> Option<std::path::PathBuf> {
     let bundle = exe.ancestors().nth(3)?;
     if bundle.extension().and_then(|ext| ext.to_str()) == Some("app") {
@@ -899,11 +909,17 @@ pub fn run() {
             .expect("Failed to export TypeScript bindings");
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_nspanel::init())
+        .plugin(tauri_plugin_store::Builder::default().build());
+
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_nspanel::init());
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder;
+
+    builder
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets({
