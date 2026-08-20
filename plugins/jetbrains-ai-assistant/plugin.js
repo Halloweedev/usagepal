@@ -353,5 +353,5 @@
     return { lines: lines }
   }
 
-  globalThis.__openusage_plugin = { id: "jetbrains-ai-assistant", probe: probe }
+  globalThis.__usagepal_plugin = { id: "jetbrains-ai-assistant", probe: probe }
 })()

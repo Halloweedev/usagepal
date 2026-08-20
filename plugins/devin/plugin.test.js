@@ -17,7 +17,7 @@ const WIN_NEXT_STATE_DB = "~/AppData/Roaming/Devin - Next/User/globalStorage/sta
 
 const loadPlugin = async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 function credentialsPath(platform) {
@@ -92,7 +92,7 @@ function writeCredentials(ctx, toml = makeCredentialsToml()) {
 
 describe("devin plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
   })
 

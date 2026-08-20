@@ -9,7 +9,7 @@ const API_URL = "https://api.synthetic.new/v2/quotas";
 
 const loadPlugin = async () => {
   await import("./plugin.js");
-  return globalThis.__openusage_plugin;
+  return globalThis.__usagepal_plugin;
 };
 
 function setPiAuth(ctx, key, providerName) {
@@ -104,7 +104,7 @@ describe("synthetic plugin", () => {
   let plugin;
 
   beforeEach(async () => {
-    delete globalThis.__openusage_plugin;
+    delete globalThis.__usagepal_plugin;
     vi.resetModules();
     plugin = await loadPlugin();
   });

@@ -430,5 +430,5 @@
     return plan ? { plan: plan, lines: lines } : { lines: lines }
   }
 
-  globalThis.__openusage_plugin = { id: "perplexity", probe: probe }
+  globalThis.__usagepal_plugin = { id: "perplexity", probe: probe }
 })()

@@ -146,6 +146,10 @@ pub(crate) struct CodexTokenUsageEvent {
     pub(crate) reasoning_output_tokens: u64,
     pub(crate) total_tokens: u64,
     pub(crate) is_fallback_model: bool,
+    /// Whether this turn ran on the fast/priority service tier, as recorded by
+    /// the `thread_settings_applied` events in the session log. Priced per-turn
+    /// so a later config change never retroactively reprices past turns.
+    pub(crate) is_fast_tier: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -156,6 +160,12 @@ pub(crate) struct CodexModelUsage {
     pub(crate) reasoning_output_tokens: u64,
     pub(crate) total_tokens: u64,
     pub(crate) is_fallback: bool,
+    /// Portion of the totals above that ran on the fast/priority tier. Used to
+    /// apply the fast multiplier to only those tokens; the standard portion is
+    /// `input_tokens - fast_input_tokens` (and likewise for cached/output).
+    pub(crate) fast_input_tokens: u64,
+    pub(crate) fast_cached_input_tokens: u64,
+    pub(crate) fast_output_tokens: u64,
 }
 
 #[derive(Debug, Clone, Default)]

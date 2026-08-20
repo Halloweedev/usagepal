@@ -9,7 +9,7 @@ const GROUP_ID = "test-group-id"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 function makeJwtLikeToken() {
@@ -98,7 +98,7 @@ function mockRestApi(ctx, options = {}) {
 
 describe("perplexity plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
   })
 

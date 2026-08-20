@@ -1184,5 +1184,5 @@
     throw ERR_NOT_LOGGED_IN
   }
 
-  globalThis.__openusage_plugin = { id: "codex", probe }
+  globalThis.__usagepal_plugin = { id: "codex", probe }
 })()

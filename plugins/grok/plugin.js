@@ -902,7 +902,7 @@
     return { plan: fetchPlanName(ctx, auth.token), lines }
   }
 
-  globalThis.__openusage_plugin = {
+  globalThis.__usagepal_plugin = {
     id: "grok",
     probe,
     __test: {

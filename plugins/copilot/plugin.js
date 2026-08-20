@@ -286,6 +286,18 @@
       if (completionsLine) lines.push(completionsLine);
     }
 
+    // Org-managed seats billed by token consumption (`token_based_billing`) carry no percent meter, so
+    // both branches above produce nothing. They still report the personal credits consumed as a raw
+    // count, which we surface as a "Credits" count line rather than dropping it. Gated on the marker so
+    // genuinely-empty/error responses without it still fall through to the loud "No usage data" badge.
+    if (lines.length === 0 && data.token_based_billing === true) {
+      const premium = (snapshots && snapshots.premium_interactions) || data.premium_interactions;
+      const creditsUsed = premium ? numOrNull(premium.credits_used) : null;
+      if (creditsUsed !== null && creditsUsed > 0) {
+        lines.push(ctx.line.text({ label: "Credits", value: String(creditsUsed) }));
+      }
+    }
+
     if (lines.length === 0) {
       lines.push(
         ctx.line.badge({
@@ -299,5 +311,5 @@
     return { plan: plan, lines: lines };
   }
 
-  globalThis.__openusage_plugin = { id: "copilot", probe };
+  globalThis.__usagepal_plugin = { id: "copilot", probe };
 })();

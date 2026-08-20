@@ -271,6 +271,7 @@ mod tests {
     fn make_snapshot(id: &str, name: &str) -> CachedPluginSnapshot {
         CachedPluginSnapshot {
             provider_id: id.to_string(),
+            account_id: None,
             display_name: name.to_string(),
             plan: Some("Pro".to_string()),
             lines: vec![],

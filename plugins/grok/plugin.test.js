@@ -8,7 +8,7 @@ const REFRESH_URL = "https://auth.x.ai/oauth2/token"
 
 const loadPlugin = async () => {
   await import("./plugin.js?test=" + Math.random())
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 function writeAuth(ctx, entry) {
@@ -66,7 +66,7 @@ function mockGrokApi(ctx, data, settings) {
 
 describe("grok plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
   })
 
   it("throws when auth file is missing", async () => {
@@ -454,7 +454,7 @@ describe("grok spend aggregation", () => {
   const LOG_PATH = "~/.grok/logs/unified.jsonl"
 
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
   })
 
   function inferenceLine(ts, pid, tokens) {

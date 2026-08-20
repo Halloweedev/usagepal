@@ -61,7 +61,10 @@
       "grok-4.3":             { input: 1.25, cache_write: null,  cache_read: 0.2,   output: 2.5,   apply_max_mode_uplift: true },
       // Grok 4.5 list rates (cache read $0.5/M as of 2026-07-22 docs). Fast keeps 2x.
       "grok-4.5":             { input: 2.0,  cache_write: null,  cache_read: 0.5,   output: 6.0,   apply_max_mode_uplift: true },
-      "grok-4.5-fast":        { input: 4.0,  cache_write: null,  cache_read: 0.4,   output: 18.0,  apply_max_mode_uplift: true },
+      "grok-4.5-fast":        { input: 4.0,  cache_write: null,  cache_read: 0.4,   output: 12.0,  apply_max_mode_uplift: true },
+      // Grok 4.6 list rates. Fast keeps 2x on input/cache/output.
+      "grok-4.6":             { input: 2.0,  cache_write: null,  cache_read: 0.5,   output: 6.0,   apply_max_mode_uplift: true },
+      "grok-4.6-fast":        { input: 4.0,  cache_write: null,  cache_read: 1.0,   output: 12.0,  apply_max_mode_uplift: true },
       "grok-build-0.1":       { input: 1.0,  cache_write: null,  cache_read: 0.2,   output: 2.0,   apply_max_mode_uplift: true },
       "kimi-k2.5":            { input: 0.6,  cache_write: null,  cache_read: 0.1,   output: 3.0,   apply_max_mode_uplift: true },
     },
@@ -112,6 +115,10 @@
       // High / High Fast are reasoning-effort suffixes on Cursor Grok CSV slugs.
       { pattern: "^grok-4\\.5.*(?:high-)?fast", canonical: "grok-4.5-fast" },
       { pattern: "^grok-4\\.5", canonical: "grok-4.5" },
+      // Grok 4.6 slugs come dashed or dotted (grok-4-6 / grok-4.6), with optional
+      // reasoning-effort ("high") and Auto-mode suffixes; `.*fast` catches Fast.
+      { pattern: "^grok-4[-.]6.*(?:high-)?fast", canonical: "grok-4.6-fast" },
+      { pattern: "^grok-4[-.]6", canonical: "grok-4.6" },
       { pattern: "^grok-build-0\\.1", canonical: "grok-build-0.1" },
       { pattern: "^kimi-k2\\.5", canonical: "kimi-k2.5" },
     ],
@@ -1250,7 +1257,7 @@
     return { plan: plan, lines: lines }
   }
 
-  globalThis.__openusage_plugin = {
+  globalThis.__usagepal_plugin = {
     id: "cursor",
     probe,
     __test: {

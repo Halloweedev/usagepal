@@ -877,7 +877,7 @@
     return { plan: planLabel, lines: lines }
   }
 
-  globalThis.__openusage_plugin = {
+  globalThis.__usagepal_plugin = {
     id: "cline-pass",
     probe: probe,
     __test: {

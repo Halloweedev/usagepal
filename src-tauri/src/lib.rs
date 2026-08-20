@@ -1,3 +1,4 @@
+mod accounts;
 mod beta_updater;
 mod clinepass_key;
 mod config;
@@ -358,6 +359,9 @@ async fn start_probe_batch(
         .map(|plugin| plugin.manifest.id.clone())
         .collect();
 
+    let registry = accounts::load_account_registry(&app_data_dir);
+    let probe_units = plugin_engine::account::expand_probe_units(&selected_plugins, &registry);
+
     log::info!(
         "probe batch {} starting: {:?}",
         batch_id,
@@ -366,7 +370,7 @@ async fn start_probe_batch(
 
     run_probe_batch(
         app_handle,
-        selected_plugins,
+        probe_units,
         app_data_dir,
         app_version,
         batch_id.clone(),
@@ -390,13 +394,13 @@ async fn start_probe_batch(
 /// `probe:result` (matched by batch id), so they pass false.
 fn run_probe_batch(
     app_handle: tauri::AppHandle,
-    selected_plugins: Vec<Arc<plugin_engine::manifest::LoadedPlugin>>,
+    probe_units: Vec<plugin_engine::account::ProbeUnit>,
     app_data_dir: PathBuf,
     app_version: String,
     batch_id: String,
     emit_usage_updated: bool,
 ) {
-    let selected_count = selected_plugins.len();
+    let selected_count = probe_units.len();
     let worker_count = probe_worker_count(selected_count);
     if worker_count < selected_count {
         log::info!(
@@ -409,7 +413,7 @@ fn run_probe_batch(
 
     let remaining = Arc::new(AtomicUsize::new(selected_count));
     let probe_queue = Arc::new(Mutex::new(
-        selected_plugins.into_iter().collect::<VecDeque<_>>(),
+        probe_units.into_iter().collect::<VecDeque<_>>(),
     ));
 
     for _ in 0..worker_count {
@@ -424,20 +428,25 @@ fn run_probe_batch(
 
         tauri::async_runtime::spawn_blocking(move || {
             loop {
-                let plugin = {
+                let unit = {
                     let mut queue = queue
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
                     queue.pop_front()
                 };
 
-                let Some(plugin) = plugin else {
+                let Some(unit) = unit else {
                     break;
                 };
 
-                let plugin_id = plugin.manifest.id.clone();
+                let plugin_id = unit.plugin.manifest.id.clone();
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
+                    plugin_engine::runtime::run_probe_for_account(
+                        &unit.plugin,
+                        &data_dir,
+                        &version,
+                        &unit.account,
+                    )
                 }));
 
                 match result {
@@ -614,9 +623,13 @@ fn start_auto_update_scheduler(
                 batch_id,
                 selected.len()
             );
+            // Load the account registry fresh each batch so add/remove is
+            // reflected on the next tick with no restart or cache-invalidation.
+            let registry = accounts::load_account_registry(&app_data_dir);
+            let probe_units = plugin_engine::account::expand_probe_units(&selected, &registry);
             run_probe_batch(
                 app_handle.clone(),
-                selected,
+                probe_units,
                 app_data_dir.clone(),
                 app_version.clone(),
                 batch_id,
@@ -891,7 +904,12 @@ pub fn run() {
             openrouter_key::clear_openrouter_key,
             opencode_go_key::opencode_go_key_status,
             opencode_go_key::save_opencode_go_key,
-            opencode_go_key::clear_opencode_go_key
+            opencode_go_key::clear_opencode_go_key,
+            accounts::save_claude_account,
+            accounts::snapshot_cursor_account,
+            accounts::begin_codex_login,
+            accounts::finish_codex_login,
+            accounts::remove_account
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,
@@ -1113,7 +1131,12 @@ fn export_bindings() {
             openrouter_key::clear_openrouter_key,
             opencode_go_key::opencode_go_key_status,
             opencode_go_key::save_opencode_go_key,
-            opencode_go_key::clear_opencode_go_key
+            opencode_go_key::clear_opencode_go_key,
+            accounts::save_claude_account,
+            accounts::snapshot_cursor_account,
+            accounts::begin_codex_login,
+            accounts::finish_codex_login,
+            accounts::remove_account
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,
@@ -1160,6 +1183,86 @@ mod tests {
         assert_eq!(super::macos_bundle_path(Path::new("/usr/bin/usagepal")), None);
         // Deep enough, but the resolved ancestor isn't a `.app`.
         assert_eq!(super::macos_bundle_path(Path::new("/a/b/c/d/usagepal")), None);
+    }
+
+    fn test_loaded_plugin(
+        id: &str,
+    ) -> std::sync::Arc<crate::plugin_engine::manifest::LoadedPlugin> {
+        use crate::plugin_engine::manifest::{LoadedPlugin, PluginManifest};
+        std::sync::Arc::new(LoadedPlugin {
+            manifest: PluginManifest {
+                schema_version: 1,
+                id: id.to_string(),
+                name: id.to_string(),
+                version: "0.0.0".to_string(),
+                entry: "plugin.js".to_string(),
+                icon: "icon.svg".to_string(),
+                brand_color: None,
+                lines: vec![],
+                links: vec![],
+                detect: vec![],
+                multi_tray_lines: vec![],
+                tray_primary_label: None,
+            },
+            plugin_dir: std::path::PathBuf::from("."),
+            entry_script: String::new(),
+            icon_data_url: String::new(),
+        })
+    }
+
+    #[test]
+    fn probe_batch_expands_one_unit_per_account() {
+        use crate::plugin_engine::account::{AccountRegistry, AccountSpec, expand_probe_units};
+        use std::collections::HashMap;
+
+        let plugins = vec![test_loaded_plugin("claude"), test_loaded_plugin("codex")];
+        let mut map = HashMap::new();
+        map.insert(
+            "claude".to_string(),
+            vec![
+                AccountSpec { account_id: "work".to_string(), env_overrides: HashMap::new() },
+                AccountSpec { account_id: "home".to_string(), env_overrides: HashMap::new() },
+            ],
+        );
+        let registry = AccountRegistry(map);
+
+        let units = expand_probe_units(&plugins, &registry);
+        // claude → 2 accounts, codex → 1 default = 3 probe units
+        assert_eq!(units.len(), 3);
+        let codex_default = units
+            .iter()
+            .find(|u| u.plugin.manifest.id == "codex")
+            .unwrap();
+        assert_eq!(codex_default.account.output_account_id(), None);
+    }
+
+    #[test]
+    fn load_registry_from_settings_feeds_expansion() {
+        use crate::plugin_engine::account::expand_probe_units;
+        let app_data = std::env::temp_dir().join(format!(
+            "usagepal-lib-accounts-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&app_data).unwrap();
+        // Codex profile with an auth.json so the account resolves.
+        let profile = crate::accounts::codex_profile_dir(&app_data, "c1");
+        std::fs::create_dir_all(&profile).unwrap();
+        std::fs::write(profile.join("auth.json"), r#"{"tokens":{"account_id":"c1"}}"#).unwrap();
+        std::fs::write(
+            app_data.join("settings.json"),
+            r#"{"accounts":{"codex":[{"accountId":"c1","label":"Home","order":0}]}}"#,
+        )
+        .unwrap();
+
+        let registry = crate::accounts::load_account_registry(&app_data);
+        let plugins = vec![test_loaded_plugin("codex")];
+        let units = expand_probe_units(&plugins, &registry);
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].account.account_id, "c1");
     }
 
     #[test]

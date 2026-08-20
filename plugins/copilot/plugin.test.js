@@ -3,7 +3,7 @@ import { makePluginTestContext } from "../test-helpers.js";
 
 const loadPlugin = async () => {
   await import("./plugin.js");
-  return globalThis.__openusage_plugin;
+  return globalThis.__usagepal_plugin;
 };
 
 function makeUsageResponse(overrides = {}) {
@@ -58,7 +58,7 @@ function mockUsageOk(ctx, body) {
 
 describe("copilot plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin;
+    delete globalThis.__usagepal_plugin;
     if (vi.resetModules) vi.resetModules();
   });
 
@@ -628,6 +628,85 @@ describe("copilot plugin", () => {
       const plugin = await loadPlugin();
       const result = plugin.probe(ctx);
       expect(result.lines.find((l) => l.label === "Extra Usage")).toBeFalsy();
+    });
+  });
+
+  describe("org-managed token-based-billing seat", () => {
+    it("shows a Credits count from premium_interactions.credits_used when meters are empty", async () => {
+      const ctx = makePluginTestContext();
+      setKeychainToken(ctx, "tok");
+      // Org-managed seat: no usable percent meter (entitlement 0), but personal credits were consumed.
+      mockUsageOk(
+        ctx,
+        makeUsageResponse({
+          copilot_plan: "business",
+          token_based_billing: true,
+          quota_snapshots: {
+            premium_interactions: {
+              entitlement: 0,
+              remaining: 0,
+              credits_used: 1234,
+              quota_id: "premium",
+            },
+          },
+        }),
+      );
+      const plugin = await loadPlugin();
+      const result = plugin.probe(ctx);
+      const credits = result.lines.find((l) => l.label === "Credits");
+      expect(credits).toBeTruthy();
+      expect(credits.type).toBe("text");
+      expect(credits.value).toBe("1234");
+      // Must not fall through to the loud "No usage data" badge.
+      expect(result.lines.find((l) => l.text === "No usage data")).toBeFalsy();
+    });
+
+    it("still shows 'No usage data' for an empty payload without the token-based-billing marker", async () => {
+      const ctx = makePluginTestContext();
+      setKeychainToken(ctx, "tok");
+      // Same empty-meter shape and credits_used present, but NOT token-based-billing: fail loud.
+      mockUsageOk(
+        ctx,
+        makeUsageResponse({
+          copilot_plan: "business",
+          quota_snapshots: {
+            premium_interactions: {
+              entitlement: 0,
+              remaining: 0,
+              credits_used: 1234,
+              quota_id: "premium",
+            },
+          },
+        }),
+      );
+      const plugin = await loadPlugin();
+      const result = plugin.probe(ctx);
+      expect(result.lines.find((l) => l.label === "Credits")).toBeFalsy();
+      expect(result.lines[0].text).toBe("No usage data");
+    });
+
+    it("shows 'No usage data' for a token-based seat when credits_used is 0", async () => {
+      const ctx = makePluginTestContext();
+      setKeychainToken(ctx, "tok");
+      mockUsageOk(
+        ctx,
+        makeUsageResponse({
+          copilot_plan: "business",
+          token_based_billing: true,
+          quota_snapshots: {
+            premium_interactions: {
+              entitlement: 0,
+              remaining: 0,
+              credits_used: 0,
+              quota_id: "premium",
+            },
+          },
+        }),
+      );
+      const plugin = await loadPlugin();
+      const result = plugin.probe(ctx);
+      expect(result.lines.find((l) => l.label === "Credits")).toBeFalsy();
+      expect(result.lines[0].text).toBe("No usage data");
     });
   });
 });

@@ -3,7 +3,7 @@ import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 const OAUTH_TOKEN_KEY = "antigravityUnifiedStateSync.oauthToken"
@@ -104,7 +104,7 @@ function makeAgyLoadResponse(overrides) {
   return Object.assign(
     {
       paidTier: { name: "Google AI Pro" },
-      cloudaicompanionProject: "projects/openusage-agy",
+      cloudaicompanionProject: "projects/usagepal-agy",
     },
     overrides
   )
@@ -189,7 +189,7 @@ function makeOAuthSentinelB64(ctx, opts) {
 
 describe("antigravity plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
   })
 

@@ -6,6 +6,18 @@ import { mergeRateLimitedProbeOutput } from "@/lib/probe-output-merge"
 
 export type CachedUsageSnapshot = CachedPluginSnapshot
 
+/**
+ * Composite state key. `providerId` alone for the implicit default account
+ * (backward-compatible), `providerId::accountId` for a registered account.
+ * Mirrors the Rust `cache_key` helper so native and frontend keys agree.
+ */
+export function stateKey(
+  providerId: string,
+  accountId: string | null | undefined
+): string {
+  return accountId ? `${providerId}::${accountId}` : providerId
+}
+
 type UseProbeStateArgs = {
   onProbeResult?: () => void
 }
@@ -79,20 +91,21 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
   const handleProbeResult = useCallback(
     (output: PluginOutput) => {
       const errorMessage = getErrorMessage(output)
-      const isManual = manualRefreshIdsRef.current.has(output.providerId)
+      const key = stateKey(output.providerId, output.accountId)
+      const isManual = manualRefreshIdsRef.current.has(key)
       if (isManual) {
-        manualRefreshIdsRef.current.delete(output.providerId)
+        manualRefreshIdsRef.current.delete(key)
       }
 
       const now = Date.now()
       updatePluginStates((prev) => {
-        const existing = prev[output.providerId]
+        const existing = prev[key]
         const nextData = errorMessage
           ? (existing?.data ?? null)
           : mergeRateLimitedProbeOutput(output, existing?.data)
         return {
           ...prev,
-          [output.providerId]: {
+          [key]: {
             data: nextData,
             loading: false,
             error: errorMessage,
@@ -122,12 +135,14 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
       updatePluginStates((prev) => {
         const next = { ...prev }
         for (const snapshot of snapshots) {
-          const existing = prev[snapshot.providerId]
+          const key = stateKey(snapshot.providerId, snapshot.accountId)
+          const existing = prev[key]
           if (existing?.loading) continue
           const fetchedMs = Date.parse(snapshot.fetchedAt)
-          next[snapshot.providerId] = {
+          next[key] = {
             data: {
               providerId: snapshot.providerId,
+              accountId: snapshot.accountId ?? null,
               displayName: snapshot.displayName,
               plan: snapshot.plan,
               lines: snapshot.lines,

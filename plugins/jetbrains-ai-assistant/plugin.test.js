@@ -6,7 +6,7 @@ const LINUX_PATH = "~/.config/JetBrains/IntelliJIdea2025.3/options/AIAssistantQu
 
 const loadPlugin = async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
+  return globalThis.__usagepal_plugin
 }
 
 function encodeXmlValue(value) {
@@ -29,7 +29,7 @@ function makeQuotaXml({ quotaInfo, nextRefill }) {
 
 describe("jetbrains-ai-assistant plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
   })
 
@@ -321,7 +321,7 @@ describe("jetbrains-ai-assistant plugin", () => {
     const quota = result.lines.find((line) => line.label === "Quota")
     expect(quota && quota.periodDurationMs).toBe(30 * 24 * 60 * 60 * 1000)
 
-    delete globalThis.__openusage_plugin
+    delete globalThis.__usagepal_plugin
     vi.resetModules()
     ctx.host.fs.writeText(
       DARWIN_PATH,
