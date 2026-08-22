@@ -31,15 +31,15 @@ describe("resolveSelectedAccountId", () => {
     expect(resolveSelectedAccountId("codex", {}, {})).toBeNull()
   })
 
-  it("returns the primary (lowest-order) account when nothing is selected", () => {
-    expect(resolveSelectedAccountId("claude", accounts, {})).toBe("work")
+  it("returns the implicit account when nothing is selected", () => {
+    expect(resolveSelectedAccountId("claude", accounts, {})).toBeNull()
   })
 
   it("returns the persisted selection when it still names a registered account", () => {
     expect(resolveSelectedAccountId("claude", accounts, { claude: "home" })).toBe("home")
   })
 
-  it("falls back to the primary when the selection no longer exists", () => {
-    expect(resolveSelectedAccountId("claude", accounts, { claude: "deleted" })).toBe("work")
+  it("falls back to the implicit account when the selection no longer exists", () => {
+    expect(resolveSelectedAccountId("claude", accounts, { claude: "deleted" })).toBeNull()
   })
 })

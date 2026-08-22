@@ -1226,8 +1226,8 @@ mod tests {
         let registry = AccountRegistry(map);
 
         let units = expand_probe_units(&plugins, &registry);
-        // claude → 2 accounts, codex → 1 default = 3 probe units
-        assert_eq!(units.len(), 3);
+        // claude → default + 2 managed, codex → default = 4 probe units
+        assert_eq!(units.len(), 4);
         let codex_default = units
             .iter()
             .find(|u| u.plugin.manifest.id == "codex")
@@ -1260,8 +1260,9 @@ mod tests {
         let registry = crate::accounts::load_account_registry(&app_data);
         let plugins = vec![test_loaded_plugin("codex")];
         let units = expand_probe_units(&plugins, &registry);
-        assert_eq!(units.len(), 1);
-        assert_eq!(units[0].account.account_id, "c1");
+        assert_eq!(units.len(), 2);
+        assert_eq!(units[0].account.output_account_id(), None);
+        assert_eq!(units[1].account.account_id, "c1");
     }
 
     #[test]

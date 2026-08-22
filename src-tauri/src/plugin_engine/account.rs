@@ -41,27 +41,26 @@ pub struct ProbeUnit {
 #[derive(Debug, Clone, Default)]
 pub struct AccountRegistry(pub HashMap<String, Vec<AccountSpec>>);
 
-/// Expand each plugin into one probe unit per registered account, or a single
-/// default unit when the plugin has no registered accounts.
+/// Expand each plugin into its implicit default account followed by every
+/// registered account. The default keeps an existing local login available when
+/// managed accounts are added.
 pub fn expand_probe_units(
     plugins: &[Arc<LoadedPlugin>],
     registry: &AccountRegistry,
 ) -> Vec<ProbeUnit> {
     let mut units = Vec::new();
     for plugin in plugins {
-        match registry.0.get(&plugin.manifest.id) {
-            Some(accounts) if !accounts.is_empty() => {
-                for account in accounts {
-                    units.push(ProbeUnit {
-                        plugin: Arc::clone(plugin),
-                        account: account.clone(),
-                    });
-                }
+        units.push(ProbeUnit {
+            plugin: Arc::clone(plugin),
+            account: AccountSpec::default_single(),
+        });
+        if let Some(accounts) = registry.0.get(&plugin.manifest.id) {
+            for account in accounts {
+                units.push(ProbeUnit {
+                    plugin: Arc::clone(plugin),
+                    account: account.clone(),
+                });
             }
-            _ => units.push(ProbeUnit {
-                plugin: Arc::clone(plugin),
-                account: AccountSpec::default_single(),
-            }),
         }
     }
     units
@@ -122,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn expander_yields_one_unit_per_registered_account() {
+    fn expander_keeps_default_before_registered_accounts() {
         let plugins = vec![plugin("claude")];
         let mut map = HashMap::new();
         map.insert(
@@ -135,6 +134,6 @@ mod tests {
         let registry = AccountRegistry(map);
         let units = expand_probe_units(&plugins, &registry);
         let ids: Vec<_> = units.iter().map(|u| u.account.account_id.clone()).collect();
-        assert_eq!(ids, vec!["work".to_string(), "home".to_string()]);
+        assert_eq!(ids, vec!["".to_string(), "work".to_string(), "home".to_string()]);
     }
 }

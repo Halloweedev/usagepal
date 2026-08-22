@@ -28,12 +28,9 @@ function isUsableProgressLine(line: PluginOutput["lines"][number]): line is Usab
 
 /**
  * The `pluginStates` key the tray should read for a provider. Probe/cache state
- * is keyed `providerId::accountId` (see `stateKey` in use-probe-state) once a
- * provider has registered accounts, so the bare `providerId` key is empty for
- * those providers. The tray follows the same persisted selection the card UI
- * shows (`resolveSelectedAccountId`: the chosen account, else the primary
- * lowest-`order` one); with no registered accounts it falls back to the bare
- * `providerId` — keeping the single-account path byte-for-byte unchanged.
+ * uses `providerId::accountId` for managed accounts and bare `providerId` for
+ * the implicit Default account. The tray follows the same persisted selection
+ * as the card UI; no selection means Default.
  */
 export function resolveTrayStateKey(
   providerId: string,

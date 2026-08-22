@@ -303,11 +303,9 @@ export async function saveSelectedAccounts(selected: SelectedAccounts): Promise<
 }
 
 /**
- * The accountId a provider should display: the persisted selection when it
- * still names a registered account, otherwise the primary (lowest-`order`)
- * account, and `null` when the provider has no registered accounts (the
- * implicit single-account path). Shared by the card UI and the tray so both
- * surfaces resolve to the same account.
+ * The accountId a provider should display. A valid persisted id selects a
+ * managed account. A missing or stale id selects the implicit Default account,
+ * represented by `null`. Shared by the card UI and tray.
  */
 export function resolveSelectedAccountId(
   providerId: string,
@@ -315,10 +313,9 @@ export function resolveSelectedAccountId(
   selectedByProvider: SelectedAccounts
 ): string | null {
   const accounts = accountsByProvider[providerId];
-  if (!accounts || accounts.length === 0) return null;
   const selected = selectedByProvider[providerId];
-  if (selected && accounts.some((a) => a.accountId === selected)) return selected;
-  return accounts.reduce((best, a) => (a.order < best.order ? a : best)).accountId;
+  if (selected && accounts?.some((a) => a.accountId === selected)) return selected;
+  return null;
 }
 
 /** Apply an onboarding provider selection: `keep` ids leave the disabled list,

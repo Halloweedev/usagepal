@@ -12,7 +12,7 @@ interface OverviewPageProps {
   groupedPlugins: GroupedProviderView[]
   onRetryPlugin?: (pluginId: string) => void
   /** Persist the account a provider shows (card + tray follow it). */
-  onSelectAccount?: (providerId: string, accountId: string) => void
+  onSelectAccount?: (providerId: string, accountId: string | null) => void
   /** Open the add-account flow for a provider (shown only for capable ones). */
   onAddAccount?: (providerId: string) => void
   displayMode: DisplayMode
@@ -78,7 +78,7 @@ export function OverviewPage({
                 onSelectAccount
                   ? (i) => {
                       const accountId = group.accounts[i]?.accountId
-                      if (accountId) onSelectAccount(group.meta.id, accountId)
+                      if (accountId !== undefined) onSelectAccount(group.meta.id, accountId)
                     }
                   : undefined
               }

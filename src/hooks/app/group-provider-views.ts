@@ -19,8 +19,8 @@ export type AccountSnapshot = {
 export type GroupedProviderView = {
   meta: PluginMeta
   accounts: AccountSnapshot[]
-  /** Index into `accounts` of the persisted selection (primary as fallback);
-   * `0` for providers with no registered accounts. */
+  /** Index into `accounts` of the persisted selection. The implicit Default
+   * account is first and is used when no managed account is selected. */
   activeIndex: number
 }
 
@@ -48,10 +48,9 @@ function snapshot(
   }
 }
 
-/** Group flat, composite-keyed plugin state into one entry per provider, each
- * carrying an ordered array of per-account snapshots. Providers with no
- * registered accounts yield a single unnamed (accountId: null) snapshot so the
- * single-account path is unchanged. */
+/** Group flat, composite-keyed plugin state into one entry per provider. The
+ * implicit local account stays first when managed accounts are registered.
+ * Providers without managed accounts keep one unnamed snapshot. */
 export function groupProviderViews(
   orderedEnabledMeta: PluginMeta[],
   pluginStates: Record<string, PluginState>,
@@ -64,12 +63,15 @@ export function groupProviderViews(
       const state = pluginStates[meta.id] ?? EMPTY_STATE
       return { meta, accounts: [snapshot(null, null, state)], activeIndex: 0 }
     }
-    const accounts = [...accountsMeta]
-      .sort((a, b) => a.order - b.order)
-      .map((acct) => {
-        const state = pluginStates[stateKey(meta.id, acct.accountId)] ?? EMPTY_STATE
-        return snapshot(acct.accountId, acct.label, state)
-      })
+    const accounts = [
+      snapshot(null, "Default", pluginStates[meta.id] ?? EMPTY_STATE),
+      ...[...accountsMeta]
+        .sort((a, b) => a.order - b.order)
+        .map((acct) => {
+          const state = pluginStates[stateKey(meta.id, acct.accountId)] ?? EMPTY_STATE
+          return snapshot(acct.accountId, acct.label, state)
+        }),
+    ]
     const selectedId = resolveSelectedAccountId(meta.id, accountsByProvider, selectedByProvider)
     const activeIndex = Math.max(
       0,
