@@ -283,20 +283,24 @@ export function ProviderCard({
     >
       <div className={asCard ? "pb-1 pt-2" : "py-3"} style={showDots ? swipe.contentStyle : undefined}>
         <div className="flex items-center justify-between mb-2">
-          <div className="relative flex items-center">
+          <div className="relative flex min-w-0 flex-1 items-center">
             {asCard && iconUrl && (
               <ProviderIconMask
                 iconUrl={iconUrl}
                 pluginId={pluginId}
                 sizePx={18}
-                className="mr-1.5 text-muted-foreground"
+                className="mr-1.5 shrink-0 text-muted-foreground"
                 style={{ backgroundColor: "currentColor" }}
               />
             )}
-            <h2 className="text-lg font-semibold" style={{ transform: "translateZ(0)" }}>{name}</h2>
-            {showDots && activeAccount?.label && (
-              <span className="ml-1 text-sm text-muted-foreground">· {activeAccount.label}</span>
-            )}
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold leading-tight" style={{ transform: "translateZ(0)" }}>{name}</h2>
+              {showDots && activeAccount?.label && (
+                <span className="block truncate text-xs leading-tight text-muted-foreground" title={activeAccount.label}>
+                  {activeAccount.label}
+                </span>
+              )}
+            </div>
             {onRetry && (
               loading ? (
                 <Button
@@ -360,7 +364,7 @@ export function ProviderCard({
               )
             )}
           </div>
-          <div className="flex items-center gap-2 min-w-0 max-w-[60%]">
+          <div className="flex min-w-0 max-w-[60%] shrink-0 items-center gap-2">
             {showDots && (
               <div
                 className="flex items-center gap-1"
