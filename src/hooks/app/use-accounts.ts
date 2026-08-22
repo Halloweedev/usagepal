@@ -43,7 +43,7 @@ export function emitAccountsChanged(detail?: AccountsChangedDetail): void {
 export function useAccounts(): {
   accountsByProvider: AccountsByProvider
   selectedByProvider: SelectedAccounts
-  selectAccount: (providerId: string, accountId: string) => void
+  selectAccount: (providerId: string, accountId: string | null) => void
   reload: () => Promise<void>
 } {
   const [accountsByProvider, setAccountsByProvider] = useState<AccountsByProvider>({})
@@ -64,8 +64,10 @@ export function useAccounts(): {
     }
   }, [])
 
-  const selectAccount = useCallback((providerId: string, accountId: string) => {
-    const next = { ...selectedRef.current, [providerId]: accountId }
+  const selectAccount = useCallback((providerId: string, accountId: string | null) => {
+    const next = { ...selectedRef.current }
+    if (accountId) next[providerId] = accountId
+    else delete next[providerId]
     selectedRef.current = next
     setSelectedByProvider(next)
     void saveSelectedAccounts(next).catch((error) => {

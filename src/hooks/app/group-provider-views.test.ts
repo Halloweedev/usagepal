@@ -40,6 +40,7 @@ describe("groupProviderViews", () => {
 
   it("multi-account provider yields ordered, labeled account snapshots", () => {
     const pluginStates: Record<string, PluginState> = {
+      claude: state("Team"),
       "claude::home": state("Pro"),
       "claude::work": state("Max"),
     }
@@ -50,15 +51,15 @@ describe("groupProviderViews", () => {
       ],
     }
     const views = groupProviderViews([meta("claude")], pluginStates, accountsByProvider)
-    expect(views[0].accounts.map((a) => a.label)).toEqual(["Work", "Home"])
-    expect(views[0].accounts.map((a) => a.data?.plan)).toEqual(["Max", "Pro"])
+    expect(views[0].accounts.map((a) => a.label)).toEqual(["Default", "Work", "Home"])
+    expect(views[0].accounts.map((a) => a.data?.plan)).toEqual(["Team", "Max", "Pro"])
   })
 
   it("account with no probe result yet has null data but keeps its label", () => {
     const accountsByProvider = { claude: [{ accountId: "work", label: "Work", order: 0 }] }
     const views = groupProviderViews([meta("claude")], {}, accountsByProvider)
-    expect(views[0].accounts[0].label).toBe("Work")
-    expect(views[0].accounts[0].data).toBeNull()
+    expect(views[0].accounts[1].label).toBe("Work")
+    expect(views[0].accounts[1].data).toBeNull()
   })
 
   describe("activeIndex", () => {
@@ -69,7 +70,7 @@ describe("groupProviderViews", () => {
       ],
     }
 
-    it("defaults to the primary (order-0) account when nothing is selected", () => {
+    it("defaults to the implicit account when nothing is selected", () => {
       const views = groupProviderViews([meta("claude")], {}, accountsByProvider, {})
       expect(views[0].activeIndex).toBe(0)
     })
@@ -78,10 +79,10 @@ describe("groupProviderViews", () => {
       const views = groupProviderViews([meta("claude")], {}, accountsByProvider, {
         claude: "home",
       })
-      expect(views[0].activeIndex).toBe(1)
+      expect(views[0].activeIndex).toBe(2)
     })
 
-    it("falls back to primary when the selection no longer exists", () => {
+    it("falls back to the implicit account when the selection no longer exists", () => {
       const views = groupProviderViews([meta("claude")], {}, accountsByProvider, {
         claude: "deleted",
       })

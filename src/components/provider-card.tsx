@@ -294,6 +294,9 @@ export function ProviderCard({
               />
             )}
             <h2 className="text-lg font-semibold" style={{ transform: "translateZ(0)" }}>{name}</h2>
+            {showDots && activeAccount?.label && (
+              <span className="ml-1 text-sm text-muted-foreground">· {activeAccount.label}</span>
+            )}
             {onRetry && (
               loading ? (
                 <Button

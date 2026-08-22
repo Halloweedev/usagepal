@@ -25,7 +25,8 @@ The plugin is detected when the UsagePal key file or OpenCode auth file exists, 
 
 ## Multiple accounts
 
-OpenCode Go supports registering several API keys, each tracked as its own card. When you add an
+OpenCode Go keeps the existing credential sources as the Default account and supports registering
+several more API keys. Each account is tracked on the same swipeable card. When you add an
 account from its card or from Settings, UsagePal stores that account's key in an owner-only file
 under `~/.config/usagepal/accounts/opencode-go/` and uses it for that account's usage — it never
 touches the shared Settings key or OpenCode's own auth file. Because usage comes from the account
