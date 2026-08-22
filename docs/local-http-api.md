@@ -10,7 +10,8 @@ The server starts automatically with the app. If the port is already in use, the
 
 ### `GET /v1/usage`
 
-Returns an array of cached usage snapshots for all **enabled** providers, ordered by your plugin settings.
+Returns cached usage snapshots for all **enabled** providers, ordered by plugin settings and
+then by account. A provider can appear more than once when it has added accounts.
 
 - **200 OK** — JSON array (may be empty `[]` if no cached data exists yet).
 
@@ -33,6 +34,7 @@ Unknown routes return **404 Not Found**.
 ```json
 {
   "providerId": "claude",
+  "accountId": "work",
   "displayName": "Claude",
   "plan": "Team 5x",
   "lines": [
@@ -70,15 +72,19 @@ Unknown routes return **404 Not Found**.
 
 The `lines` array uses the same metric line types as the internal plugin output: `progress`, `text`, `badge`, and `barChart`.
 
+`accountId` identifies an added account. It is `null` for the provider's Default account.
+
 `fetchedAt` is an ISO 8601 timestamp indicating when the snapshot was last successfully fetched.
 
 `iconUrl` is intentionally omitted from the API response to keep payloads small.
 
 ## Filtering and Caching Behavior
 
-- The collection endpoint (`/v1/usage`) returns **enabled providers only**, in the order defined by your plugin settings.
+- The collection endpoint (`/v1/usage`) returns **enabled providers only**. Each provider's
+  Default snapshot, when available, comes first, followed by its added accounts in their saved order.
 - Only **successful** probe results are cached. A failed probe never overwrites a previous successful snapshot.
-- The single-provider endpoint (`/v1/usage/:providerId`) works for any known provider, including disabled ones.
+- The single-provider endpoint (`/v1/usage/:providerId`) returns the Default account and works
+  for any known provider, including disabled ones.
 
 ## CORS
 
