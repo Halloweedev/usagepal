@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.72
+
+### Bug Fixes
+- Renaming the implicit "Default" account now updates the home cards immediately — previously only the Settings dialog picked up the new name by @Halloweedev
+
+---
+
+**Full Changelog**: [v0.7.71...v0.7.72](https://github.com/Halloweedev/usagepal/compare/v0.7.71...v0.7.72)
+
 ## v0.7.71
 
 One quality-of-life addition: give your provider's implicit "Default" account a real name.
