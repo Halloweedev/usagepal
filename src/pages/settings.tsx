@@ -321,6 +321,8 @@ function AccountsManagerDialog({
   const defaultName = defaultLabels[providerId]?.trim() || "Default";
 
   const handleSaveDefaultName = () => {
+    // renameDefaultAccount broadcasts accounts-changed after persisting, which
+    // reloads every mounted useAccounts instance (the overview's included).
     renameDefaultAccount(providerId, defaultDraft);
     setRenamingDefault(false);
     setDefaultDraft("");
