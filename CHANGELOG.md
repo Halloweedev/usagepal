@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.7.70
+
+Multi-account usage now keeps itself up to date and shares complete numbers,
+GitHub Copilot reads as credits instead of percentages, and Devin gets a much
+richer card plus its first steps toward Linux support.
+
+### New Features
+- GitHub Copilot now shows AI Credits as a count (used against your plan's pool) instead of a percentage, and "Additional Usage" appears whenever overage was consumed — even if overage billing was switched off afterwards ([#51](https://github.com/Halloweedev/usagepal/pull/51)) by @divaltor
+- Devin's card is much richer: ACU used, weekly and daily quotas with reset times, prompt/flow/on-demand credits, extra-usage balance, and an Ahead / On track / Behind pace indicator ([#48](https://github.com/Halloweedev/usagepal/pull/48)) by @rmems
+- Devin credentials can now be discovered on Linux (CLI file, Devin and Devin - Next app databases, or a DEVIN_API_KEY environment variable), and the menu-bar panel layer gained non-macOS fallbacks — the first groundwork for Linux builds ([#48](https://github.com/Halloweedev/usagepal/pull/48)) by @rmems
+
+### Bug Fixes
+- Providers with multiple added accounts auto-refresh again — scheduled 5/10/15-minute updates now reach the cards, the tray, and the local HTTP API, instead of only appearing after relaunching the app ([#49](https://github.com/Halloweedev/usagepal/pull/49)) by @divaltor
+- Adding your first managed account no longer hides the login you already had — it stays available as the "Default" account on the card, in the tray, and in refreshes ([#50](https://github.com/Halloweedev/usagepal/pull/50)) by @divaltor
+- Sharing now includes every account's spend — the All-providers graph merges all accounts of a provider (Codex no longer vanishes when its first account is idle), and per-provider cards reflect the account you're actually viewing by @Halloweedev
+- GitHub Copilot seats that only report a percentage keep their Credits meter instead of losing it by @Halloweedev
+
+---
+
+**Full Changelog**: [v0.7.69...v0.7.70](https://github.com/Halloweedev/usagepal/compare/v0.7.69...v0.7.70)
+
 ## v0.7.69
 
 Stable release rolling up the 0.7.69 betas: multi-account support for Claude, Codex, Cursor, and OpenCode Go — register several accounts per provider, swipe between their usage cards, and see each account's real local spend when it's the one you're signed into.
