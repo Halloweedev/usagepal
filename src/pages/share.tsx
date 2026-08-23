@@ -19,6 +19,7 @@ import {
   selectGraphEntriesByMetric,
   type GraphGroupBy,
   type GraphMetric,
+  type TodayModelsSource,
   type UsagePeriod,
 } from "@/lib/today-models"
 import { useAppShareStore } from "@/stores/app-share-store"
@@ -75,11 +76,16 @@ function presetLabels(shareableLines: ShareableLine[], presetId: PresetId): Set<
 
 export type SharePageProps = {
   plugins: DisplayPluginState[]
+  /** One source per account snapshot — the aggregation basis for the All-tab
+   * graph, so every account's spend counts (buildModelUsage merges same-provider
+   * sources). Defaults to `plugins`, which only carries each provider's shown
+   * account. */
+  sources?: TodayModelsSource[]
 }
 
 type CopyState = "idle" | "copying" | "success" | "error"
 
-export function SharePage({ plugins }: SharePageProps) {
+export function SharePage({ plugins, sources }: SharePageProps) {
   const shareSnapshot = useAppShareStore.getState().settings
   const patchShare = useAppShareStore((s) => s.patch)
 
@@ -129,14 +135,17 @@ export function SharePage({ plugins }: SharePageProps) {
     () => useAppShareStore.getState().takePendingGraphPeriod() ?? "today"
   )
   // All three windows so tabs know which have data. Session-local (resets to
-  // Today each open), so it stays out of the persisted share store.
+  // Today each open), so it stays out of the persisted share store. Built from
+  // every account's snapshot, not just each provider's shown account — the
+  // graph must include spend sitting on a non-selected account.
+  const graphSources = sources ?? plugins
   const graphUsages = useMemo(
     () => ({
-      today: buildModelUsage(plugins, "today"),
-      yesterday: buildModelUsage(plugins, "yesterday"),
-      thirtyDay: buildModelUsage(plugins, "thirtyDay"),
+      today: buildModelUsage(graphSources, "today"),
+      yesterday: buildModelUsage(graphSources, "yesterday"),
+      thirtyDay: buildModelUsage(graphSources, "thirtyDay"),
     }),
-    [plugins]
+    [graphSources]
   )
   const firstGraphPeriod = GRAPH_PERIODS.find((p) => graphUsages[p.id].totalCost > 0)?.id
   const activeGraphPeriod = graphUsages[graphPeriod].totalCost > 0 ? graphPeriod : firstGraphPeriod ?? "today"

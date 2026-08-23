@@ -28,6 +28,8 @@ vi.mock("@/lib/share-image", () => ({
 
 import { SharePage } from "@/pages/share"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
+import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
+import type { TodayModelsSource } from "@/lib/today-models"
 import { useAppShareStore } from "@/stores/app-share-store"
 
 function makePlugin(overrides: Partial<DisplayPluginState> = {}): DisplayPluginState {
@@ -693,5 +695,63 @@ describe("SharePage", () => {
 
     expect(screen.getByTestId("models-graph-card-mock")).toBeInTheDocument()
     expect((graphCardMock.mock.calls.at(-1)?.[0] as { graphStyle: string }).graphStyle).toBe("donut")
+  })
+})
+
+describe("SharePage — multi-account aggregation", () => {
+  beforeEach(() => {
+    shareCardMock.mockReset()
+    graphCardMock.mockReset()
+    copyCardImageMock.mockReset()
+    useAppShareStore.getState().resetState()
+  })
+
+  function modelLine(label: string, value: string): MetricLine {
+    return { type: "text", label, value, color: null, subtitle: null, resetExpiry: null }
+  }
+
+  const manifest = [{ type: "progress", label: "Session", scope: "overview" } as ManifestLine]
+  function source(id: string, name: string, lines: MetricLine[]): TodayModelsSource {
+    return { meta: { id, name, brandColor: null, lines: manifest }, data: { lines } }
+  }
+
+  it("counts spend sitting on an account other than the shown one on the All tab", async () => {
+    const user = userEvent.setup()
+    // The account Share would display for Codex carries no period totals, so on
+    // its own it contributes nothing to the graph.
+    const codexShown = makePlugin({
+      meta: {
+        id: "codex",
+        name: "Codex",
+        iconUrl: "/codex.svg",
+        brandColor: "#74AA9C",
+        lines: [{ type: "progress", label: "Weekly", scope: "overview" }],
+        primaryCandidates: ["Weekly"], detected: true,
+      },
+      data: {
+        providerId: "codex",
+        displayName: "Codex",
+        iconUrl: "/codex.svg",
+        lines: [{ type: "progress", label: "Weekly", used: 5, limit: 100, format: { kind: "percent" } }],
+      },
+    })
+    const sources = [
+      source("claude", "Claude", [modelLine("claude-sonnet-5", "62% · Today $12.40")]),
+      source("codex", "Codex", []),
+      // The other Codex account holds the actual spend: $9.00 today, 80% on GPT-5.4.
+      source("codex", "Codex", [modelLine("Today", "$9.00 · 12M"), modelLine("gpt-5.4-codex", "80%")]),
+    ]
+
+    render(<SharePage plugins={[makePlugin(), codexShown]} sources={sources} />)
+
+    await user.click(screen.getByRole("radio", { name: "All providers" }))
+
+    const props = graphCardMock.mock.calls.at(-1)?.[0] as {
+      totalCost: number
+      entries: { name: string; todayCost: number }[]
+    }
+    expect(props.totalCost).toBeCloseTo(19.6)
+    expect(props.entries.find((entry) => entry.name === "Codex")?.todayCost).toBeCloseTo(7.2)
+    expect(props.entries.find((entry) => entry.name === "Claude")?.todayCost).toBeCloseTo(12.4)
   })
 })

@@ -1,5 +1,6 @@
 import type { AccountMeta, SelectedAccounts } from "@/lib/settings"
 import { resolveSelectedAccountId } from "@/lib/settings"
+import type { TodayModelsSource } from "@/lib/today-models"
 import type { PluginState } from "@/hooks/app/types"
 import type { PluginMeta } from "@/lib/plugin-types"
 import { stateKey } from "@/hooks/app/use-probe-state"
@@ -79,4 +80,19 @@ export function groupProviderViews(
     )
     return { meta, accounts, activeIndex }
   })
+}
+
+/** One source per account snapshot — the aggregation basis for surfaces that
+ * must count every account's spend (Overview strip, Share graph).
+ * buildModelUsage merges same-provider sources into a single combined entry
+ * ("all Codex in one"). */
+export function flattenAccountSources(
+  groupedPlugins: GroupedProviderView[]
+): TodayModelsSource[] {
+  return groupedPlugins.flatMap((group) =>
+    group.accounts.map((account) => ({
+      meta: group.meta,
+      data: account.data,
+    }))
+  )
 }

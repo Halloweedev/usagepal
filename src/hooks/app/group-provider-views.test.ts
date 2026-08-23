@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { groupProviderViews } from "@/hooks/app/group-provider-views"
+import { flattenAccountSources, groupProviderViews } from "@/hooks/app/group-provider-views"
 import type { PluginMeta } from "@/lib/plugin-types"
 import type { PluginState } from "@/hooks/app/types"
 
@@ -93,5 +93,36 @@ describe("groupProviderViews", () => {
       const views = groupProviderViews([meta("codex")], { codex: state("Plus") }, {}, {})
       expect(views[0].activeIndex).toBe(0)
     })
+  })
+})
+
+describe("flattenAccountSources", () => {
+  const accountsByProvider = {
+    codex: [
+      { accountId: "work", label: "Work", order: 0 },
+      { accountId: "home", label: "Home", order: 1 },
+    ],
+  }
+
+  it("yields one source per account snapshot, all sharing the provider meta", () => {
+    const views = groupProviderViews(
+      [meta("codex")],
+      { codex: state("Plus"), "codex::work": state("Team"), "codex::home": state("Pro") },
+      accountsByProvider
+    )
+    const sources = flattenAccountSources(views)
+    // Default (implicit) first, then registered accounts in saved order.
+    expect(sources).toHaveLength(3)
+    expect(sources.map((s) => s.data?.plan)).toEqual(["Plus", "Team", "Pro"])
+    expect(sources.every((s) => s.meta.id === "codex")).toBe(true)
+  })
+
+  it("keeps null-data snapshots so aggregators see every account", () => {
+    const views = groupProviderViews([meta("codex")], { "codex::work": state("Team") }, accountsByProvider)
+    const sources = flattenAccountSources(views)
+    expect(sources).toHaveLength(3)
+    expect(sources[0].data).toBeNull()
+    expect(sources[1].data?.plan).toBe("Team")
+    expect(sources[2].data).toBeNull()
   })
 })

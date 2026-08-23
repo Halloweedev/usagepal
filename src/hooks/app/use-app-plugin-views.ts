@@ -47,15 +47,18 @@ export function useAppPluginViews({
 
   const displayPlugins = useMemo<DisplayPluginState[]>(
     () =>
-      groupedPlugins.map(({ meta, accounts }) => {
-        const first = accounts[0]
+      groupedPlugins.map(({ meta, accounts, activeIndex }) => {
+        // The account the provider currently shows (card + tray selection), not
+        // blindly the first one — Share reads this so a shared card reflects
+        // the account the user is looking at.
+        const shown = accounts[activeIndex] ?? accounts[0]
         return {
           meta,
-          data: first.data,
-          loading: first.loading,
-          error: first.error,
-          lastManualRefreshAt: first.lastManualRefreshAt,
-          lastUpdatedAt: first.lastUpdatedAt,
+          data: shown.data,
+          loading: shown.loading,
+          error: shown.error,
+          lastManualRefreshAt: shown.lastManualRefreshAt,
+          lastUpdatedAt: shown.lastUpdatedAt,
         }
       }),
     [groupedPlugins]

@@ -2,9 +2,11 @@ import { useMemo } from "react"
 import { ADD_ACCOUNT_PROVIDERS } from "@/components/add-account-dialog"
 import { ModelsTodayStrip } from "@/components/models-today-strip"
 import { ProviderCard } from "@/components/provider-card"
-import type { GroupedProviderView } from "@/hooks/app/group-provider-views"
+import {
+  flattenAccountSources,
+  type GroupedProviderView,
+} from "@/hooks/app/group-provider-views"
 import type { DisplayMode, ResetTimerDisplayMode, TimeFormatMode } from "@/lib/settings"
-import type { TodayModelsSource } from "@/lib/today-models"
 
 interface OverviewPageProps {
   /** One entry per provider carrying its ordered account snapshots — drives the
@@ -23,17 +25,7 @@ interface OverviewPageProps {
   onUsageValueToggle?: () => void
 }
 
-/** Flatten every account into a strip source so the strip counts every
- * account's stats, not just the one the card currently shows. buildModelUsage
- * merges same-provider sources into one combined entry ("all Codex in one"). */
-export function buildStripSources(groupedPlugins: GroupedProviderView[]): TodayModelsSource[] {
-  return groupedPlugins.flatMap((group) =>
-    group.accounts.map((account) => ({
-      meta: group.meta,
-      data: account.data,
-    }))
-  )
-}
+export { flattenAccountSources as buildStripSources }
 
 export function OverviewPage({
   groupedPlugins,
@@ -47,7 +39,7 @@ export function OverviewPage({
   onResetTimerDisplayModeToggle,
   onUsageValueToggle,
 }: OverviewPageProps) {
-  const stripSources = useMemo(() => buildStripSources(groupedPlugins), [groupedPlugins])
+  const stripSources = useMemo(() => flattenAccountSources(groupedPlugins), [groupedPlugins])
 
   return (
     <div className="pb-3">

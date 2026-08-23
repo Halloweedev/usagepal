@@ -1,10 +1,14 @@
+import { useMemo } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { OverviewPage } from "@/pages/overview"
 import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
 import { SharePage } from "@/pages/share"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
-import type { GroupedProviderView } from "@/hooks/app/group-provider-views"
+import {
+  flattenAccountSources,
+  type GroupedProviderView,
+} from "@/hooks/app/group-provider-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
@@ -88,6 +92,10 @@ export function AppContent({
       setShowAbout: state.setShowAbout,
     }))
   )
+
+  // Every account of every provider — the Share All-tab graph aggregates all
+  // accounts' spend, not just each provider's shown account.
+  const shareSources = useMemo(() => flattenAccountSources(groupedPlugins), [groupedPlugins])
 
   const {
     displayMode,
@@ -178,7 +186,7 @@ export function AppContent({
   }
 
   if (activeView === "share") {
-    return <SharePage plugins={displayPlugins} />
+    return <SharePage plugins={displayPlugins} sources={shareSources} />
   }
 
   const handleRetry = selectedPlugin
