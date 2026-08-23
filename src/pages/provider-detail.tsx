@@ -12,7 +12,7 @@ interface ProviderDetailPageProps {
   /** Index into `accounts` of the persisted selection (primary as fallback). */
   activeIndex?: number
   /** Persist the account this provider shows (card + tray follow it). */
-  onSelectAccount?: (providerId: string, accountId: string) => void
+  onSelectAccount?: (providerId: string, accountId: string | null) => void
   /** Open the add-account flow for this provider (shown only for capable ones). */
   onAddAccount?: (providerId: string) => void
   onRetry?: () => void
@@ -57,7 +57,7 @@ export function ProviderDetailPage({
         onSelectAccount
           ? (i) => {
               const accountId = accounts?.[i]?.accountId
-              if (accountId) onSelectAccount(plugin.meta.id, accountId)
+              if (accountId !== undefined) onSelectAccount(plugin.meta.id, accountId)
             }
           : undefined
       }

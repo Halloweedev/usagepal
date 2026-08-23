@@ -1430,6 +1430,7 @@ describe("ProviderCard multi-account", () => {
       />
     )
     expect(screen.getAllByRole("tab")).toHaveLength(2)
+    expect(screen.getByText("Work")).toBeInTheDocument()
     expect(screen.getByText("Max")).toBeInTheDocument()
   })
 
@@ -1443,6 +1444,7 @@ describe("ProviderCard multi-account", () => {
       />
     )
     await userEvent.click(screen.getAllByRole("tab")[1])
+    expect(screen.getByText("Home")).toBeInTheDocument()
     expect(screen.getByText("Pro")).toBeInTheDocument()
   })
 

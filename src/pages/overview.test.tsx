@@ -49,8 +49,8 @@ describe("OverviewPage multi-account", () => {
         overviewSpendStripEnabled={false}
       />
     )
-    // One card with the provider name in the header and pagination dots to
-    // swipe between accounts — no per-account label.
+    // One card with the provider and active account names in the header, plus
+    // pagination dots to swipe between accounts.
     expect(screen.getByText("Claude")).toBeInTheDocument()
     expect(screen.getAllByRole("tab")).toHaveLength(2)
   })
@@ -70,6 +70,27 @@ describe("OverviewPage multi-account", () => {
     // The card is controlled by the parent's activeIndex, so the contract here
     // is the callback — the card itself switching is covered by ProviderCard.
     expect(onSelectAccount).toHaveBeenCalledWith("claude", "home")
+  })
+
+  it("can select the implicit Default account", async () => {
+    const grouped = view()
+    grouped.accounts = [
+      { ...grouped.accounts[0], accountId: null, label: "Default" },
+      ...grouped.accounts,
+    ]
+    grouped.activeIndex = 1
+    const onSelectAccount = vi.fn()
+    render(
+      <OverviewPage
+        groupedPlugins={[grouped]}
+        onSelectAccount={onSelectAccount}
+        displayMode="used"
+        resetTimerDisplayMode="relative"
+        overviewSpendStripEnabled={false}
+      />
+    )
+    await userEvent.click(screen.getAllByRole("tab")[0])
+    expect(onSelectAccount).toHaveBeenCalledWith("claude", null)
   })
 
   it("renders a single unnamed card for providers without registered accounts", () => {
