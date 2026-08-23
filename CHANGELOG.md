@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.71
+
+One quality-of-life addition: give your provider's implicit "Default" account a real name.
+
+### New Features
+- Rename the implicit "Default" account from Settings → Manage accounts — when your original local login shows up as "Default" next to your added accounts, you can now name it something meaningful; clearing the field brings back "Default" by @Halloweedev
+
+---
+
+**Full Changelog**: [v0.7.70...v0.7.71](https://github.com/Halloweedev/usagepal/compare/v0.7.70...v0.7.71)
+
 ## v0.7.70
 
 Multi-account usage now keeps itself up to date and shares complete numbers,
