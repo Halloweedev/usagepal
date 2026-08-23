@@ -162,7 +162,21 @@
     const remaining = numOrNull(snapshot.remaining) ?? numOrNull(snapshot.quota_remaining);
 
     if (snapshot.unlimited === true || entitlement === -1 || remaining === -1) return null;
-    if (entitlement === null || entitlement <= 0 || remaining === null) return null;
+
+    // Count-based display needs the pool size; some seats only report a
+    // percentage, so keep a percent meter as the fallback shape.
+    if (entitlement === null || entitlement <= 0 || remaining === null) {
+      const percentRemaining = numOrNull(snapshot.percent_remaining);
+      if (percentRemaining === null) return null;
+      return ctx.line.progress({
+        label: "Credits",
+        used: Math.min(100, Math.max(0, 100 - percentRemaining)),
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: ctx.util.toIso(resetDate),
+        periodDurationMs: 30 * 24 * 60 * 60 * 1000,
+      });
+    }
 
     return ctx.line.progress({
       label: "Credits",

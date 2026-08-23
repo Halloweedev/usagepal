@@ -549,6 +549,26 @@ describe("copilot plugin", () => {
       expect(credits.format).toEqual({ kind: "count", suffix: "credits" });
     });
 
+    it("falls back to a percent meter when only percent_remaining is reported", async () => {
+      const ctx = makePluginTestContext();
+      setKeychainToken(ctx, "tok");
+      mockUsageOk(
+        ctx,
+        makeUsageResponse({
+          quota_snapshots: {
+            premium_interactions: { percent_remaining: 70, quota_id: "premium" },
+          },
+        }),
+      );
+      const plugin = await loadPlugin();
+      const result = plugin.probe(ctx);
+      const credits = result.lines.find((l) => l.label === "Credits");
+      expect(credits).toBeTruthy();
+      expect(credits.used).toBe(30);
+      expect(credits.limit).toBe(100);
+      expect(credits.format).toEqual({ kind: "percent" });
+    });
+
     it("uses quota_remaining when remaining is absent", async () => {
       const ctx = makePluginTestContext();
       setKeychainToken(ctx, "tok");

@@ -66,7 +66,8 @@ X-Github-Api-Version: 2025-04-01
 
 Since usage-based billing (AI Credits), the `premium_interactions` pool is shown as **Credits**
 (credit count used or left, based on the display setting). The progress limit is the `entitlement`, and
-the used count is `entitlement - remaining`. A bucket that is `unlimited`, carries the `-1`
+the used count is `entitlement - remaining`. Seats that only report `percent_remaining` fall back to a
+percent meter. A bucket that is `unlimited`, carries the `-1`
 entitlement/remaining sentinel, or has a `0` entitlement is suppressed. A positive `overage_count` is
 shown as **Additional Usage**, independently of the current `overage_permitted` setting because that
 permission can change after usage is consumed. Usage-based plans show credits; legacy plans show requests.
