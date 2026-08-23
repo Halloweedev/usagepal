@@ -127,7 +127,7 @@ export function MainApp() {
     void hydrateShareSettings()
   }, [hydrateShareSettings])
 
-  const { accountsByProvider, selectedByProvider, selectAccount } = useAccounts()
+  const { accountsByProvider, selectedByProvider, defaultLabels, selectAccount } = useAccounts()
 
   // Refresh a newly added account so its card fills in without a manual refresh.
   // Driven by the explicit add events, so it never runs at startup or touches
@@ -258,6 +258,7 @@ export function MainApp() {
     pluginStates,
     accountsByProvider,
     selectedByProvider,
+    defaultLabels,
   })
 
   const pluginSettingsRef = useRef(pluginSettings)

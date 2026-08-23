@@ -202,3 +202,30 @@ describe("useAppPluginViews — multi-account", () => {
     expect(result.current.displayPlugins[0]?.data?.plan).toBe("Default")
   })
 })
+
+describe("useAppPluginViews — default label", () => {
+  it("threads the custom Default name into grouped views", () => {
+    const emptyState = {
+      data: null,
+      loading: false,
+      error: null,
+      lastManualRefreshAt: null,
+      lastUpdatedAt: null,
+    }
+    const { result } = renderHook(() =>
+      useAppPluginViews({
+        activeView: "home",
+        setActiveView: vi.fn(),
+        pluginSettings: { order: ["codex"], disabled: [] },
+        pluginsMeta: [createPluginMeta("codex", "Codex")],
+        pluginStates: { codex: emptyState },
+        accountsByProvider: {
+          codex: [{ accountId: "work", label: "Work", order: 0 }],
+        },
+        defaultLabels: { codex: "Personal" },
+      })
+    )
+
+    expect(result.current.groupedPlugins[0]?.accounts[0]?.label).toBe("Personal")
+  })
+})

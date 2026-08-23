@@ -50,13 +50,15 @@ function snapshot(
 }
 
 /** Group flat, composite-keyed plugin state into one entry per provider. The
- * implicit local account stays first when managed accounts are registered.
+ * implicit local account stays first when managed accounts are registered
+ * (displayed as its custom name from `defaultLabels`, else "Default").
  * Providers without managed accounts keep one unnamed snapshot. */
 export function groupProviderViews(
   orderedEnabledMeta: PluginMeta[],
   pluginStates: Record<string, PluginState>,
   accountsByProvider: Record<string, AccountMeta[]>,
-  selectedByProvider: SelectedAccounts = {}
+  selectedByProvider: SelectedAccounts = {},
+  defaultLabels: Record<string, string> = {}
 ): GroupedProviderView[] {
   return orderedEnabledMeta.map((meta) => {
     const accountsMeta = accountsByProvider[meta.id]
@@ -65,7 +67,11 @@ export function groupProviderViews(
       return { meta, accounts: [snapshot(null, null, state)], activeIndex: 0 }
     }
     const accounts = [
-      snapshot(null, "Default", pluginStates[meta.id] ?? EMPTY_STATE),
+      snapshot(
+        null,
+        defaultLabels[meta.id]?.trim() || "Default",
+        pluginStates[meta.id] ?? EMPTY_STATE
+      ),
       ...[...accountsMeta]
         .sort((a, b) => a.order - b.order)
         .map((acct) => {

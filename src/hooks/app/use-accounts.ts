@@ -2,11 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { listen, type UnlistenFn } from "@tauri-apps/api/event"
 import {
   type AccountsByProvider,
+  type DefaultAccountLabels,
   type SelectedAccounts,
   loadAccounts,
+  loadDefaultAccountLabels,
   loadSelectedAccounts,
   saveAccounts,
+  saveDefaultAccountLabels,
   saveSelectedAccounts,
+  setDefaultAccountLabel,
   upsertAccount,
 } from "@/lib/settings"
 
@@ -43,22 +47,29 @@ export function emitAccountsChanged(detail?: AccountsChangedDetail): void {
 export function useAccounts(): {
   accountsByProvider: AccountsByProvider
   selectedByProvider: SelectedAccounts
+  /** Custom display names for providers' implicit Default accounts. */
+  defaultLabels: DefaultAccountLabels
   selectAccount: (providerId: string, accountId: string | null) => void
+  /** Persists a new display name (blank resets to "Default") for the implicit account. */
+  renameDefaultAccount: (providerId: string, label: string) => void
   reload: () => Promise<void>
 } {
   const [accountsByProvider, setAccountsByProvider] = useState<AccountsByProvider>({})
   const [selectedByProvider, setSelectedByProvider] = useState<SelectedAccounts>({})
+  const [defaultLabels, setDefaultLabels] = useState<DefaultAccountLabels>({})
   const selectedRef = useRef<SelectedAccounts>(selectedByProvider)
 
   const reload = useCallback(async () => {
     try {
-      const [accounts, selected] = await Promise.all([
+      const [accounts, selected, labels] = await Promise.all([
         loadAccounts(),
         loadSelectedAccounts(),
+        loadDefaultAccountLabels(),
       ])
       setAccountsByProvider(accounts)
       selectedRef.current = selected
       setSelectedByProvider(selected)
+      setDefaultLabels(labels)
     } catch (error) {
       console.error("Failed to load accounts:", error)
     }
@@ -72,6 +83,17 @@ export function useAccounts(): {
     setSelectedByProvider(next)
     void saveSelectedAccounts(next).catch((error) => {
       console.error("Failed to save selected account:", error)
+    })
+  }, [])
+
+  const renameDefaultAccount = useCallback((providerId: string, label: string) => {
+    void (async () => {
+      const current = await loadDefaultAccountLabels()
+      const next = setDefaultAccountLabel(current, providerId, label)
+      await saveDefaultAccountLabels(next)
+      setDefaultLabels(next)
+    })().catch((error) => {
+      console.error("Failed to rename default account:", error)
     })
   }, [])
 
@@ -118,5 +140,5 @@ export function useAccounts(): {
     }
   }, [reload])
 
-  return { accountsByProvider, selectedByProvider, selectAccount, reload }
+  return { accountsByProvider, selectedByProvider, defaultLabels, selectAccount, renameDefaultAccount, reload }
 }

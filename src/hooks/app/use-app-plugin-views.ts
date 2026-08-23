@@ -19,6 +19,8 @@ type UseAppPluginViewsArgs = {
   pluginStates: Record<string, PluginState>
   accountsByProvider: Record<string, AccountMeta[]>
   selectedByProvider?: SelectedAccounts
+  /** Custom display names for providers' implicit Default accounts. */
+  defaultLabels?: Record<string, string>
 }
 
 export function useAppPluginViews({
@@ -29,6 +31,7 @@ export function useAppPluginViews({
   pluginStates,
   accountsByProvider,
   selectedByProvider = {},
+  defaultLabels = {},
 }: UseAppPluginViewsArgs) {
   const orderedEnabledMeta = useMemo<PluginMeta[]>(() => {
     if (!pluginSettings) return []
@@ -41,8 +44,8 @@ export function useAppPluginViews({
   }, [pluginSettings, pluginsMeta])
 
   const groupedPlugins = useMemo<GroupedProviderView[]>(
-    () => groupProviderViews(orderedEnabledMeta, pluginStates, accountsByProvider, selectedByProvider),
-    [orderedEnabledMeta, pluginStates, accountsByProvider, selectedByProvider]
+    () => groupProviderViews(orderedEnabledMeta, pluginStates, accountsByProvider, selectedByProvider, defaultLabels),
+    [orderedEnabledMeta, pluginStates, accountsByProvider, selectedByProvider, defaultLabels]
   )
 
   const displayPlugins = useMemo<DisplayPluginState[]>(
