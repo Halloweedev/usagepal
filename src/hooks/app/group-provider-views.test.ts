@@ -126,3 +126,31 @@ describe("flattenAccountSources", () => {
     expect(sources[2].data).toBeNull()
   })
 })
+
+describe("groupProviderViews — default label", () => {
+  const accountsByProvider = {
+    claude: [{ accountId: "work", label: "Work", order: 0 }],
+  }
+
+  it("uses the custom Default name when one is set", () => {
+    const views = groupProviderViews(
+      [meta("claude")],
+      { claude: state("Team") },
+      accountsByProvider,
+      {},
+      { claude: "Personal" }
+    )
+    expect(views[0].accounts[0].label).toBe("Personal")
+  })
+
+  it("falls back to 'Default' when the custom name is blank", () => {
+    const views = groupProviderViews(
+      [meta("claude")],
+      { claude: state("Team") },
+      accountsByProvider,
+      {},
+      { claude: "   " }
+    )
+    expect(views[0].accounts[0].label).toBe("Default")
+  })
+})

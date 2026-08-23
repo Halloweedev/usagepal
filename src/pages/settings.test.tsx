@@ -5,8 +5,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 let latestOnDragEnd: ((event: any) => void) | undefined
 
-const { invokeMock } = vi.hoisted(() => ({
+const { invokeMock, fakeStoreData } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
+  fakeStoreData: new Map<string, unknown>(),
+}))
+
+vi.mock("@tauri-apps/plugin-store", () => ({
+  LazyStore: class {
+    async get(key: string) {
+      return fakeStoreData.get(key)
+    }
+    async set(key: string, value: unknown) {
+      fakeStoreData.set(key, value)
+    }
+    async save() {}
+  },
+}))
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -888,5 +905,37 @@ describe("SettingsPage", () => {
     await openAdvanced()
     await userEvent.click(screen.getByText("Start on login"))
     expect(onStartOnLoginChange).toHaveBeenCalledWith(true)
+  })
+})
+
+describe("SettingsPage — rename default account", () => {
+  beforeEach(() => {
+    fakeStoreData.clear()
+  })
+
+  it("lists the implicit account with a Rename affordance and persists a custom name", async () => {
+    const user = userEvent.setup()
+    const { saveAccounts } = await import("@/lib/settings")
+    await saveAccounts({ codex: [{ accountId: "w1", label: "Work", order: 0 }] })
+
+    render(
+      <SettingsPage
+        {...defaultProps}
+        plugins={[{ id: "codex", name: "Codex", enabled: true }]}
+      />
+    )
+    await openPluginsList()
+    await user.click(screen.getByRole("button", { name: "Manage Codex accounts" }))
+
+    // The implicit local account is listed first, above registered ones.
+    expect(within(screen.getByTestId("accounts-list")).getByText("Default")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Rename Default" }))
+    await user.type(screen.getByLabelText("Default account name"), "Personal")
+    await user.click(screen.getByRole("button", { name: "Save" }))
+
+    expect(screen.getByText("Personal")).toBeInTheDocument()
+    const { loadDefaultAccountLabels } = await import("@/lib/settings")
+    expect(await loadDefaultAccountLabels()).toEqual({ codex: "Personal" })
   })
 })

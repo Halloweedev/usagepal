@@ -318,6 +318,43 @@ export function resolveSelectedAccountId(
   return null;
 }
 
+// Display name for a provider's implicit Default account (the pre-existing local
+// login, shown as a card page once managed accounts exist). Purely cosmetic —
+// the Default account has no entry in the accounts registry, so it lives under
+// its own key instead of inside `accounts` (which the Rust probe roster reads).
+export type DefaultAccountLabels = Record<string, string>;
+
+const DEFAULT_ACCOUNT_LABELS_KEY = "defaultAccountLabels";
+
+export async function loadDefaultAccountLabels(): Promise<DefaultAccountLabels> {
+  const stored = await store.get<DefaultAccountLabels>(DEFAULT_ACCOUNT_LABELS_KEY);
+  if (!stored || typeof stored !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(stored).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string"
+    )
+  );
+}
+
+export async function saveDefaultAccountLabels(labels: DefaultAccountLabels): Promise<void> {
+  await store.set(DEFAULT_ACCOUNT_LABELS_KEY, labels);
+  await store.save();
+}
+
+/** Sets (or clears, when blank) the custom display name for a provider's
+ * Default account. Pure — callers persist via saveDefaultAccountLabels. */
+export function setDefaultAccountLabel(
+  labels: DefaultAccountLabels,
+  providerId: string,
+  label: string
+): DefaultAccountLabels {
+  const next = { ...labels };
+  const trimmed = label.trim();
+  if (trimmed) next[providerId] = trimmed;
+  else delete next[providerId];
+  return next;
+}
+
 /** Apply an onboarding provider selection: `keep` ids leave the disabled list,
  * `drop` ids join it. Pure — callers persist via savePluginSettings. */
 export function mergeProviderSelection(

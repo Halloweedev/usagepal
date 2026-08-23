@@ -312,10 +312,20 @@ function AccountsManagerDialog({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const { accountsByProvider, reload } = useAccounts();
+  const { accountsByProvider, defaultLabels, renameDefaultAccount, reload } = useAccounts();
   const [addOpen, setAddOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [renamingDefault, setRenamingDefault] = useState(false);
+  const [defaultDraft, setDefaultDraft] = useState("");
   const accounts = accountsByProvider[providerId] ?? [];
+  const defaultName = defaultLabels[providerId]?.trim() || "Default";
+
+  const handleSaveDefaultName = () => {
+    renameDefaultAccount(providerId, defaultDraft);
+    setRenamingDefault(false);
+    setDefaultDraft("");
+    onChanged();
+  };
 
   const handleSaved = async (savedProvider: string, account: SavedAccount) => {
     const current = await loadAccounts();
@@ -360,6 +370,67 @@ function AccountsManagerDialog({
         </p>
 
         <div className="space-y-1" data-testid="accounts-list">
+          {accounts.length > 0 && (
+            <div className="flex items-center gap-2 rounded-md bg-muted/50 px-2.5 py-1.5">
+              {renamingDefault ? (
+                <>
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    autoFocus
+                    placeholder="Default"
+                    aria-label="Default account name"
+                    value={defaultDraft}
+                    onChange={(e) => setDefaultDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveDefaultName();
+                      if (e.key === "Escape") {
+                        setRenamingDefault(false);
+                        setDefaultDraft("");
+                      }
+                    }}
+                    className="flex-1 min-w-0 h-7 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setRenamingDefault(false);
+                      setDefaultDraft("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="button" size="sm" onClick={handleSaveDefaultName}>
+                    Save
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span
+                    className="flex-1 text-sm truncate"
+                    title="The account you were signed into before adding others"
+                  >
+                    {defaultName}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Rename ${defaultName}`}
+                    onClick={() => {
+                      setDefaultDraft(defaultLabels[providerId] ?? "");
+                      setRenamingDefault(true);
+                    }}
+                  >
+                    Rename
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
           {accounts.length === 0 ? (
             <p className="text-xs text-muted-foreground">No accounts added yet.</p>
           ) : (
