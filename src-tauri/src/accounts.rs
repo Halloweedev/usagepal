@@ -27,15 +27,19 @@ struct AccountsSettingsFile {
     accounts: Option<HashMap<String, Vec<AccountMeta>>>,
 }
 
+pub(crate) fn parse_settings_accounts(text: &str) -> HashMap<String, Vec<AccountMeta>> {
+    let Ok(parsed) = serde_json::from_str::<AccountsSettingsFile>(text) else {
+        return HashMap::new();
+    };
+    parsed.accounts.unwrap_or_default()
+}
+
 pub(crate) fn read_settings_accounts(app_data_dir: &Path) -> HashMap<String, Vec<AccountMeta>> {
     let path = app_data_dir.join("settings.json");
     let Ok(text) = std::fs::read_to_string(path) else {
         return HashMap::new();
     };
-    let Ok(parsed) = serde_json::from_str::<AccountsSettingsFile>(&text) else {
-        return HashMap::new();
-    };
-    parsed.accounts.unwrap_or_default()
+    parse_settings_accounts(&text)
 }
 
 fn config_accounts_dir(provider_id: &str) -> Option<PathBuf> {
