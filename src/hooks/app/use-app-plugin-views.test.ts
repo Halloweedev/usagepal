@@ -42,6 +42,7 @@ describe("useAppPluginViews", () => {
             lastUpdatedAt: null,
           },
         },
+        accountsByProvider: {},
       })
     )
 
@@ -72,6 +73,7 @@ describe("useAppPluginViews", () => {
         pluginSettings,
         pluginsMeta: [createPluginMeta("codex", "Codex")],
         pluginStates: {},
+        accountsByProvider: {},
       })
     )
 
@@ -91,6 +93,7 @@ describe("useAppPluginViews", () => {
           pluginSettings,
           pluginsMeta,
           pluginStates: {},
+          accountsByProvider: {},
         }),
       { initialProps: { pluginSettings: null } }
     )
@@ -122,9 +125,80 @@ describe("useAppPluginViews", () => {
         pluginSettings,
         pluginsMeta: [createPluginMeta("codex", "Codex")],
         pluginStates: {},
+        accountsByProvider: {},
       })
     )
 
     expect(result.current.selectedPlugin?.meta.id).toBe("codex")
+  })
+})
+
+describe("useAppPluginViews — multi-account", () => {
+  const pluginSettings: PluginSettings = { order: ["codex"], disabled: [] }
+  const emptyState = {
+    data: null,
+    loading: false,
+    error: null,
+    lastManualRefreshAt: null,
+    lastUpdatedAt: null,
+  }
+
+  function stateWith(plan: string) {
+    return {
+      ...emptyState,
+      data: {
+        providerId: "codex",
+        accountId: null as string | null,
+        displayName: "Codex",
+        plan,
+        lines: [],
+        iconUrl: "",
+      },
+    }
+  }
+
+  it("displayPlugins carries the selected account's data, not the first account's", () => {
+    const { result } = renderHook(() =>
+      useAppPluginViews({
+        activeView: "home",
+        setActiveView: vi.fn(),
+        pluginSettings,
+        pluginsMeta: [createPluginMeta("codex", "Codex")],
+        pluginStates: {
+          codex: stateWith("Default"),
+          "codex::work": { ...stateWith("Work"), data: { ...stateWith("Work").data!, accountId: "work" } },
+          "codex::home": { ...stateWith("Home"), data: { ...stateWith("Home").data!, accountId: "home" } },
+        },
+        accountsByProvider: {
+          codex: [
+            { accountId: "work", label: "Work", order: 0 },
+            { accountId: "home", label: "Home", order: 1 },
+          ],
+        },
+        selectedByProvider: { codex: "home" },
+      })
+    )
+
+    expect(result.current.displayPlugins[0]?.data?.plan).toBe("Home")
+  })
+
+  it("falls back to the Default (first) account when nothing is selected", () => {
+    const { result } = renderHook(() =>
+      useAppPluginViews({
+        activeView: "home",
+        setActiveView: vi.fn(),
+        pluginSettings,
+        pluginsMeta: [createPluginMeta("codex", "Codex")],
+        pluginStates: {
+          codex: stateWith("Default"),
+          "codex::work": { ...stateWith("Work"), data: { ...stateWith("Work").data!, accountId: "work" } },
+        },
+        accountsByProvider: {
+          codex: [{ accountId: "work", label: "Work", order: 0 }],
+        },
+      })
+    )
+
+    expect(result.current.displayPlugins[0]?.data?.plan).toBe("Default")
   })
 })

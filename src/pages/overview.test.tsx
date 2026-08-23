@@ -1,129 +1,126 @@
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
-import { OverviewPage } from "@/pages/overview"
+import { OverviewPage, buildStripSources } from "@/pages/overview"
+import type { GroupedProviderView } from "@/hooks/app/group-provider-views"
 
-vi.mock("@/components/models-today-strip", () => ({
-  ModelsTodayStrip: () => <div data-testid="models-today-strip-mock" />,
-}))
-
-describe("OverviewPage", () => {
-  it("renders empty state", () => {
-    render(<OverviewPage plugins={[]} displayMode="used" resetTimerDisplayMode="relative" />)
-    expect(screen.getByText("No providers enabled")).toBeInTheDocument()
+function view(): GroupedProviderView {
+  const acct = (label: string, plan: string) => ({
+    accountId: label.toLowerCase(),
+    label,
+    data: {
+      providerId: "claude",
+      accountId: label.toLowerCase(),
+      displayName: "Claude",
+      plan,
+      lines: [],
+      iconUrl: "",
+    },
+    loading: false,
+    error: null,
+    lastManualRefreshAt: null,
+    lastUpdatedAt: 1,
   })
+  return {
+    meta: {
+      id: "claude",
+      name: "Claude",
+      iconUrl: "",
+      brandColor: null,
+      lines: [],
+      links: [],
+      primaryCandidates: [],
+      weeklyCandidate: null,
+      multiTrayLines: [],
+      trayPrimaryLabel: null,
+      detected: true,
+    },
+    accounts: [acct("Work", "Max"), acct("Home", "Pro")],
+  }
+}
 
-  it("renders provider cards", () => {
-    const plugins = [
-      {
-        meta: { id: "a", name: "Alpha", iconUrl: "icon", lines: [] },
-        data: { providerId: "a", displayName: "Alpha", lines: [], iconUrl: "icon" },
-        loading: false,
-        error: null,
-        lastManualRefreshAt: null,
-        lastUpdatedAt: null,
-      },
-    ]
-    render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
-    expect(screen.getByText("Alpha")).toBeInTheDocument()
-  })
-
-  it("only shows overview-scoped lines", () => {
-    const plugins = [
-      {
-        meta: {
-          id: "test",
-          name: "Test",
-          iconUrl: "icon",
-          lines: [
-            { type: "text" as const, label: "Primary", scope: "overview" as const },
-            { type: "text" as const, label: "Secondary", scope: "detail" as const },
-          ],
-        },
-        data: {
-          providerId: "test",
-          displayName: "Test",
-          lines: [
-            { type: "text" as const, label: "Primary", value: "Shown" },
-            { type: "text" as const, label: "Secondary", value: "Hidden" },
-          ],
-          iconUrl: "icon",
-        },
-        loading: false,
-        error: null,
-        lastManualRefreshAt: null,
-        lastUpdatedAt: null,
-      },
-    ]
-    render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
-    expect(screen.getByText("Primary")).toBeInTheDocument()
-    expect(screen.getByText("Shown")).toBeInTheDocument()
-    expect(screen.queryByText("Secondary")).not.toBeInTheDocument()
-    expect(screen.queryByText("Hidden")).not.toBeInTheDocument()
-  })
-
-  it("does not show provider quick links in combined view", () => {
-    const plugins = [
-      {
-        meta: {
-          id: "alpha",
-          name: "Alpha",
-          iconUrl: "icon",
-          lines: [],
-          links: [{ label: "Status", url: "https://status.example.com" }],
-        },
-        data: { providerId: "alpha", displayName: "Alpha", lines: [], iconUrl: "icon" },
-        loading: false,
-        error: null,
-        lastManualRefreshAt: null,
-        lastUpdatedAt: null,
-      },
-    ]
-
-    render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
-    expect(screen.queryByRole("button", { name: /status/i })).toBeNull()
-  })
-
-  it("renders the models-today strip when providers are enabled", () => {
-    const plugins = [
-      {
-        meta: { id: "a", name: "Alpha", iconUrl: "icon", lines: [] },
-        data: { providerId: "a", displayName: "Alpha", lines: [], iconUrl: "icon" },
-        loading: false,
-        error: null,
-        lastManualRefreshAt: null,
-        lastUpdatedAt: null,
-      },
-    ]
-    render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
-    expect(screen.getByText("Quick Usage Overview")).toBeInTheDocument()
-    expect(screen.getByTestId("models-today-strip-mock")).toBeInTheDocument()
-  })
-
-  it("hides the strip when overview spend strip is disabled", () => {
-    const plugins = [
-      {
-        meta: { id: "a", name: "Alpha", iconUrl: "icon", lines: [] },
-        data: { providerId: "a", displayName: "Alpha", lines: [], iconUrl: "icon" },
-        loading: false,
-        error: null,
-        lastManualRefreshAt: null,
-        lastUpdatedAt: null,
-      },
-    ]
+describe("OverviewPage multi-account", () => {
+  it("renders one swipeable card per provider", () => {
     render(
       <OverviewPage
-        plugins={plugins}
+        groupedPlugins={[view()]}
         displayMode="used"
         resetTimerDisplayMode="relative"
         overviewSpendStripEnabled={false}
       />
     )
-    expect(screen.queryByText("Quick Usage Overview")).not.toBeInTheDocument()
-    expect(screen.queryByTestId("models-today-strip-mock")).not.toBeInTheDocument()
+    // One card with the provider and active account names in the header, plus
+    // pagination dots to swipe between accounts.
+    expect(screen.getByText("Claude")).toBeInTheDocument()
+    expect(screen.getAllByRole("tab")).toHaveLength(2)
   })
 
-  it("does not render the strip in the empty state", () => {
-    render(<OverviewPage plugins={[]} displayMode="used" resetTimerDisplayMode="relative" />)
-    expect(screen.queryByTestId("models-today-strip-mock")).not.toBeInTheDocument()
+  it("swiping to another account persists the selection", async () => {
+    const onSelectAccount = vi.fn()
+    render(
+      <OverviewPage
+        groupedPlugins={[view()]}
+        onSelectAccount={onSelectAccount}
+        displayMode="used"
+        resetTimerDisplayMode="relative"
+        overviewSpendStripEnabled={false}
+      />
+    )
+    await userEvent.click(screen.getAllByRole("tab")[1])
+    // The card is controlled by the parent's activeIndex, so the contract here
+    // is the callback — the card itself switching is covered by ProviderCard.
+    expect(onSelectAccount).toHaveBeenCalledWith("claude", "home")
+  })
+
+  it("can select the implicit Default account", async () => {
+    const grouped = view()
+    grouped.accounts = [
+      { ...grouped.accounts[0], accountId: null, label: "Default" },
+      ...grouped.accounts,
+    ]
+    grouped.activeIndex = 1
+    const onSelectAccount = vi.fn()
+    render(
+      <OverviewPage
+        groupedPlugins={[grouped]}
+        onSelectAccount={onSelectAccount}
+        displayMode="used"
+        resetTimerDisplayMode="relative"
+        overviewSpendStripEnabled={false}
+      />
+    )
+    await userEvent.click(screen.getAllByRole("tab")[0])
+    expect(onSelectAccount).toHaveBeenCalledWith("claude", null)
+  })
+
+  it("renders a single unnamed card for providers without registered accounts", () => {
+    const single = view()
+    single.accounts = [{ ...single.accounts[0], accountId: null, label: null }]
+    render(
+      <OverviewPage
+        groupedPlugins={[single]}
+        displayMode="used"
+        resetTimerDisplayMode="relative"
+        overviewSpendStripEnabled={false}
+      />
+    )
+    expect(screen.getByText("Claude")).toBeInTheDocument()
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument()
+  })
+})
+
+describe("buildStripSources", () => {
+  it("flattens every account into its own strip source", () => {
+    const sources = buildStripSources([view()])
+    expect(sources).toHaveLength(2)
+    expect(sources[0]).toMatchObject({ meta: { id: "claude", name: "Claude" } })
+    expect(sources[1]).toMatchObject({ meta: { id: "claude", name: "Claude" } })
+  })
+
+  it("yields a single source when no accounts are registered", () => {
+    const single = view()
+    single.accounts = [{ ...single.accounts[0], accountId: null, label: null }]
+    const sources = buildStripSources([single])
+    expect(sources).toHaveLength(1)
   })
 })

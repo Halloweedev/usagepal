@@ -2,17 +2,28 @@
   "schemaVersion": 1,
   "id": "devin",
   "name": "Devin",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "entry": "plugin.js",
   "icon": "icon.svg",
-  "brandColor": "#000000",
+  "brandColor": "#2200FF",
   "detect": [
+    { "file": "~/.local/share/devin/credentials.toml" },
     { "file": "~/Library/Application Support/Devin/User/globalStorage/state.vscdb" },
-    { "file": "~/Library/Application Support/Devin - Next/User/globalStorage/state.vscdb" }
+    { "file": "~/Library/Application Support/Devin - Next/User/globalStorage/state.vscdb" },
+    { "file": "~/.config/Devin/User/globalStorage/state.vscdb" },
+    { "file": "~/.config/Devin - Next/User/globalStorage/state.vscdb" },
+    { "file": "~/AppData/Roaming/devin/credentials.toml" },
+    { "file": "~/AppData/Roaming/Devin/User/globalStorage/state.vscdb" },
+    { "file": "~/AppData/Roaming/Devin - Next/User/globalStorage/state.vscdb" }
   ],
   "lines": [
-    { "type": "progress", "label": "Weekly quota", "scope": "overview", "period": "weekly", "primaryOrder": 1 },
-    { "type": "progress", "label": "Daily quota", "scope": "overview" },
-    { "type": "text", "label": "Extra usage balance", "scope": "detail" }
+    { "type": "progress", "label": "ACU used", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Weekly quota", "scope": "overview", "period": "weekly", "primaryOrder": 2 },
+    { "type": "progress", "label": "Daily quota", "scope": "overview", "primaryOrder": 3 },
+    { "type": "progress", "label": "Prompt credits", "scope": "detail" },
+    { "type": "progress", "label": "Flow credits", "scope": "detail" },
+    { "type": "progress", "label": "On-demand credits", "scope": "detail" },
+    { "type": "text", "label": "Extra usage balance", "scope": "detail" },
+    { "type": "badge", "label": "Pace", "scope": "detail" }
   ]
 }

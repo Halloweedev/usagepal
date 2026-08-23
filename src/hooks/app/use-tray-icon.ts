@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
 import type { PluginMeta } from "@/lib/plugin-types"
-import type { DisplayMode, MenubarIconStyle, MenubarMetric, MultiTrayDisplayMode, PluginSettings } from "@/lib/settings"
+import type { AccountsByProvider, DisplayMode, MenubarIconStyle, MenubarMetric, MultiTrayDisplayMode, PluginSettings, SelectedAccounts } from "@/lib/settings"
 import { getEnabledPluginIds } from "@/lib/settings"
 import {
   getTrayIconSizePx,
@@ -10,7 +10,7 @@ import {
   renderMultiTrayIcon,
   renderTrayBarsIcon,
 } from "@/lib/tray-bars-icon"
-import { getTrayPrimaryBars, getTrayMultiProviderMetrics, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
+import { getTrayPrimaryBars, getTrayMultiProviderMetrics, resolveTrayStateKey, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
 import {
   formatTrayPercentIfPresent,
   formatTrayPercentText,
@@ -34,6 +34,8 @@ type UseTrayIconArgs = {
   multiTrayProviderCount: number
   multiTrayDisplayMode: MultiTrayDisplayMode
   activeView: string
+  accountsByProvider: AccountsByProvider
+  selectedByProvider: SelectedAccounts
 }
 
 export type TrayMultiProviderPreview = {
@@ -144,6 +146,8 @@ function buildTraySettingsPreview(args: {
   menubarMetric: MenubarMetric
   activeView: string
   lastTrayProviderId: string | null
+  accountsByProvider?: AccountsByProvider
+  selectedByProvider?: SelectedAccounts
 }): TraySettingsPreview {
   const {
     pluginsMeta,
@@ -153,6 +157,8 @@ function buildTraySettingsPreview(args: {
     menubarMetric,
     activeView,
     lastTrayProviderId,
+    accountsByProvider = {},
+    selectedByProvider = {},
   } = args
 
   const enabledPluginIds = getEnabledPluginIds(pluginSettings)
@@ -170,6 +176,8 @@ function buildTraySettingsPreview(args: {
     maxBars: 4,
     displayMode,
     preferWeekly,
+    accountsByProvider,
+    selectedByProvider,
   })
 
   const providerBars = trayProviderId
@@ -181,6 +189,8 @@ function buildTraySettingsPreview(args: {
         displayMode,
         pluginId: trayProviderId,
         preferWeekly,
+        accountsByProvider,
+        selectedByProvider,
       })
     : []
 
@@ -199,6 +209,8 @@ function buildTraySettingsPreview(args: {
       pluginSettings,
       pluginStates,
       displayMode,
+      accountsByProvider,
+      selectedByProvider,
     })
 
     return {
@@ -221,7 +233,7 @@ function buildTraySettingsPreview(args: {
   }
 }
 
-export { buildTraySettingsPreview, getMultiTrayProviderIds }
+export { buildTraySettingsPreview, getMultiTrayProviderIds, resolveTrayStateKey }
 
 export function useTrayIcon({
   pluginsMeta,
@@ -233,6 +245,8 @@ export function useTrayIcon({
   multiTrayProviderCount,
   multiTrayDisplayMode,
   activeView,
+  accountsByProvider,
+  selectedByProvider,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
   const trayGaugeIconPathRef = useRef<string | null>(null)
@@ -254,6 +268,8 @@ export function useTrayIcon({
   const multiTrayProviderCountRef = useRef(multiTrayProviderCount)
   const multiTrayDisplayModeRef = useRef(multiTrayDisplayMode)
   const activeViewRef = useRef(activeView)
+  const accountsByProviderRef = useRef(accountsByProvider)
+  const selectedByProviderRef = useRef(selectedByProvider)
   const lastTrayProviderIdRef = useRef<string | null>(null)
 
   // Single sync effect replaces 7 individual useRef+useEffect pairs.
@@ -269,6 +285,8 @@ export function useTrayIcon({
     multiTrayProviderCountRef.current = multiTrayProviderCount
     multiTrayDisplayModeRef.current = multiTrayDisplayMode
     activeViewRef.current = activeView
+    accountsByProviderRef.current = accountsByProvider
+    selectedByProviderRef.current = selectedByProvider
   })
 
   const scheduleTrayIconUpdate = useCallback((
@@ -382,6 +400,8 @@ export function useTrayIcon({
         menubarMetric: menubarMetricRef.current,
         activeView: activeViewRef.current,
         lastTrayProviderId: lastTrayProviderIdRef.current,
+        accountsByProvider: accountsByProviderRef.current,
+        selectedByProvider: selectedByProviderRef.current,
       })
       setTraySettingsPreview((prev) =>
         isSameTraySettingsPreview(prev, nextPreview) ? prev : nextPreview
@@ -405,6 +425,8 @@ export function useTrayIcon({
               pluginSettings: currentSettings,
               pluginStates: pluginStatesRef.current,
               displayMode: displayModeRef.current,
+              accountsByProvider: accountsByProviderRef.current,
+              selectedByProvider: selectedByProviderRef.current,
             })
 
             return { id: pluginId, sessionFraction, weeklyFraction }
@@ -601,6 +623,14 @@ export function useTrayIcon({
     if (menubarIconStyleRef.current === "multi") return
     scheduleTrayIconUpdate("settings", 0)
   }, [activeView, scheduleTrayIconUpdate, trayReady])
+
+  // Repaint when the shown account changes (swipe → persisted selection) or an
+  // account is added/removed. Affects every style, including multi, since each
+  // provider's icon reads its selected account's state.
+  useEffect(() => {
+    if (!trayReady) return
+    scheduleTrayIconUpdate("settings", 0)
+  }, [accountsByProvider, selectedByProvider, scheduleTrayIconUpdate, trayReady])
 
   useEffect(() => {
     return () => {

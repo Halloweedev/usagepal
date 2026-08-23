@@ -208,7 +208,7 @@ describe("evaluate", () => {
     const second = evaluate(providersAt(95), first.nextStates, ALL_ON, 2) // remaining 0.05 → crosses
     expect(second.fired).toHaveLength(1)
     expect(second.fired[0]).toMatchObject({
-      key: metricKey("claude", "Weekly"),
+      key: metricKey("claude", null, "Weekly"),
       milestone: "underTenPercent",
       displayName: "Claude",
       metricLabel: "Weekly",
@@ -235,7 +235,7 @@ describe("evaluate", () => {
     const third = evaluate(providersAt(0), second.nextStates, ALL_ON, 3)
     expect(third.fired).toHaveLength(1)
     expect(third.fired[0]).toMatchObject({
-      key: metricKey("claude", "Session"),
+      key: metricKey("claude", null, "Session"),
       milestone: "sessionReset",
       displayName: "Claude",
       metricLabel: "Session",
@@ -278,5 +278,22 @@ describe("evaluate", () => {
     const seeded = new Map<string, NotificationState>([["other:X", initialNotificationState()]])
     const { nextStates } = evaluate(providersAt(50), seeded, ALL_ON, 1)
     expect(nextStates.has("other:X")).toBe(true)
+  })
+
+  it("keeps per-account dedup so two accounts of one provider don't cross-fire", () => {
+    const session = (used: number) =>
+      ({ type: "progress", label: "Session", used, limit: 100, format: { kind: "percent" } }) as MetricLine
+    // Two Codex accounts in the same pass: one used, one at 0%. With a
+    // provider-only key they collide on `codex:Session`, so the zero-used
+    // account inherits the other's "was above zero" state and spuriously fires
+    // Session Reset every refresh. Per-account keys keep them independent.
+    const twoAccounts = [
+      { providerId: "codex", accountId: "work", displayName: "Codex", lines: [session(20)] },
+      { providerId: "codex", accountId: "home", displayName: "Codex", lines: [session(0)] },
+    ]
+    const first = evaluate(twoAccounts, new Map(), ALL_ON, 1)
+    expect(first.fired).toEqual([])
+    expect(first.nextStates.has(metricKey("codex", "work", "Session"))).toBe(true)
+    expect(first.nextStates.has(metricKey("codex", "home", "Session"))).toBe(true)
   })
 })

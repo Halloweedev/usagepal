@@ -155,13 +155,47 @@
     });
   }
 
-  // "Extra Usage" — premium interactions consumed beyond the included Credits pool. Surfaced only once
-  // the user has enabled additional (overage) spend (`overage_permitted`); a real zero is then shown.
-  // No spending cap is exposed here, so this is an unbounded count, not a meter.
-  function overageLine(ctx, snapshot) {
-    if (!snapshot || typeof snapshot !== "object" || snapshot.overage_permitted !== true) return null;
-    const overage = Math.max(0, numOrNull(snapshot.overage_count) || 0);
-    return ctx.line.text({ label: "Extra Usage", value: String(overage) });
+  function creditsLine(ctx, snapshot, resetDate) {
+    if (!snapshot || typeof snapshot !== "object") return null;
+
+    const entitlement = numOrNull(snapshot.entitlement);
+    const remaining = numOrNull(snapshot.remaining) ?? numOrNull(snapshot.quota_remaining);
+
+    if (snapshot.unlimited === true || entitlement === -1 || remaining === -1) return null;
+
+    // Count-based display needs the pool size; some seats only report a
+    // percentage, so keep a percent meter as the fallback shape.
+    if (entitlement === null || entitlement <= 0 || remaining === null) {
+      const percentRemaining = numOrNull(snapshot.percent_remaining);
+      if (percentRemaining === null) return null;
+      return ctx.line.progress({
+        label: "Credits",
+        used: Math.min(100, Math.max(0, 100 - percentRemaining)),
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: ctx.util.toIso(resetDate),
+        periodDurationMs: 30 * 24 * 60 * 60 * 1000,
+      });
+    }
+
+    return ctx.line.progress({
+      label: "Credits",
+      used: Math.max(0, entitlement - remaining),
+      limit: entitlement,
+      format: { kind: "count", suffix: "credits" },
+      resetsAt: ctx.util.toIso(resetDate),
+      periodDurationMs: 30 * 24 * 60 * 60 * 1000,
+    });
+  }
+
+  function overageLine(ctx, snapshot, tokenBasedBilling) {
+    if (!snapshot || typeof snapshot !== "object") return null;
+    const overage = numOrNull(snapshot.overage_count);
+    if (overage === null || overage <= 0) return null;
+
+    // Permission can change after usage accrues, so show consumed usage independently of it.
+    const unit = tokenBasedBilling === false ? "requests" : "credits";
+    return ctx.line.text({ label: "Additional Usage", value: String(overage) + " " + unit });
   }
 
   function makeLimitedProgressLine(ctx, label, remaining, total, resetDate) {
@@ -251,18 +285,21 @@
     }
 
     // Since usage-based billing (AI Credits), the metered premium pool is surfaced as "Credits", with
-    // "Extra Usage" carrying overage beyond it. Paid plans report Chat/Completions as the `-1`
+    // "Additional Usage" carrying overage beyond it. Paid plans report Chat/Completions as the `-1`
     // "unlimited" sentinel (suppressed); free plans carry real counts inside quota_snapshots (current)
     // or, on older responses, as limited_user_quotas against monthly_quotas below.
     const snapshots = data.quota_snapshots;
     const resetDate = data.quota_reset_date || data.limited_user_reset_date;
     if (snapshots) {
       const premium = snapshots.premium_interactions;
-      const creditsLine = snapshotLine(ctx, "Credits", premium, resetDate);
-      if (creditsLine) lines.push(creditsLine);
+      const premiumCreditsLine = creditsLine(ctx, premium, resetDate);
+      if (premiumCreditsLine) lines.push(premiumCreditsLine);
 
-      const extraLine = overageLine(ctx, premium);
-      if (extraLine) lines.push(extraLine);
+      const tokenBasedBilling = premium && typeof premium.token_based_billing === "boolean"
+        ? premium.token_based_billing
+        : data.token_based_billing;
+      const additionalUsageLine = overageLine(ctx, premium, tokenBasedBilling);
+      if (additionalUsageLine) lines.push(additionalUsageLine);
 
       const chatLine = snapshotLine(ctx, "Chat", snapshots.chat, resetDate);
       if (chatLine) lines.push(chatLine);

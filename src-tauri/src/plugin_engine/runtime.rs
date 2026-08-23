@@ -868,7 +868,7 @@ mod tests {
     #[test]
     fn run_probe_default_account_leaves_account_id_none() {
         let plugin = test_plugin(
-            "globalThis.__openusage_plugin = { id: 'test', probe: () => ({ plan: 'P', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
+            "globalThis.__usagepal_plugin = { id: 'test', probe: () => ({ plan: 'P', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
         );
         let output = run_probe(&plugin, &temp_app_dir("acct-none"), "0.0.0");
         assert_eq!(output.account_id, None);
@@ -878,7 +878,7 @@ mod tests {
     fn run_probe_for_account_stamps_account_id() {
         use crate::plugin_engine::account::AccountSpec;
         let plugin = test_plugin(
-            "globalThis.__openusage_plugin = { id: 'test', probe: () => ({ plan: 'P', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
+            "globalThis.__usagepal_plugin = { id: 'test', probe: () => ({ plan: 'P', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
         );
         let account = AccountSpec {
             account_id: "work".to_string(),
@@ -893,7 +893,7 @@ mod tests {
         use crate::plugin_engine::account::AccountSpec;
         // Probe reads CODEX_HOME via ctx.host.env and echoes it back as the plan.
         let plugin = test_plugin(
-            "globalThis.__openusage_plugin = { id: 'test', probe: (ctx) => ({ plan: ctx.host.env.get('CODEX_HOME') || 'MISSING', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
+            "globalThis.__usagepal_plugin = { id: 'test', probe: (ctx) => ({ plan: ctx.host.env.get('CODEX_HOME') || 'MISSING', lines: [{ type: 'badge', label: 'Status', text: 'ok' }] }) };",
         );
         let mut env = std::collections::HashMap::new();
         env.insert("CODEX_HOME".to_string(), "/tmp/usagepal/acct".to_string());

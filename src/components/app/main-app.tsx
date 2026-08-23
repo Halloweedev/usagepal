@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useShallow } from "zustand/react/shallow"
+import { AddAccountDialogHost } from "@/components/add-account-dialog"
 import { AppShell } from "@/components/app/app-shell"
+import { useAccounts } from "@/hooks/app/use-accounts"
+import { useProbeOnAccountAdded } from "@/hooks/app/use-probe-on-account-added"
 import { useAppPluginViews } from "@/hooks/app/use-app-plugin-views"
 import { useProbe } from "@/hooks/app/use-probe"
 import { usePaceNotifications } from "@/hooks/app/use-pace-notifications"
@@ -124,6 +127,16 @@ export function MainApp() {
     void hydrateShareSettings()
   }, [hydrateShareSettings])
 
+  const { accountsByProvider, selectedByProvider, selectAccount } = useAccounts()
+
+  // Refresh a newly added account so its card fills in without a manual refresh.
+  // Driven by the explicit add events, so it never runs at startup or touches
+  // accounts other than the one just added.
+  useProbeOnAccountAdded({ startBatch, setLoadingForPlugins, setErrorForPlugins })
+
+  // Which provider's add-account dialog is open (launched from a card's ＋).
+  const [addAccountProvider, setAddAccountProvider] = useState<string | null>(null)
+
   const { scheduleTrayIconUpdate, traySettingsPreview } = useTrayIcon({
     pluginsMeta,
     pluginSettings,
@@ -134,6 +147,8 @@ export function MainApp() {
     multiTrayProviderCount,
     multiTrayDisplayMode,
     activeView,
+    accountsByProvider,
+    selectedByProvider,
   })
 
   useEffect(() => {
@@ -235,12 +250,14 @@ export function MainApp() {
     pluginsMeta,
   })
 
-  const { displayPlugins, navPlugins, selectedPlugin } = useAppPluginViews({
+  const { displayPlugins, groupedPlugins, navPlugins, selectedPlugin } = useAppPluginViews({
     activeView,
     setActiveView,
     pluginSettings,
     pluginsMeta,
     pluginStates,
+    accountsByProvider,
+    selectedByProvider,
   })
 
   const pluginSettingsRef = useRef(pluginSettings)
@@ -293,10 +310,12 @@ export function MainApp() {
   )
 
   return (
+    <>
     <AppShell
       onRefreshAll={handleRefreshAll}
       navPlugins={navPlugins}
       displayPlugins={displayPlugins}
+      groupedPlugins={groupedPlugins}
       settingsPlugins={settingsPlugins}
       autoUpdateNextAt={autoUpdateNextAt}
       betaUpdatesEnabled={betaUpdatesEnabled}
@@ -309,6 +328,8 @@ export function MainApp() {
         onRetryPlugin: handleRetryPlugin,
         onReorder: handleReorder,
         onToggle: handleToggle,
+        onSelectAccount: selectAccount,
+        onAddAccount: (providerId: string) => setAddAccountProvider(providerId),
         onAutoUpdateIntervalChange: handleAutoUpdateIntervalChange,
         onBetaUpdatesEnabledChange: handleBetaUpdatesEnabledChange,
         onThemeModeChange: handleThemeModeChange,
@@ -327,5 +348,12 @@ export function MainApp() {
         onStartOnLoginChange: handleStartOnLoginChange,
       }}
     />
+    {addAccountProvider && (
+      <AddAccountDialogHost
+        providerId={addAccountProvider}
+        onClose={() => setAddAccountProvider(null)}
+      />
+    )}
+    </>
   )
 }

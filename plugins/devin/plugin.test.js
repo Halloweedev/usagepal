@@ -1,15 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
-const CREDENTIALS_PATH = "~/.local/share/devin/credentials.toml"
-const STATE_DB = "~/Library/Application Support/Devin/User/globalStorage/state.vscdb"
-const NEXT_STATE_DB = "~/Library/Application Support/Devin - Next/User/globalStorage/state.vscdb"
 const DEFAULT_API_SERVER_URL = "https://server.codeium.com"
 const CLOUD_COMPAT_VERSION = "1.108.2"
+const DAY_MS = 24 * 60 * 60 * 1000
+const WEEK_MS = 7 * DAY_MS
+
+const CREDENTIALS_PATH = "~/.local/share/devin/credentials.toml"
+const WIN_CREDENTIALS_PATH = "~/AppData/Roaming/devin/credentials.toml"
+const MACOS_STATE_DB = "~/Library/Application Support/Devin/User/globalStorage/state.vscdb"
+const MACOS_NEXT_STATE_DB = "~/Library/Application Support/Devin - Next/User/globalStorage/state.vscdb"
+const LINUX_STATE_DB = "~/.config/Devin/User/globalStorage/state.vscdb"
+const LINUX_NEXT_STATE_DB = "~/.config/Devin - Next/User/globalStorage/state.vscdb"
+const WIN_STATE_DB = "~/AppData/Roaming/Devin/User/globalStorage/state.vscdb"
+const WIN_NEXT_STATE_DB = "~/AppData/Roaming/Devin - Next/User/globalStorage/state.vscdb"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
   return globalThis.__usagepal_plugin
+}
+
+function credentialsPath(platform) {
+  const norm = platform === "darwin" ? "macos" : platform === "win32" ? "windows" : platform
+  if (norm === "windows") return WIN_CREDENTIALS_PATH
+  return CREDENTIALS_PATH
+}
+
+function appStateDb(platform, appName = "Devin") {
+  const norm = platform === "darwin" ? "macos" : platform === "win32" ? "windows" : platform
+  if (norm === "macos") return `~/Library/Application Support/${appName}/User/globalStorage/state.vscdb`
+  if (norm === "linux") return `~/.config/${appName}/User/globalStorage/state.vscdb`
+  if (norm === "windows") return `~/AppData/Roaming/${appName}/User/globalStorage/state.vscdb`
+  return `~/Library/Application Support/${appName}/User/globalStorage/state.vscdb`
 }
 
 function makeCredentialsToml({
@@ -57,10 +79,15 @@ function makeQuotaResponse(overrides = {}) {
 }
 
 function mockAppAuth(ctx, apiKey = "devin-session-token$app") {
+  const stableDb = appStateDb(ctx.app.platform, "Devin")
   ctx.host.sqlite.query.mockImplementation((db, sql) => {
     expect(String(sql)).toContain("windsurfAuthStatus")
-    return db === STATE_DB ? makeAuthStatus(apiKey) : "[]"
+    return db === stableDb ? makeAuthStatus(apiKey) : "[]"
   })
+}
+
+function writeCredentials(ctx, toml = makeCredentialsToml()) {
+  ctx.host.fs.writeText(credentialsPath(ctx.app.platform), toml)
 }
 
 describe("devin plugin", () => {
@@ -71,7 +98,7 @@ describe("devin plugin", () => {
 
   it("loads CLI credentials first and renders quota lines", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
+    writeCredentials(ctx)
     ctx.host.http.request.mockReturnValue({
       status: 200,
       bodyText: JSON.stringify(makeQuotaResponse()),
@@ -85,21 +112,21 @@ describe("devin plugin", () => {
     expect(result.lines).toEqual([
       {
         type: "progress",
-        label: "Daily quota",
-        used: 0,
-        limit: 100,
-        format: { kind: "percent" },
-        resetsAt: "2026-03-21T08:00:00.000Z",
-        periodDurationMs: 24 * 60 * 60 * 1000,
-      },
-      {
-        type: "progress",
         label: "Weekly quota",
         used: 60,
         limit: 100,
         format: { kind: "percent" },
         resetsAt: "2026-03-22T08:00:00.000Z",
-        periodDurationMs: 7 * 24 * 60 * 60 * 1000,
+        periodDurationMs: WEEK_MS,
+      },
+      {
+        type: "progress",
+        label: "Daily quota",
+        used: 0,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: "2026-03-21T08:00:00.000Z",
+        periodDurationMs: DAY_MS,
       },
       {
         type: "text",
@@ -130,6 +157,57 @@ describe("devin plugin", () => {
     )
   })
 
+  it("prefers DEVIN_API_KEY env over credentials file", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "DEVIN_API_KEY" ? "devin-session-token$env" : null
+    )
+    writeCredentials(ctx)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(makeQuotaResponse({ planInfo: { planName: "Env" } })),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Env")
+    expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+    const request = ctx.host.http.request.mock.calls[0][0]
+    expect(request.url).toBe(
+      `${DEFAULT_API_SERVER_URL}/exa.seat_management_pb.SeatManagementService/GetUserStatus`
+    )
+    const sentBody = JSON.parse(String(request.bodyText))
+    expect(sentBody.metadata.apiKey).toBe("devin-session-token$env")
+    expect(ctx.host.log.info).toHaveBeenCalledWith(
+      expect.stringContaining("source=env:DEVIN_API_KEY")
+    )
+  })
+
+  it("falls back to credentials file when DEVIN_API_KEY env auth fails", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "DEVIN_API_KEY" ? "devin-session-token$env" : null
+    )
+    writeCredentials(ctx)
+    ctx.host.http.request.mockImplementation((request) => {
+      const body = JSON.parse(String(request.bodyText))
+      if (body.metadata.apiKey === "devin-session-token$env") {
+        return { status: 401, bodyText: "{}" }
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify(makeQuotaResponse({ planInfo: { planName: "Max" } })),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Max")
+    expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+  })
+
   it("falls back to Devin app SQLite auth and the default API server", async () => {
     const ctx = makeCtx()
     mockAppAuth(ctx)
@@ -144,7 +222,7 @@ describe("devin plugin", () => {
     expect(result.plan).toBe("Pro")
     const request = ctx.host.http.request.mock.calls[0][0]
     expect(request.url).toBe(
-      "https://server.codeium.com/exa.seat_management_pb.SeatManagementService/GetUserStatus"
+      `${DEFAULT_API_SERVER_URL}/exa.seat_management_pb.SeatManagementService/GetUserStatus`
     )
     const sentBody = JSON.parse(String(request.bodyText))
     expect(sentBody.metadata.apiKey).toBe("devin-session-token$app")
@@ -152,10 +230,10 @@ describe("devin plugin", () => {
 
   it("reads auth from the Devin - Next app when stable Devin is absent", async () => {
     const ctx = makeCtx()
+    const nextDb = appStateDb(ctx.app.platform, "Devin - Next")
     ctx.host.sqlite.query.mockImplementation((db, sql) => {
       expect(String(sql)).toContain("windsurfAuthStatus")
-      if (db === NEXT_STATE_DB) return makeAuthStatus("devin-session-token$next")
-      return "[]"
+      return db === nextDb ? makeAuthStatus("devin-session-token$next") : "[]"
     })
     ctx.host.http.request.mockReturnValue({
       status: 200,
@@ -167,12 +245,12 @@ describe("devin plugin", () => {
 
     expect(result.plan).toBe("Pro")
     const queriedDbs = ctx.host.sqlite.query.mock.calls.map(([db]) => db)
-    expect(queriedDbs).toContain(STATE_DB)
-    expect(queriedDbs).toContain(NEXT_STATE_DB)
+    expect(queriedDbs).toContain(appStateDb(ctx.app.platform, "Devin"))
+    expect(queriedDbs).toContain(nextDb)
     const sentBody = JSON.parse(String(ctx.host.http.request.mock.calls[0][0].bodyText))
     expect(sentBody.metadata.apiKey).toBe("devin-session-token$next")
     expect(ctx.host.log.info).toHaveBeenCalledWith(
-      expect.stringContaining("Devin quota diagnostics source=Devin - Next app")
+      expect.stringContaining("source=Devin - Next app")
     )
   })
 
@@ -180,8 +258,8 @@ describe("devin plugin", () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockImplementation((db, sql) => {
       expect(String(sql)).toContain("windsurfAuthStatus")
-      if (db === STATE_DB) return makeAuthStatus("devin-session-token$stable")
-      if (db === NEXT_STATE_DB) return makeAuthStatus("devin-session-token$next")
+      if (db === appStateDb(ctx.app.platform, "Devin")) return makeAuthStatus("devin-session-token$stable")
+      if (db === appStateDb(ctx.app.platform, "Devin - Next")) return makeAuthStatus("devin-session-token$next")
       return "[]"
     })
     ctx.host.http.request.mockImplementation((request) => {
@@ -208,7 +286,7 @@ describe("devin plugin", () => {
 
   it("ignores plaintext API server URLs from CLI credentials", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml({
+    writeCredentials(ctx, makeCredentialsToml({
       apiServerUrl: "http://server.codeium.test",
     }))
     ctx.host.http.request.mockReturnValue({
@@ -226,7 +304,7 @@ describe("devin plugin", () => {
 
   it("falls back from expired CLI auth to app auth", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
+    writeCredentials(ctx)
     mockAppAuth(ctx)
     ctx.host.http.request.mockImplementation((request) => {
       const body = JSON.parse(String(request.bodyText))
@@ -248,7 +326,7 @@ describe("devin plugin", () => {
 
   it("does not call the app auth path twice when both sources have the same token", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml({
+    writeCredentials(ctx, makeCredentialsToml({
       apiServerUrl: DEFAULT_API_SERVER_URL,
     }))
     mockAppAuth(ctx, "devin-session-token$cli")
@@ -265,7 +343,7 @@ describe("devin plugin", () => {
 
   it("retries app auth when the same token has a different server URL", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml({
+    writeCredentials(ctx, makeCredentialsToml({
       apiKey: "devin-session-token$same",
       apiServerUrl: "https://stale.codeium.test",
     }))
@@ -301,16 +379,18 @@ describe("devin plugin", () => {
 
   it("treats malformed credentials as missing auth", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, 'api_server_url = "https://server.codeium.test"')
+    ctx.host.fs.writeText(credentialsPath(ctx.app.platform), 'api_server_url = "https://server.codeium.test"')
     const plugin = await loadPlugin()
 
     expect(() => plugin.probe(ctx)).toThrow("Run devin auth login or sign in to Devin and try again.")
-    expect(ctx.host.log.warn).toHaveBeenCalledWith("Devin credentials missing windsurf_api_key")
+    expect(ctx.host.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Devin credentials missing windsurf_api_key")
+    )
   })
 
   it("uses Devin's hidden daily quota field as weekly usage when weekly percentage is absent", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
+    writeCredentials(ctx)
     ctx.host.http.request.mockReturnValue({
       status: 200,
       bodyText: JSON.stringify(
@@ -331,7 +411,7 @@ describe("devin plugin", () => {
       limit: 100,
       format: { kind: "percent" },
       resetsAt: "2026-03-22T08:00:00.000Z",
-      periodDurationMs: 7 * 24 * 60 * 60 * 1000,
+      periodDurationMs: WEEK_MS,
     })
     expect(ctx.host.log.info).toHaveBeenCalledWith(
       expect.stringContaining("hideDailyQuota=true")
@@ -344,7 +424,7 @@ describe("devin plugin", () => {
 
   it("renders quota percentages when reset timestamps are absent", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
+    writeCredentials(ctx)
     ctx.host.http.request.mockReturnValue({
       status: 200,
       bodyText: JSON.stringify(
@@ -365,14 +445,14 @@ describe("devin plugin", () => {
       used: 0,
       limit: 100,
       format: { kind: "percent" },
-      periodDurationMs: 24 * 60 * 60 * 1000,
+      periodDurationMs: DAY_MS,
     })
     expect(weeklyLine).toMatchObject({
       type: "progress",
       used: 60,
       limit: 100,
       format: { kind: "percent" },
-      periodDurationMs: 7 * 24 * 60 * 60 * 1000,
+      periodDurationMs: WEEK_MS,
     })
     expect(dailyLine).not.toHaveProperty("resetsAt")
     expect(weeklyLine).not.toHaveProperty("resetsAt")
@@ -380,7 +460,7 @@ describe("devin plugin", () => {
 
   it("throws quota unavailable when no displayable fields are present", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
+    writeCredentials(ctx)
     ctx.host.http.request.mockReturnValue({
       status: 200,
       bodyText: JSON.stringify(
@@ -398,7 +478,7 @@ describe("devin plugin", () => {
 
   it("omits daily quota when Devin marks it hidden", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
+    writeCredentials(ctx)
     ctx.host.http.request.mockReturnValue({
       status: 200,
       bodyText: JSON.stringify(
@@ -419,7 +499,7 @@ describe("devin plugin", () => {
 
   it("renders quota lines when Devin omits extra usage balance", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
+    writeCredentials(ctx)
     ctx.host.http.request.mockReturnValue({
       status: 200,
       bodyText: JSON.stringify(makeQuotaResponse({ overageBalanceMicros: undefined })),
@@ -434,7 +514,7 @@ describe("devin plugin", () => {
 
   it("does not probe the local language server or localhost", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
+    writeCredentials(ctx)
     ctx.host.http.request.mockReturnValue({
       status: 200,
       bodyText: JSON.stringify(makeQuotaResponse()),
@@ -447,5 +527,293 @@ describe("devin plugin", () => {
     const urls = ctx.host.http.request.mock.calls.map((call) => String(call[0].url))
     expect(urls.every((url) => url.includes("exa.seat_management_pb.SeatManagementService"))).toBe(true)
     expect(urls.some((url) => url.includes("127.0.0.1"))).toBe(false)
+  })
+
+  it("uses Linux credentials and state DB paths", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "linux"
+    ctx.host.fs.writeText(LINUX_STATE_DB, "irrelevant")
+    ctx.host.fs.writeText(LINUX_NEXT_STATE_DB, "irrelevant")
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      expect(String(sql)).toContain("windsurfAuthStatus")
+      if (db === LINUX_STATE_DB) return makeAuthStatus("devin-session-token$linux")
+      return "[]"
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(makeQuotaResponse({ planInfo: { planName: "Pro" } })),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
+    const request = ctx.host.http.request.mock.calls[0][0]
+    expect(request.url).toBe(
+      `${DEFAULT_API_SERVER_URL}/exa.seat_management_pb.SeatManagementService/GetUserStatus`
+    )
+    const sentBody = JSON.parse(String(request.bodyText))
+    expect(sentBody.metadata.apiKey).toBe("devin-session-token$linux")
+    expect(result.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "Weekly quota" }),
+        expect.objectContaining({ label: "Daily quota" }),
+      ])
+    )
+  })
+
+  it("uses Windows credentials and state DB paths", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "windows"
+    ctx.host.fs.writeText(WIN_CREDENTIALS_PATH, makeCredentialsToml({
+      apiKey: "devin-session-token$win",
+      apiServerUrl: DEFAULT_API_SERVER_URL,
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(makeQuotaResponse({ planInfo: { planName: "Teams" } })),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Teams")
+    const request = ctx.host.http.request.mock.calls[0][0]
+    expect(request.url).toBe(
+      `${DEFAULT_API_SERVER_URL}/exa.seat_management_pb.SeatManagementService/GetUserStatus`
+    )
+    const sentBody = JSON.parse(String(request.bodyText))
+    expect(sentBody.metadata.apiKey).toBe("devin-session-token$win")
+    expect(ctx.host.sqlite.query).not.toHaveBeenCalled()
+  })
+
+  it("renders ACU used progress for enterprise-shaped payloads", async () => {
+    const ctx = makeCtx()
+    writeCredentials(ctx)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeQuotaResponse({
+          acuConsumed: 500,
+          acuLimit: 1000,
+          planStart: 1766908800,
+          planEnd: 1769500800,
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const acuLine = result.lines.find((line) => line.label === "ACU used")
+    expect(acuLine).toMatchObject({
+      type: "progress",
+      used: 50,
+      limit: 100,
+      format: { kind: "percent" },
+      periodDurationMs: 30 * DAY_MS,
+    })
+    expect(acuLine.resetsAt).toBe("2026-01-27T08:00:00.000Z")
+  })
+
+  it("does not render ACU used when ACU fields are missing or zero", async () => {
+    const ctx = makeCtx()
+    writeCredentials(ctx)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeQuotaResponse({
+          acuConsumed: 0,
+          acuLimit: 0,
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "ACU used")).toBeUndefined()
+  })
+
+  it("renders unlimited prompt credits as a badge", async () => {
+    const ctx = makeCtx()
+    writeCredentials(ctx)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeQuotaResponse({
+          availablePromptCredits: -1,
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const promptLine = result.lines.find((line) => line.label === "Prompt credits")
+    expect(promptLine).toEqual({
+      type: "badge",
+      label: "Prompt credits",
+      text: "Unlimited",
+      color: "#a3a3a3",
+    })
+  })
+
+  it("renders on-demand flex credits as a progress line", async () => {
+    const ctx = makeCtx()
+    writeCredentials(ctx)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeQuotaResponse({
+          availableFlexCredits: 100,
+          usedFlexCredits: 25,
+          planStart: 1766908800,
+          planEnd: 1769500800,
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const onDemandLine = result.lines.find((line) => line.label === "On-demand credits")
+    expect(onDemandLine).toMatchObject({
+      type: "progress",
+      used: 20,
+      limit: 100,
+      format: { kind: "percent" },
+      periodDurationMs: 30 * DAY_MS,
+    })
+    expect(onDemandLine.resetsAt).toBe("2026-01-27T08:00:00.000Z")
+  })
+
+  it("renders a Pace badge when usage is behind schedule", async () => {
+    const ctx = makeCtx()
+    ctx.nowIso = "2026-03-18T20:00:00.000Z"
+    writeCredentials(ctx)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeQuotaResponse({
+          weeklyQuotaRemainingPercent: 45,
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const paceBadge = result.lines.find((line) => line.label === "Pace")
+    expect(paceBadge).toEqual({
+      type: "badge",
+      label: "Pace",
+      text: "Behind",
+      color: "#ef4444",
+    })
+  })
+
+  it("does not map daily to weekly when weekly percent is present and daily is hidden", async () => {
+    const ctx = makeCtx()
+    writeCredentials(ctx)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeQuotaResponse({
+          planInfo: { hideDailyQuota: true },
+          dailyQuotaRemainingPercent: undefined,
+          weeklyQuotaRemainingPercent: 25,
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const weeklyLine = result.lines.find((line) => line.label === "Weekly quota")
+    expect(weeklyLine).toMatchObject({ used: 75 })
+    expect(result.lines.find((line) => line.label === "Daily quota")).toBeUndefined()
+  })
+
+  describe("buildPaceBadge", () => {
+    it("classifies ahead, on-track, and behind", async () => {
+      const ctx = makeCtx()
+      ctx.nowIso = "2026-03-18T20:00:00.000Z"
+
+      const plugin = await loadPlugin()
+      const buildPaceBadge = plugin.__test.buildPaceBadge
+
+      const base = {
+        type: "progress",
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: "2026-03-22T08:00:00.000Z",
+        periodDurationMs: WEEK_MS,
+      }
+
+      expect(buildPaceBadge(ctx, { ...base, used: 10 })).toEqual({
+        type: "badge",
+        label: "Pace",
+        text: "Ahead",
+        color: "#22c55e",
+      })
+
+      expect(buildPaceBadge(ctx, { ...base, used: 45 })).toEqual({
+        type: "badge",
+        label: "Pace",
+        text: "On track",
+        color: "#a3a3a3",
+      })
+
+      expect(buildPaceBadge(ctx, { ...base, used: 55 })).toEqual({
+        type: "badge",
+        label: "Pace",
+        text: "Behind",
+        color: "#ef4444",
+      })
+    })
+
+    it("returns null for a fresh period", async () => {
+      const ctx = makeCtx()
+      ctx.nowIso = "2026-03-15T10:00:00.000Z"
+
+      const plugin = await loadPlugin()
+      const buildPaceBadge = plugin.__test.buildPaceBadge
+
+      expect(buildPaceBadge(ctx, {
+        type: "progress",
+        used: 10,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: "2026-03-22T08:00:00.000Z",
+        periodDurationMs: WEEK_MS,
+      })).toBeNull()
+    })
+  })
+
+  describe("buildOutput", () => {
+    it("exposes cross-platform auth source paths", async () => {
+      const plugin = await loadPlugin()
+      const ctx = makeCtx()
+
+      expect(plugin.__test.credentialsPaths({ app: { platform: "windows" } })).toEqual([
+        WIN_CREDENTIALS_PATH,
+      ])
+      expect(plugin.__test.credentialsPaths({ app: { platform: "linux" } })).toEqual([
+        CREDENTIALS_PATH,
+      ])
+      expect(plugin.__test.credentialsPaths({ app: { platform: "macos" } })).toEqual([
+        CREDENTIALS_PATH,
+      ])
+
+      expect(plugin.__test.appAuthSources({ app: { platform: "linux" } })).toEqual([
+        { source: "Devin app", stateDb: LINUX_STATE_DB },
+        { source: "Devin - Next app", stateDb: LINUX_NEXT_STATE_DB },
+      ])
+      expect(plugin.__test.appAuthSources({ app: { platform: "windows" } })).toEqual([
+        { source: "Devin app", stateDb: WIN_STATE_DB },
+        { source: "Devin - Next app", stateDb: WIN_NEXT_STATE_DB },
+      ])
+    })
   })
 })

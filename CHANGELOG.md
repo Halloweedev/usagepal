@@ -1,5 +1,146 @@
 # Changelog
 
+## v0.7.70
+
+Multi-account usage now keeps itself up to date and shares complete numbers,
+GitHub Copilot reads as credits instead of percentages, and Devin gets a much
+richer card plus its first steps toward Linux support.
+
+### New Features
+- GitHub Copilot now shows AI Credits as a count (used against your plan's pool) instead of a percentage, and "Additional Usage" appears whenever overage was consumed — even if overage billing was switched off afterwards ([#51](https://github.com/Halloweedev/usagepal/pull/51)) by @divaltor
+- Devin's card is much richer: ACU used, weekly and daily quotas with reset times, prompt/flow/on-demand credits, extra-usage balance, and an Ahead / On track / Behind pace indicator ([#48](https://github.com/Halloweedev/usagepal/pull/48)) by @rmems
+- Devin credentials can now be discovered on Linux (CLI file, Devin and Devin - Next app databases, or a DEVIN_API_KEY environment variable), and the menu-bar panel layer gained non-macOS fallbacks — the first groundwork for Linux builds ([#48](https://github.com/Halloweedev/usagepal/pull/48)) by @rmems
+
+### Bug Fixes
+- Providers with multiple added accounts auto-refresh again — scheduled 5/10/15-minute updates now reach the cards, the tray, and the local HTTP API, instead of only appearing after relaunching the app ([#49](https://github.com/Halloweedev/usagepal/pull/49)) by @divaltor
+- Adding your first managed account no longer hides the login you already had — it stays available as the "Default" account on the card, in the tray, and in refreshes ([#50](https://github.com/Halloweedev/usagepal/pull/50)) by @divaltor
+- Sharing now includes every account's spend — the All-providers graph merges all accounts of a provider (Codex no longer vanishes when its first account is idle), and per-provider cards reflect the account you're actually viewing by @Halloweedev
+- GitHub Copilot seats that only report a percentage keep their Credits meter instead of losing it by @Halloweedev
+
+---
+
+**Full Changelog**: [v0.7.69...v0.7.70](https://github.com/Halloweedev/usagepal/compare/v0.7.69...v0.7.70)
+
+## v0.7.69
+
+Stable release rolling up the 0.7.69 betas: multi-account support for Claude, Codex, Cursor, and OpenCode Go — register several accounts per provider, swipe between their usage cards, and see each account's real local spend when it's the one you're signed into.
+
+### New Features
+- Multi-account support for Claude, Codex, and Cursor — register several accounts per provider and track each one's usage. Providers now render as swipeable cards (one dot per account) on the overview and detail views; the account you swipe to is remembered per provider and is the one shown in the menubar tray ([#37](https://github.com/Halloweedev/usagepal/pull/37), [#39](https://github.com/Halloweedev/usagepal/pull/39), [#41](https://github.com/Halloweedev/usagepal/pull/41)) by @Halloweedev
+- Add another account for a provider straight from its card — a "+" next to the plan badge opens the add flow, instead of digging through Settings by @Halloweedev
+- OpenCode Go now supports multiple accounts — add them by API key from the card's "+" or Settings, and each account reports its own Go usage instead of sharing one key by @Halloweedev
+- OpenCode Go now shows local spend from OpenCode's database for the account signed in to the CLI — Today / Yesterday / 30-day lines, a daily usage trend, and per-model shares, priced from the values OpenCode stored with each message by @Halloweedev
+
+### Bug Fixes
+- A registered account now shows its **real local spend** (Today / Yesterday / 30-day) when it's the one you're signed into in the CLI — Codex no longer reads an empty managed profile ($0), and Claude no longer shows the default login's spend for every account. Accounts you aren't signed into locally now show a clear "no local data" state instead of a misleading $0, since local usage logs can't be split per account by @Halloweedev
+- A provider with multiple accounts (e.g. Codex) no longer shows 0 for all usage on launch — restored accounts are no longer mistaken for freshly added ones and needlessly re-probed, which was blanking their usage until a manual refresh by @Halloweedev
+- A newly added account now loads its usage immediately, instead of showing an empty card until the next manual refresh by @Halloweedev
+- Switching between accounts of the same provider no longer fires repeated "Back to 0% used" notifications — each account tracks its own alert state by @Halloweedev
+- Adding a Codex account now works from a normal Finder/Dock launch — UsagePal resolves your login-shell PATH so the `codex` CLI is found, and finalizes the sign-in automatically instead of relying on a confirm button that disappeared when the browser took focus ([#41](https://github.com/Halloweedev/usagepal/pull/41)) by @Halloweedev
+- The app now reliably relaunches after installing an update — forcing a fresh launch avoids a race with LaunchServices that occasionally left the app closed after it quit by @Halloweedev
+- OpenRouter now reports the correct usage window, Z.ai surfaces its CREDIT_LIMIT, and GitHub Copilot counts organization-seat credits ([#36](https://github.com/Halloweedev/usagepal/pull/36)) by @Halloweedev
+- Codex fast-tier spend is priced per turn instead of read from config.toml, so the model breakdown matches actual usage ([#38](https://github.com/Halloweedev/usagepal/pull/38)) by @Halloweedev
+- The card's "+" and retry buttons now respond to clicks reliably — a click landing on the button's icon no longer gets swallowed by the swipe layer by @Halloweedev
+
+### Changes
+- The refresh that fills in a newly added account now triggers on the add itself and touches only that one account, rather than inferring adds from state changes — removing the startup edge case behind the Codex "0 for everything" glitch and making the behaviour robust by design by @Halloweedev
+- Swiping between accounts now follows your finger and slides to the next card, with a quick flick recognised too, so paging is easier to land; the account dots moved beside the plan badge and the "·" between the provider and account name is gone by @Halloweedev
+- The Overview now shows a single card per provider with swipeable accounts, and the spend strip combines all accounts of a provider into one entry by @Halloweedev
+- Cursor adds Grok 4.6 pricing ([#36](https://github.com/Halloweedev/usagepal/pull/36)) by @Halloweedev
+- Cursor gains a read-only per-account seam so a snapshotted account can be probed without touching Cursor's real login or keychain ([#40](https://github.com/Halloweedev/usagepal/pull/40)) by @Halloweedev
+
+### Refactor
+- Renamed OpenUsage identifiers to UsagePal by @Halloweedev
+
+---
+
+## v0.7.69-beta.8
+
+Fixes an intermittent update bug where the app would quit but not relaunch after installing an update.
+
+### Bug Fixes
+- The app now reliably relaunches after installing an update — forcing a fresh launch avoids a race with LaunchServices that occasionally left the app closed after it quit by @Halloweedev
+
+---
+
+## v0.7.69-beta.7
+
+Track several OpenCode Go accounts, each with its own API key and its own usage card.
+
+### New Features
+- OpenCode Go now supports multiple accounts — add them by API key from the card's "+" or Settings, and each account reports its own Go usage instead of sharing one key by @Halloweedev
+
+---
+
+## v0.7.69-beta.6
+
+Multi-account cards now show each account's real local usage instead of $0 or another account's spend.
+
+### Bug Fixes
+- A registered account now shows its **real local spend** (Today / Yesterday / 30-day) when it's the one you're signed into in the CLI — Codex no longer reads an empty managed profile ($0), and Claude no longer shows the default login's spend for every account. Accounts you aren't signed into locally now show a clear "no local data" state instead of a misleading $0, since local usage logs can't be split per account by @Halloweedev
+
+---
+
+## v0.7.69-beta.5
+
+Hardens the newly-added-account refresh so it can never disturb a multi-account provider's other cards.
+
+### Changes
+- The refresh that fills in a newly added account now triggers on the add itself and touches only that one account, rather than inferring adds from state changes — removing the startup edge case behind the Codex "0 for everything" glitch and making the behaviour robust by design by @Halloweedev
+
+---
+
+## v0.7.69-beta.4
+
+Fixes multi-account providers (Codex) showing 0 for every stat after the beta.3 update.
+
+### Bug Fixes
+- A provider with multiple accounts (e.g. Codex) no longer shows 0 for all usage on launch — restored accounts are no longer mistaken for freshly added ones and needlessly re-probed, which was blanking their usage until a manual refresh by @Halloweedev
+
+---
+
+## v0.7.69-beta.3
+
+Polishes the multi-account cards from beta feedback: added accounts load right away, swiping is smoother, you can add an account from the card itself, and switching accounts no longer spams "usage reset" alerts.
+
+### New Features
+- Add another account for a provider straight from its card — a "+" next to the plan badge opens the add flow, instead of digging through Settings by @Halloweedev
+
+### Bug Fixes
+- A newly added account now loads its usage immediately, instead of showing an empty card until the next manual refresh by @Halloweedev
+- Switching between accounts of the same provider no longer fires repeated "Back to 0% used" notifications — each account tracks its own alert state by @Halloweedev
+
+### Changes
+- Swiping between accounts now follows your finger and slides to the next card, with a quick flick recognised too, so paging is easier to land; the account dots moved beside the plan badge and the "·" between the provider and account name is gone by @Halloweedev
+
+---
+
+## v0.7.69-beta.2
+
+Fixes adding a Codex account when UsagePal is launched from Finder.
+
+### Bug Fixes
+- Adding a Codex account now works from a normal Finder/Dock launch — UsagePal resolves your login-shell PATH so the `codex` CLI is found, and finalizes the sign-in automatically instead of relying on a confirm button that disappeared when the browser took focus ([#41](https://github.com/Halloweedev/usagepal/pull/41)) by @Halloweedev
+
+---
+
+## v0.7.69-beta.1
+
+Beta preview: multi-account support for Claude, Codex, and Cursor, with swipeable per-provider account cards and a menubar that follows the account you pick — bundled with the latest provider fixes for testing.
+
+### New Features
+- Multi-account support for Claude, Codex, and Cursor — register several accounts per provider and track each one's usage. Providers now render as swipeable cards (one dot per account) on the overview and detail views; the account you swipe to is remembered per provider and is the one shown in the menubar tray ([#37](https://github.com/Halloweedev/usagepal/pull/37), [#39](https://github.com/Halloweedev/usagepal/pull/39), [#41](https://github.com/Halloweedev/usagepal/pull/41)) by @Halloweedev
+
+### Bug Fixes
+- OpenRouter now reports the correct usage window, Z.ai surfaces its CREDIT_LIMIT, and GitHub Copilot counts organization-seat credits ([#36](https://github.com/Halloweedev/usagepal/pull/36)) by @Halloweedev
+- Codex fast-tier spend is priced per turn instead of read from config.toml, so the model breakdown matches actual usage ([#38](https://github.com/Halloweedev/usagepal/pull/38)) by @Halloweedev
+
+### Changes
+- Cursor adds Grok 4.6 pricing ([#36](https://github.com/Halloweedev/usagepal/pull/36)) by @Halloweedev
+- Cursor gains a read-only per-account seam so a snapshotted account can be probed without touching Cursor's real login or keychain ([#40](https://github.com/Halloweedev/usagepal/pull/40)) by @Halloweedev
+
+---
+
 ## v0.7.68
 
 OpenCode Go usage now comes straight from OpenCode's official account API, and menubar icons no longer flash empty.

@@ -1,6 +1,6 @@
 [package]
 name = "usagepal"
-version = "0.7.68"
+version = "0.7.70"
 description = "UsagePal is an open source AI subscription limit tracker (a fork of OpenUsage)"
 authors = ["Nicolas Demanez"]
 edition = "2024"
@@ -44,7 +44,6 @@ serde = { version = "1", features = ["derive"] }
 # a bogus diff against a loader whose output is in fact bit-identical to
 # ccusage@20.0.2's. Costs are f64 all the way to the UI, so we want exact parsing.
 serde_json = { version = "1", features = ["float_roundtrip"] }
-tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 time = { version = "0.3.47", features = ["formatting"] }
 dirs = "6"
 log = "0.4"
@@ -73,6 +72,7 @@ ccusage-vendor = { path = "vendor/ccusage" }
 mac-notification-sys = "0.6.15"
 objc2 = "0.6"
 objc2-foundation = "0.3"
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2"

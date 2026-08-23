@@ -14,6 +14,17 @@
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
   const LOGIN_HINT = "Sign in via Cursor app or run `agent login`."
 
+  // UsagePal multi-account seam: when this env var points at a snapshot JSON
+  // file, the plugin probes that managed account read-only instead of Cursor's
+  // real state.vscdb / keychain. See docs/superpowers plan "multi-account-cursor-seam".
+  const MANAGED_AUTH_ENV = "USAGEPAL_CURSOR_AUTH_FILE"
+
+  // Cursor's /oauth/token has not been verified to rotate the refresh token.
+  // Managed refresh stays enabled but captures any rotated refresh_token so the
+  // UsagePal snapshot never diverges from the server. Flip to false to fall back
+  // to read-only + stale if verification shows rotation breaks the real Cursor app.
+  const MANAGED_REFRESH_ALLOWED = true
+
   const MAX_MODE_UPLIFT = 1.2
 
   // Per-million USD token rates, synced from https://cursor.com/docs/models-and-pricing.md.
@@ -666,7 +677,44 @@
     }
   }
 
+  function readManagedAuth(ctx) {
+    if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null
+    if (!ctx.host.fs || typeof ctx.host.fs.readText !== "function") return null
+    let path = null
+    try {
+      path = ctx.host.env.get(MANAGED_AUTH_ENV)
+    } catch (e) {
+      ctx.host.log.warn(MANAGED_AUTH_ENV + " read failed: " + String(e))
+      return null
+    }
+    if (typeof path !== "string" || !path.trim()) return null
+    path = path.trim()
+    try {
+      const text = ctx.host.fs.readText(path)
+      const parsed = ctx.util.tryParseJson(text)
+      if (!parsed || typeof parsed.accessToken !== "string" || !parsed.accessToken) {
+        ctx.host.log.warn("managed cursor auth file missing accessToken: " + path)
+        return null
+      }
+      return {
+        accessToken: parsed.accessToken,
+        refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : null,
+        source: "managed",
+        managedPath: path,
+      }
+    } catch (e) {
+      ctx.host.log.warn("managed cursor auth read failed for " + path + ": " + String(e))
+      return null
+    }
+  }
+
   function loadAuthState(ctx) {
+    const managed = readManagedAuth(ctx)
+    if (managed) {
+      ctx.host.log.info("using managed cursor account snapshot")
+      return managed
+    }
+
     const sqliteAccessToken = readStateValue(ctx, "cursorAuth/accessToken")
     const sqliteRefreshToken = readStateValue(ctx, "cursorAuth/refreshToken")
     const sqliteMembershipTypeRaw = readStateValue(ctx, "cursorAuth/stripeMembershipType")
@@ -722,7 +770,26 @@
     return subject || null
   }
 
-  function persistAccessToken(ctx, source, accessToken) {
+  function persistManagedAuth(ctx, managedPath, accessToken, refreshToken) {
+    // Read-only toward Cursor: keep the refreshed tokens in UsagePal's own
+    // snapshot file, never Cursor's state.vscdb or keychain.
+    if (!managedPath || !ctx.host.fs || typeof ctx.host.fs.writeText !== "function") return false
+    try {
+      const existing = ctx.util.tryParseJson(ctx.host.fs.readText(managedPath)) || {}
+      const next = { ...existing, accessToken }
+      if (typeof refreshToken === "string" && refreshToken) next.refreshToken = refreshToken
+      ctx.host.fs.writeText(managedPath, JSON.stringify(next))
+      return true
+    } catch (e) {
+      ctx.host.log.warn("managed cursor token persist failed for " + managedPath + ": " + String(e))
+      return false
+    }
+  }
+
+  function persistAccessToken(ctx, source, accessToken, managedPath) {
+    if (source === "managed") {
+      return persistManagedAuth(ctx, managedPath, accessToken, undefined)
+    }
     if (source === "keychain") {
       return writeKeychainValue(ctx, KEYCHAIN_ACCESS_TOKEN_SERVICE, accessToken)
     }
@@ -745,7 +812,14 @@
     })
   }
 
-  function refreshToken(ctx, refreshTokenValue, source) {
+  function refreshToken(ctx, refreshTokenValue, source, managedPath) {
+    if (source === "managed" && !MANAGED_REFRESH_ALLOWED) {
+      // Safe fallback: never rotate a managed account's tokens against the live
+      // endpoint. Probe renders last-known / stale data ("re-snapshot") instead.
+      ctx.host.log.info("managed cursor refresh disabled; staying read-only + stale")
+      return null
+    }
+
     if (!refreshTokenValue) {
       ctx.host.log.warn("refresh skipped: no refresh token")
       return null
@@ -800,7 +874,13 @@
       }
 
       // Persist updated access token to source where auth was loaded from.
-      persistAccessToken(ctx, source, newAccessToken)
+      // For managed accounts, also capture any rotated refresh token so the
+      // UsagePal snapshot never diverges from the server.
+      if (source === "managed") {
+        persistManagedAuth(ctx, managedPath, newAccessToken, body.refresh_token)
+      } else {
+        persistAccessToken(ctx, source, newAccessToken, managedPath)
+      }
       ctx.host.log.info("refresh succeeded, token persisted")
 
       // Note: Cursor refresh returns access_token which is used as both
@@ -968,6 +1048,7 @@
     let accessToken = authState.accessToken
     const refreshTokenValue = authState.refreshToken
     const authSource = authState.source
+    const managedPath = authState.managedPath
 
     if (!accessToken && !refreshTokenValue) {
       ctx.host.log.error("probe failed: no access or refresh token in sqlite/keychain")
@@ -983,7 +1064,7 @@
       ctx.host.log.info("token needs refresh (expired or expiring soon)")
       let refreshed = null
       try {
-        refreshed = refreshToken(ctx, refreshTokenValue, authSource)
+        refreshed = refreshToken(ctx, refreshTokenValue, authSource, managedPath)
       } catch (e) {
         // If refresh fails but we have an access token, try it anyway
         ctx.host.log.warn("refresh failed but have access token, will try: " + String(e))
@@ -1015,7 +1096,7 @@
         refresh: () => {
           ctx.host.log.info("usage returned 401, attempting refresh")
           didRefresh = true
-          const refreshed = refreshToken(ctx, refreshTokenValue, authSource)
+          const refreshed = refreshToken(ctx, refreshTokenValue, authSource, managedPath)
           if (refreshed) accessToken = refreshed
           return refreshed
         },

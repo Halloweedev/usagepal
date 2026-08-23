@@ -1,7 +1,13 @@
 import { type ReactNode, useEffect, useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
+import { listen, type UnlistenFn } from "@tauri-apps/api/event"
 import { Button } from "@/components/ui/button"
 import type { AccountAdded, CodexLoginStarted } from "@/bindings"
+import { emitAccountsChanged } from "@/hooks/app/use-accounts"
+import { loadAccounts, saveAccounts, upsertAccount } from "@/lib/settings"
+
+/** Providers that support multiple accounts (and therefore an add flow). */
+export const ADD_ACCOUNT_PROVIDERS = ["claude", "codex", "cursor", "opencode-go"]
 
 /** Metadata handed back to the parent so it can persist label + id in settings.json. */
 export type SavedAccount = { accountId: string; label: string }
@@ -147,16 +153,22 @@ export function AddClaudeAccountDialog({
   )
 }
 
-/** Add a Codex account via a managed `codex login` into a UsagePal-owned profile. */
+/** Add a Codex account via a managed `codex login` into a UsagePal-owned profile.
+ *
+ * The account is finalized in the backend (it watches the staging dir and emits
+ * `codex:login-complete` once `codex login` writes auth.json), and persisted by
+ * the always-mounted `useAccounts` listener — so the flow completes even though
+ * the tray panel hides the instant the browser takes focus. This dialog only
+ * kicks it off and reflects progress; `onSaved` is intentionally unused here. */
 export function AddCodexAccountDialog({
   onClose,
-  onSaved,
+  onSaved: _onSaved,
 }: {
   onClose: () => void
   onSaved: (providerId: string, account: SavedAccount) => void
 }) {
   const [label, setLabel] = useState("")
-  const [stagingId, setStagingId] = useState<string | null>(null)
+  const [waiting, setWaiting] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -165,8 +177,8 @@ export function AddCodexAccountDialog({
     setBusy(true)
     setError(null)
     try {
-      const started = await invoke<CodexLoginStarted>("begin_codex_login")
-      setStagingId(started.stagingId)
+      await invoke<CodexLoginStarted>("begin_codex_login", { label: label.trim() })
+      setWaiting(true)
     } catch (e) {
       setError(String(e))
     } finally {
@@ -174,35 +186,43 @@ export function AddCodexAccountDialog({
     }
   }
 
-  const handleFinish = async () => {
-    if (busy || !stagingId) return
-    setBusy(true)
-    setError(null)
-    try {
-      const result = await invoke<AccountAdded>("finish_codex_login", { stagingId })
-      onSaved("codex", { accountId: result.accountId, label: label.trim() })
-    } catch (e) {
-      setError(String(e))
-      setBusy(false)
+  // Once a login is in flight, close on success and surface a timeout/error.
+  useEffect(() => {
+    if (!waiting) return
+    let unlistenDone: UnlistenFn | undefined
+    let unlistenFail: UnlistenFn | undefined
+    void listen("codex:login-complete", () => onClose()).then((fn) => {
+      unlistenDone = fn
+    })
+    void listen<{ message: string }>("codex:login-failed", (event) => {
+      setError(event.payload.message)
+      setWaiting(false)
+    }).then((fn) => {
+      unlistenFail = fn
+    })
+    return () => {
+      unlistenDone?.()
+      unlistenFail?.()
     }
-  }
+  }, [waiting, onClose])
 
   return (
     <DialogShell title="Add Codex Account" onClose={onClose}>
       <p className="text-sm text-muted-foreground mb-3">
-        Sign in with Codex — a browser window opens. Finish there, then confirm below.
+        {waiting
+          ? "A browser window opened — finish signing in there. UsagePal adds the account automatically, so you can leave this open."
+          : "Sign in with Codex — a browser window opens. UsagePal adds the account once you finish, no need to come back and confirm."}
       </p>
-      <LabelInput value={label} onChange={setLabel} disabled={busy} />
+      <LabelInput value={label} onChange={setLabel} disabled={busy || waiting} />
+      {waiting && !error && (
+        <p className="text-xs text-muted-foreground mt-2">Waiting for the Codex sign-in to finish…</p>
+      )}
       {error && <p className="text-xs text-destructive mt-2">{error}</p>}
       <div className="flex items-center justify-end gap-2 mt-4">
         <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
-          Cancel
+          {waiting ? "Close" : "Cancel"}
         </Button>
-        {stagingId ? (
-          <Button variant="default" size="sm" disabled={busy} onClick={() => void handleFinish()}>
-            I&apos;ve finished signing in
-          </Button>
-        ) : (
+        {!waiting && (
           <Button variant="default" size="sm" disabled={busy} onClick={() => void handleBegin()}>
             Sign in with Codex
           </Button>
@@ -254,4 +274,109 @@ export function AddCursorAccountDialog({
       </div>
     </DialogShell>
   )
+}
+
+/** Add an OpenCode Go account from an API key. */
+export function AddOpenCodeGoAccountDialog({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void
+  onSaved: (providerId: string, account: SavedAccount) => void
+}) {
+  const [label, setLabel] = useState("")
+  const [apiKey, setApiKey] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSave = async () => {
+    const trimmedKey = apiKey.trim()
+    if (!trimmedKey || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await invoke<AccountAdded>("save_opencode_go_account", {
+        label: label.trim(),
+        apiKey: trimmedKey,
+      })
+      onSaved("opencode-go", { accountId: result.accountId, label: label.trim() })
+    } catch (e) {
+      setError(String(e))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <DialogShell title="Add OpenCode Go Account" onClose={onClose}>
+      <p className="text-sm text-muted-foreground mb-3">
+        Paste an OpenCode Go API key to track this account.
+      </p>
+      <div className="space-y-2">
+        <LabelInput value={label} onChange={setLabel} disabled={busy} />
+        <input
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="OpenCode Go API key"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void handleSave()
+          }}
+          disabled={busy}
+          className={inputClass}
+          aria-label="API key"
+        />
+      </div>
+      {error && <p className="text-xs text-destructive mt-2">{error}</p>}
+      <div className="flex items-center justify-end gap-2 mt-4">
+        <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="default"
+          size="sm"
+          disabled={busy || apiKey.trim().length === 0}
+          onClick={() => void handleSave()}
+        >
+          Add account
+        </Button>
+      </div>
+    </DialogShell>
+  )
+}
+
+/**
+ * Renders the right add-account dialog for `providerId` and persists the account
+ * metadata on save, then broadcasts the change so every mounted `useAccounts`
+ * (card view included) reloads. Lets the add flow be launched straight from a
+ * provider card instead of only from deep inside Settings. Codex finalizes via
+ * its native `codex:login-complete` event, so its `onSaved` is a no-op here. */
+export function AddAccountDialogHost({
+  providerId,
+  onClose,
+}: {
+  providerId: string
+  onClose: () => void
+}) {
+  const handleSaved = async (savedProvider: string, account: SavedAccount) => {
+    const current = await loadAccounts()
+    await saveAccounts(
+      upsertAccount(current, savedProvider, {
+        accountId: account.accountId,
+        label: account.label,
+        order: current[savedProvider]?.length ?? 0,
+      })
+    )
+    emitAccountsChanged({ added: true, providerId: savedProvider, accountId: account.accountId })
+    onClose()
+  }
+  const onSaved = (p: string, a: SavedAccount) => void handleSaved(p, a)
+
+  if (providerId === "claude") return <AddClaudeAccountDialog onClose={onClose} onSaved={onSaved} />
+  if (providerId === "codex") return <AddCodexAccountDialog onClose={onClose} onSaved={onSaved} />
+  if (providerId === "cursor") return <AddCursorAccountDialog onClose={onClose} onSaved={onSaved} />
+  if (providerId === "opencode-go")
+    return <AddOpenCodeGoAccountDialog onClose={onClose} onSaved={onSaved} />
+  return null
 }

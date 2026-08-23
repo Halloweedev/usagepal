@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use tauri::Emitter;
 
 /// Account metadata as persisted by the frontend under settings.json "accounts".
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -26,15 +27,19 @@ struct AccountsSettingsFile {
     accounts: Option<HashMap<String, Vec<AccountMeta>>>,
 }
 
+pub(crate) fn parse_settings_accounts(text: &str) -> HashMap<String, Vec<AccountMeta>> {
+    let Ok(parsed) = serde_json::from_str::<AccountsSettingsFile>(text) else {
+        return HashMap::new();
+    };
+    parsed.accounts.unwrap_or_default()
+}
+
 pub(crate) fn read_settings_accounts(app_data_dir: &Path) -> HashMap<String, Vec<AccountMeta>> {
     let path = app_data_dir.join("settings.json");
     let Ok(text) = std::fs::read_to_string(path) else {
         return HashMap::new();
     };
-    let Ok(parsed) = serde_json::from_str::<AccountsSettingsFile>(&text) else {
-        return HashMap::new();
-    };
-    parsed.accounts.unwrap_or_default()
+    parse_settings_accounts(&text)
 }
 
 fn config_accounts_dir(provider_id: &str) -> Option<PathBuf> {
@@ -47,6 +52,10 @@ fn claude_secret_path(account_id: &str) -> Option<PathBuf> {
 
 fn cursor_secret_path(account_id: &str) -> Option<PathBuf> {
     config_accounts_dir("cursor").map(|d| d.join(format!("{account_id}.json")))
+}
+
+fn opencode_go_secret_path(account_id: &str) -> Option<PathBuf> {
+    config_accounts_dir("opencode-go").map(|d| d.join(format!("{account_id}.json")))
 }
 
 pub(crate) fn codex_profile_dir(app_data_dir: &Path, account_id: &str) -> PathBuf {
@@ -86,15 +95,34 @@ fn resolve_env_overrides(
     let mut env = HashMap::new();
     match provider_id {
         "claude" => {
-            let token = read_json_string_field(&claude_secret_path(account_id)?, "setupToken")?;
-            env.insert("CLAUDE_CODE_OAUTH_TOKEN".to_string(), token);
+            let secret_path = claude_secret_path(account_id)?;
+            let token = read_json_string_field(&secret_path, "setupToken")?;
+            // The account that is the current local Claude login probes like the
+            // default (local credentials → full live usage + real local spend).
+            // Others use the inference-only setup token and are flagged as having
+            // no local logs, so they never show the default login's spend.
+            let stored_identity = read_json_string_field(&secret_path, "localIdentity");
+            for (k, v) in
+                claude_account_env(&token, stored_identity.as_deref(), claude_local_identity().as_deref())
+            {
+                env.insert(k, v);
+            }
         }
         "codex" => {
             let dir = codex_profile_dir(app_data_dir, account_id);
             if !dir.join("auth.json").exists() {
                 return None;
             }
+            // Auth/API probe reads the managed profile.
             env.insert("CODEX_HOME".to_string(), dir.to_string_lossy().to_string());
+            // Spend (ccusage) reads the *real* local home, but only for the
+            // account that is the current local CLI login — its session logs live
+            // there, not in the managed profile. Others get no local logs.
+            let real_home = codex_real_home();
+            let real_home_id = codex_real_home_account_id(real_home.as_deref());
+            for (k, v) in codex_spend_env(account_id, real_home.as_deref(), real_home_id.as_deref()) {
+                env.insert(k, v);
+            }
         }
         "cursor" => {
             let path = cursor_secret_path(account_id)?;
@@ -105,6 +133,22 @@ fn resolve_env_overrides(
                 "USAGEPAL_CURSOR_AUTH_FILE".to_string(),
                 path.to_string_lossy().to_string(),
             );
+        }
+        "opencode-go" => {
+            let path = opencode_go_secret_path(account_id)?;
+            let api_key = read_json_string_field(&path, "apiKey")?;
+            // A per-account key wins over the shared Settings key / OpenCode
+            // auth / ambient OPENCODE_API_KEY so each card reports its own usage.
+            env.insert(
+                "USAGEPAL_OPENCODE_GO_API_KEY".to_string(),
+                api_key.clone(),
+            );
+            // Local spend (opencode.db) is machine-wide, so only the account
+            // whose key matches the local CLI login may read it; others get the
+            // no-local-logs flag and render "—" rows.
+            for (k, v) in opencode_go_spend_env(&api_key, opencode_go_local_login_key().as_deref()) {
+                env.insert(k, v);
+            }
         }
         _ => return None,
     }
@@ -157,7 +201,33 @@ pub fn save_claude_account(label: String, setup_token: String) -> Result<Account
         std::fs::create_dir_all(dir)
             .map_err(|e| format!("Couldn't create the accounts directory: {e}"))?;
     }
-    write_private_file(&path, &serde_json::json!({ "setupToken": token }).to_string())
+    // Snapshot the current local Claude login so this account can later be
+    // recognised as the local login and show its real `~/.claude` spend. Opaque
+    // setup-tokens carry no identity, so add-time capture is the only signal.
+    let secret = match claude_local_identity() {
+        Some(identity) => serde_json::json!({ "setupToken": token, "localIdentity": identity }),
+        None => serde_json::json!({ "setupToken": token }),
+    };
+    write_private_file(&path, &secret.to_string())
+        .map_err(|e| format!("Couldn't save the account: {e}"))?;
+    Ok(AccountAdded { account_id })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn save_opencode_go_account(label: String, api_key: String) -> Result<AccountAdded, String> {
+    let key = api_key.trim();
+    if key.is_empty() {
+        return Err("API key is empty.".to_string());
+    }
+    let _ = label; // label is persisted by the frontend in settings.json
+    let account_id = uuid::Uuid::new_v4().to_string();
+    let path = opencode_go_secret_path(&account_id).ok_or("No home directory available.")?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("Couldn't create the accounts directory: {e}"))?;
+    }
+    write_private_file(&path, &serde_json::json!({ "apiKey": key }).to_string())
         .map_err(|e| format!("Couldn't save the account: {e}"))?;
     Ok(AccountAdded { account_id })
 }
@@ -236,6 +306,108 @@ fn extract_codex_account_id(auth_json_text: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// The user's real Codex home (where the CLI writes session logs): `$CODEX_HOME`
+/// if the app inherited one, else `~/.codex`. Distinct from a per-account managed
+/// profile dir under the app-data folder.
+fn codex_real_home() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("CODEX_HOME") {
+        let trimmed = dir.trim();
+        if !trimmed.is_empty() {
+            return Some(PathBuf::from(trimmed));
+        }
+    }
+    dirs::home_dir().map(|home| home.join(".codex"))
+}
+
+/// The ChatGPT `account_id` currently signed in to the real Codex home, if any.
+fn codex_real_home_account_id(real_home: Option<&Path>) -> Option<String> {
+    let text = std::fs::read_to_string(real_home?.join("auth.json")).ok()?;
+    extract_codex_account_id(&text)
+}
+
+/// Identity of the account currently signed in to the local Claude CLI, read
+/// from `~/.claude.json`'s `oauthAccount` — the stable `accountUuid`, falling
+/// back to `emailAddress`. Used to decide which registered account is the local
+/// login (Claude setup-tokens are opaque and carry no identity of their own).
+fn claude_local_identity() -> Option<String> {
+    let path = dirs::home_dir()?.join(".claude.json");
+    let text = std::fs::read_to_string(&path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let oauth = value.get("oauthAccount")?;
+    oauth
+        .get("accountUuid")
+        .and_then(|v| v.as_str())
+        .or_else(|| oauth.get("emailAddress").and_then(|v| v.as_str()))
+        .map(str::to_string)
+}
+
+/// Env for a registered Claude account. When its captured identity matches the
+/// current local login, return an empty map so it probes exactly like the
+/// default account (local credentials → full usage + real spend). Otherwise use
+/// the inference-only setup token and flag local logs unavailable, so it never
+/// shows another login's `~/.claude` spend.
+fn claude_account_env(
+    token: &str,
+    stored_identity: Option<&str>,
+    local_identity: Option<&str>,
+) -> HashMap<String, String> {
+    let matched = matches!((stored_identity, local_identity), (Some(s), Some(l)) if s == l);
+    let mut env = HashMap::new();
+    if !matched {
+        env.insert("CLAUDE_CODE_OAUTH_TOKEN".to_string(), token.to_string());
+        env.insert("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string());
+    }
+    env
+}
+
+/// Extra env for a Codex account's spend (ccusage) source. Local session logs are
+/// not account-tagged, so only the account matching the current local login can
+/// read real spend (from `real_home`); every other registered account is flagged
+/// as having no local logs so the plugin shows a "no local data" state instead of
+/// a misleading $0 or another account's spend.
+fn codex_spend_env(
+    account_id: &str,
+    real_home: Option<&Path>,
+    real_home_account_id: Option<&str>,
+) -> Vec<(String, String)> {
+    match (real_home, real_home_account_id) {
+        (Some(home), Some(real_id)) if real_id == account_id => vec![(
+            "CODEX_CCUSAGE_HOME".to_string(),
+            home.to_string_lossy().to_string(),
+        )],
+        _ => vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())],
+    }
+}
+
+/// The API key currently signed in to the local OpenCode CLI, if any. Read from
+/// `~/.local/share/opencode/auth.json`'s `opencode-go.key` field — the same
+/// field the plugin's `loadApiKey` reads for the default (unregistered) probe.
+fn opencode_go_local_login_key() -> Option<String> {
+    let path = dirs::home_dir()?.join(".local/share/opencode/auth.json");
+    let text = std::fs::read_to_string(&path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    value
+        .get("opencode-go")?
+        .get("key")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+/// Extra env for an OpenCode Go account's local spend source. The local
+/// `opencode.db` is machine-wide with no per-key attribution, so only the
+/// account whose API key matches the current local CLI login can read real
+/// spend; every other registered account is flagged as having no local logs so
+/// the plugin shows a "no local data" state instead of another login's spend.
+fn opencode_go_spend_env(
+    account_key: &str,
+    real_login_key: Option<&str>,
+) -> Vec<(String, String)> {
+    match real_login_key {
+        Some(real_key) if real_key == account_key => vec![],
+        _ => vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())],
+    }
+}
+
 fn codex_staging_dir(app_data_dir: &Path, staging_id: &str) -> PathBuf {
     app_data_dir
         .join("accounts")
@@ -244,10 +416,50 @@ fn codex_staging_dir(app_data_dir: &Path, staging_id: &str) -> PathBuf {
         .join(staging_id)
 }
 
+/// Event payload emitted when a Codex login finishes on its own (the watcher
+/// below), so the UI completes without a button the tray panel would hide.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexLoginComplete {
+    account_id: String,
+    label: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexLoginFailed {
+    message: String,
+}
+
+/// Move a completed staging login into its final per-account profile dir and
+/// return the resolved account id. Shared by the auto-watcher and the manual
+/// `finish_codex_login` fallback.
+fn finalize_codex_login(app_data_dir: &Path, staging_id: &str) -> Result<String, String> {
+    let staging = codex_staging_dir(app_data_dir, staging_id);
+    let auth_path = staging.join("auth.json");
+    let text = std::fs::read_to_string(&auth_path)
+        .map_err(|_| "No Codex login found yet. Finish signing in, then try again.".to_string())?;
+    let account_id =
+        extract_codex_account_id(&text).ok_or("Codex auth.json had no account_id.")?;
+
+    let final_dir = codex_profile_dir(app_data_dir, &account_id);
+    if final_dir.exists() {
+        std::fs::remove_dir_all(&final_dir).ok(); // re-adding the same account overwrites
+    }
+    if let Some(parent) = final_dir.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Couldn't create dir: {e}"))?;
+    }
+    std::fs::rename(&staging, &final_dir)
+        .map_err(|e| format!("Couldn't finalize the profile: {e}"))?;
+    Ok(account_id)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn begin_codex_login(
+    app: tauri::AppHandle,
     state: tauri::State<'_, std::sync::Mutex<crate::AppState>>,
+    label: String,
 ) -> Result<CodexLoginStarted, String> {
     let app_data_dir = state.lock().map_err(|e| e.to_string())?.app_data_dir.clone();
     let staging_id = uuid::Uuid::new_v4().to_string();
@@ -255,14 +467,65 @@ pub fn begin_codex_login(
     std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't create the profile dir: {e}"))?;
 
     // Detached, interactive login into the managed CODEX_HOME (opens a browser).
+    // A Finder/Dock launch inherits a minimal PATH (no Homebrew/npm), so resolve
+    // the user's real login-shell PATH the way the usage plugins do — otherwise
+    // `codex` isn't found even when it's installed.
     #[cfg(target_os = "macos")]
-    std::process::Command::new("codex")
-        .arg("login")
-        .env("CODEX_HOME", &dir)
-        .spawn()
-        .map_err(|_| {
-            "Couldn't launch `codex`. Is the Codex CLI installed and on PATH?".to_string()
+    {
+        let mut cmd = std::process::Command::new("codex");
+        cmd.arg("login").env("CODEX_HOME", &dir);
+        if let Some(path) = crate::plugin_engine::host_api::read_env_from_interactive_shells("PATH")
+        {
+            cmd.env("PATH", path);
+        }
+        cmd.spawn().map_err(|_| {
+            "Couldn't launch `codex`. Is the Codex CLI installed? (npm i -g @openai/codex)"
+                .to_string()
         })?;
+    }
+
+    // Watch the staging dir and finalize on our own, so completion never depends
+    // on the tray panel staying open (it hides the moment the browser takes
+    // focus). Emits `codex:login-complete` / `codex:login-failed` for the UI.
+    let watch_dir = app_data_dir.clone();
+    let watch_staging = staging_id.clone();
+    std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let auth = codex_staging_dir(&watch_dir, &watch_staging).join("auth.json");
+            // Only act once auth.json exists AND carries an account_id — codex may
+            // create the file a moment before it finishes writing the tokens.
+            if auth.exists()
+                && std::fs::read_to_string(&auth)
+                    .ok()
+                    .and_then(|t| extract_codex_account_id(&t))
+                    .is_some()
+            {
+                match finalize_codex_login(&watch_dir, &watch_staging) {
+                    Ok(account_id) => {
+                        let _ = app.emit(
+                            "codex:login-complete",
+                            CodexLoginComplete { account_id, label },
+                        );
+                    }
+                    Err(message) => {
+                        let _ = app.emit("codex:login-failed", CodexLoginFailed { message });
+                    }
+                }
+                return;
+            }
+            if std::time::Instant::now() >= deadline {
+                let _ = app.emit(
+                    "codex:login-failed",
+                    CodexLoginFailed {
+                        message: "Timed out waiting for the Codex sign-in to finish.".to_string(),
+                    },
+                );
+                return;
+            }
+        }
+    });
 
     Ok(CodexLoginStarted { staging_id })
 }
@@ -274,22 +537,7 @@ pub fn finish_codex_login(
     staging_id: String,
 ) -> Result<AccountAdded, String> {
     let app_data_dir = state.lock().map_err(|e| e.to_string())?.app_data_dir.clone();
-    let staging = codex_staging_dir(&app_data_dir, &staging_id);
-    let auth_path = staging.join("auth.json");
-    let text = std::fs::read_to_string(&auth_path)
-        .map_err(|_| "No Codex login found yet. Finish signing in, then try again.".to_string())?;
-    let account_id =
-        extract_codex_account_id(&text).ok_or("Codex auth.json had no account_id.")?;
-
-    let final_dir = codex_profile_dir(&app_data_dir, &account_id);
-    if final_dir.exists() {
-        std::fs::remove_dir_all(&final_dir).ok(); // re-adding the same account overwrites
-    }
-    if let Some(parent) = final_dir.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("Couldn't create dir: {e}"))?;
-    }
-    std::fs::rename(&staging, &final_dir)
-        .map_err(|e| format!("Couldn't finalize the profile: {e}"))?;
+    let account_id = finalize_codex_login(&app_data_dir, &staging_id)?;
     Ok(AccountAdded { account_id })
 }
 
@@ -306,11 +554,11 @@ fn delete_account_secret(
                     .map_err(|e| format!("Couldn't remove profile: {e}"))?;
             }
         }
-        "claude" | "cursor" => {
-            let path = if provider_id == "claude" {
-                claude_secret_path(account_id)
-            } else {
-                cursor_secret_path(account_id)
+        "claude" | "cursor" | "opencode-go" => {
+            let path = match provider_id {
+                "claude" => claude_secret_path(account_id),
+                "cursor" => cursor_secret_path(account_id),
+                _ => opencode_go_secret_path(account_id),
             }
             .ok_or("No home directory available.")?;
             if path.exists() {
@@ -410,6 +658,18 @@ mod tests {
     }
 
     #[test]
+    fn opencode_go_secret_roundtrips_api_key() {
+        let dir = tmp_dir("opencode-go-secret");
+        let path = dir.join("acc.json");
+        write_private_file(&path, &serde_json::json!({ "apiKey": "opck-abc123" }).to_string())
+            .unwrap();
+        assert_eq!(
+            read_json_string_field(&path, "apiKey").as_deref(),
+            Some("opck-abc123")
+        );
+    }
+
+    #[test]
     fn decode_jwt_sub_extracts_subject() {
         use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
         let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"HS256","typ":"JWT"}"#);
@@ -434,6 +694,145 @@ mod tests {
     fn extract_codex_account_id_none_when_absent() {
         assert_eq!(extract_codex_account_id(r#"{"tokens":{}}"#), None);
         assert_eq!(extract_codex_account_id("garbage"), None);
+    }
+
+    #[test]
+    fn codex_spend_env_points_ccusage_at_real_home_for_the_local_login() {
+        let home = PathBuf::from("/Users/x/.codex");
+        let env = codex_spend_env("acct_1", Some(&home), Some("acct_1"));
+        assert_eq!(
+            env,
+            vec![(
+                "CODEX_CCUSAGE_HOME".to_string(),
+                "/Users/x/.codex".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn claude_account_env_is_empty_for_the_matching_local_login() {
+        // Matched → no overrides → probes like the default (local creds).
+        let env = claude_account_env("tok", Some("uuid-1"), Some("uuid-1"));
+        assert!(env.is_empty());
+    }
+
+    #[test]
+    fn claude_account_env_uses_token_and_flag_for_other_accounts() {
+        let env = claude_account_env("tok", Some("uuid-1"), Some("uuid-2"));
+        assert_eq!(env.get("CLAUDE_CODE_OAUTH_TOKEN").map(String::as_str), Some("tok"));
+        assert_eq!(
+            env.get("USAGEPAL_LOCAL_LOGS_UNAVAILABLE").map(String::as_str),
+            Some("1")
+        );
+        // No captured identity, or no local login → not matched (honest default).
+        assert!(!claude_account_env("tok", None, Some("uuid-2")).is_empty());
+        assert!(!claude_account_env("tok", Some("uuid-1"), None).is_empty());
+    }
+
+    #[test]
+    fn codex_spend_env_flags_no_local_logs_for_other_accounts() {
+        let home = PathBuf::from("/Users/x/.codex");
+        // A different account is signed in locally.
+        let env = codex_spend_env("acct_2", Some(&home), Some("acct_1"));
+        assert_eq!(
+            env,
+            vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())]
+        );
+        // No local login at all.
+        let env = codex_spend_env("acct_2", Some(&home), None);
+        assert_eq!(
+            env,
+            vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())]
+        );
+    }
+
+    #[test]
+    fn opencode_go_spend_env_is_empty_for_the_matching_local_login() {
+        // Matched key → no overrides → the plugin reads the local database.
+        let env = opencode_go_spend_env("go-key-1", Some("go-key-1"));
+        assert!(env.is_empty());
+    }
+
+    #[test]
+    fn opencode_go_spend_env_flags_no_local_logs_for_other_accounts() {
+        // A different key is signed in locally.
+        let env = opencode_go_spend_env("go-key-2", Some("go-key-1"));
+        assert_eq!(
+            env,
+            vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())]
+        );
+        // No local login at all.
+        let env = opencode_go_spend_env("go-key-2", None);
+        assert_eq!(
+            env,
+            vec![("USAGEPAL_LOCAL_LOGS_UNAVAILABLE".to_string(), "1".to_string())]
+        );
+    }
+
+    #[test]
+    fn opencode_go_local_login_key_reads_nested_auth_field() {
+        let dir = tmp_dir("opencode-auth");
+        let auth = dir.join(".local/share/opencode/auth.json");
+        fs::create_dir_all(auth.parent().unwrap()).unwrap();
+        fs::write(
+            &auth,
+            r#"{"opencode-go":{"type":"api","key":"go-key-1"},"other":{"key":"nope"}}"#,
+        )
+        .unwrap();
+
+        // Point the helper at the temp file by overriding HOME.
+        let original_home = std::env::var_os("HOME");
+        unsafe { std::env::set_var("HOME", &dir) };
+        let key = opencode_go_local_login_key();
+        if let Some(home) = original_home {
+            unsafe { std::env::set_var("HOME", home) };
+        } else {
+            unsafe { std::env::remove_var("HOME") };
+        }
+
+        assert_eq!(key, Some("go-key-1".to_string()));
+    }
+
+    #[test]
+    fn opencode_go_local_login_key_none_when_absent() {
+        let dir = tmp_dir("opencode-auth-missing");
+        let original_home = std::env::var_os("HOME");
+        unsafe { std::env::set_var("HOME", &dir) };
+        let key = opencode_go_local_login_key();
+        if let Some(home) = original_home {
+            unsafe { std::env::set_var("HOME", home) };
+        } else {
+            unsafe { std::env::remove_var("HOME") };
+        }
+
+        assert_eq!(key, None);
+    }
+
+    #[test]
+    fn finalize_codex_login_moves_staging_into_profile_dir() {
+        let app_data = tmp_dir("finalize");
+        let staging_id = "stg-1";
+        let staging = codex_staging_dir(&app_data, staging_id);
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(
+            staging.join("auth.json"),
+            r#"{"tokens":{"account_id":"acct_final"}}"#,
+        )
+        .unwrap();
+
+        let account_id = finalize_codex_login(&app_data, staging_id).unwrap();
+        assert_eq!(account_id, "acct_final");
+
+        // Staging is consumed; the profile dir now holds the auth.json.
+        assert!(!staging.exists());
+        let profile = codex_profile_dir(&app_data, "acct_final");
+        assert!(profile.join("auth.json").exists());
+    }
+
+    #[test]
+    fn finalize_codex_login_errors_when_login_not_finished() {
+        let app_data = tmp_dir("finalize-missing");
+        assert!(finalize_codex_login(&app_data, "never-started").is_err());
     }
 
     #[test]

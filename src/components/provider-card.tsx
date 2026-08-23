@@ -1,5 +1,5 @@
-import { Fragment, useMemo } from "react"
-import { ArrowSquareOut, ArrowsClockwise, Fire, Hourglass, WarningCircle } from "@phosphor-icons/react"
+import { Fragment, useMemo, useState } from "react"
+import { ArrowSquareOut, ArrowsClockwise, Fire, Hourglass, Plus, WarningCircle } from "@phosphor-icons/react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,8 @@ import { SkeletonLines } from "@/components/skeleton-lines"
 import { UsageSparkline } from "@/components/usage-sparkline"
 import { PluginError } from "@/components/plugin-error"
 import { ProviderIconMask } from "@/components/provider-icon-mask"
+import { useHorizontalSwipe } from "@/components/provider-card-swipe"
+import type { AccountSnapshot } from "@/hooks/app/group-provider-views"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { useDarkMode } from "@/hooks/use-dark-mode"
 import { getAdaptiveBarColor } from "@/lib/color"
@@ -58,6 +60,16 @@ interface ProviderCardProps {
   timeFormatMode?: TimeFormatMode
   onResetTimerDisplayModeToggle?: () => void
   onUsageValueToggle?: () => void
+  /** When provided, the card pages across these per-account snapshots: a dot per
+   * account, plus a "· label" suffix on the header. The active account's
+   * plan/lines/loading/error drive the body. >1 entry shows dots + swipe;
+   * 0 or 1 entry renders exactly as a single-account card. */
+  accounts?: AccountSnapshot[]
+  activeIndex?: number
+  onActiveIndexChange?: (index: number) => void
+  /** When set, a "＋" appears by the plan badge to add another account for this
+   * provider. Parents pass it only for account-capable providers. */
+  onAddAccount?: (providerId: string) => void
 }
 
 // "behind" (run out soon) renders a flame instead of a dot — see PaceIndicator.
@@ -123,18 +135,18 @@ function formatRelativeTime(diffMs: number): string {
 
 export function ProviderCard({
   name,
-  plan,
+  plan: propPlan,
   links = [],
   showSeparator = true,
   asCard = false,
   iconUrl,
   pluginId,
-  loading = false,
-  error = null,
-  lines = [],
+  loading: propLoading = false,
+  error: propError = null,
+  lines: propLines = [],
   skeletonLines = [],
-  lastManualRefreshAt,
-  lastUpdatedAt,
+  lastManualRefreshAt: propLastManualRefreshAt,
+  lastUpdatedAt: propLastUpdatedAt,
   onRetry,
   scopeFilter = "all",
   displayMode,
@@ -142,7 +154,36 @@ export function ProviderCard({
   timeFormatMode = "auto",
   onResetTimerDisplayModeToggle,
   onUsageValueToggle,
+  accounts,
+  activeIndex: controlledIndex,
+  onActiveIndexChange,
+  onAddAccount,
 }: ProviderCardProps) {
+  // Active account is card-local state unless the parent controls it. When
+  // `accounts` is provided, the active account's snapshot overrides the raw
+  // plan/lines/loading/error props so the render body below is unchanged.
+  const [localIndex, setLocalIndex] = useState(0)
+  const accountCount = accounts?.length ?? 0
+  const rawIndex = controlledIndex ?? localIndex
+  const activeIdx = accountCount > 0 ? Math.min(Math.max(rawIndex, 0), accountCount - 1) : 0
+  const activeAccount = accounts && accountCount > 0 ? accounts[activeIdx] : null
+
+  const setActive = (i: number) => {
+    if (onActiveIndexChange) onActiveIndexChange(i)
+    else setLocalIndex(i)
+  }
+
+  // Effective values: active account wins when accounts provided, else raw props.
+  const plan = activeAccount ? (activeAccount.data?.plan ?? undefined) : propPlan
+  const lines = activeAccount ? (activeAccount.data?.lines ?? []) : propLines
+  const loading = activeAccount ? activeAccount.loading : propLoading
+  const error = activeAccount ? activeAccount.error : propError
+  const lastUpdatedAt = activeAccount ? activeAccount.lastUpdatedAt : propLastUpdatedAt
+  const lastManualRefreshAt = activeAccount ? activeAccount.lastManualRefreshAt : propLastManualRefreshAt
+
+  const swipe = useHorizontalSwipe({ index: activeIdx, count: accountCount, onChange: setActive })
+  const showDots = accountCount > 1
+
   const isDark = useDarkMode()
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
@@ -235,20 +276,31 @@ export function ProviderCard({
   }
 
   return (
-    <div>
-      <div className={asCard ? "pb-1 pt-2" : "py-3"}>
+    <div
+      {...(showDots ? swipe.handlers : {})}
+      className={showDots ? "overflow-hidden" : undefined}
+      style={showDots ? { touchAction: "pan-y" } : undefined}
+    >
+      <div className={asCard ? "pb-1 pt-2" : "py-3"} style={showDots ? swipe.contentStyle : undefined}>
         <div className="flex items-center justify-between mb-2">
-          <div className="relative flex items-center">
+          <div className="relative flex min-w-0 flex-1 items-center">
             {asCard && iconUrl && (
               <ProviderIconMask
                 iconUrl={iconUrl}
                 pluginId={pluginId}
                 sizePx={18}
-                className="mr-1.5 text-muted-foreground"
+                className="mr-1.5 shrink-0 text-muted-foreground"
                 style={{ backgroundColor: "currentColor" }}
               />
             )}
-            <h2 className="text-lg font-semibold" style={{ transform: "translateZ(0)" }}>{name}</h2>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold leading-tight" style={{ transform: "translateZ(0)" }}>{name}</h2>
+              {showDots && activeAccount?.label && (
+                <span className="block truncate text-xs leading-tight text-muted-foreground" title={activeAccount.label}>
+                  {activeAccount.label}
+                </span>
+              )}
+            </div>
             {onRetry && (
               loading ? (
                 <Button
@@ -312,15 +364,50 @@ export function ProviderCard({
               )
             )}
           </div>
-          {plan && (
-            <Badge
-              variant="outline"
-              className="truncate min-w-0 max-w-[50%]"
-              title={plan}
-            >
-              {plan}
-            </Badge>
-          )}
+          <div className="flex min-w-0 max-w-[60%] shrink-0 items-center gap-2">
+            {showDots && (
+              <div
+                className="flex items-center gap-1"
+                role="tablist"
+                aria-label={`${name} accounts`}
+              >
+                {accounts!.map((acct, i) => (
+                  <button
+                    key={acct.accountId ?? i}
+                    type="button"
+                    role="tab"
+                    data-account-dot
+                    aria-selected={i === activeIdx}
+                    aria-label={acct.label ?? `Account ${i + 1}`}
+                    onClick={() => setActive(i)}
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full transition-colors",
+                      i === activeIdx ? "bg-foreground" : "bg-muted-foreground/40"
+                    )}
+                  />
+                ))}
+              </div>
+            )}
+            {onAddAccount && pluginId && (
+              <button
+                type="button"
+                aria-label={`Add ${name} account`}
+                onClick={() => onAddAccount(pluginId)}
+                className="flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <Plus className="h-2.5 w-2.5" weight="bold" />
+              </button>
+            )}
+            {plan && (
+              <Badge
+                variant="outline"
+                className="truncate min-w-0"
+                title={plan}
+              >
+                {plan}
+              </Badge>
+            )}
+          </div>
         </div>
         <div data-testid="provider-card-body" className={asCard ? "rounded-xl border p-3" : undefined}>
         {visibleLinks.length > 0 && (

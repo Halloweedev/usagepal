@@ -1,9 +1,20 @@
+import { ADD_ACCOUNT_PROVIDERS } from "@/components/add-account-dialog"
 import { ProviderCard } from "@/components/provider-card"
+import type { AccountSnapshot } from "@/hooks/app/group-provider-views"
 import type { PluginDisplayState } from "@/lib/plugin-types"
 import type { DisplayMode, ResetTimerDisplayMode, TimeFormatMode } from "@/lib/settings"
 
 interface ProviderDetailPageProps {
   plugin: PluginDisplayState | null
+  /** Ordered account snapshots for the selected provider — drives the paginated
+   * card. Falls back to `plugin`'s flat state when absent (single account). */
+  accounts?: AccountSnapshot[]
+  /** Index into `accounts` of the persisted selection (primary as fallback). */
+  activeIndex?: number
+  /** Persist the account this provider shows (card + tray follow it). */
+  onSelectAccount?: (providerId: string, accountId: string | null) => void
+  /** Open the add-account flow for this provider (shown only for capable ones). */
+  onAddAccount?: (providerId: string) => void
   onRetry?: () => void
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
@@ -14,6 +25,10 @@ interface ProviderDetailPageProps {
 
 export function ProviderDetailPage({
   plugin,
+  accounts,
+  activeIndex,
+  onSelectAccount,
+  onAddAccount,
   onRetry,
   displayMode,
   resetTimerDisplayMode,
@@ -32,15 +47,25 @@ export function ProviderDetailPage({
   return (
     <ProviderCard
       name={plugin.meta.name}
-      plan={plugin.data?.plan ?? undefined}
+      pluginId={plugin.meta.id}
       links={plugin.meta.links}
       showSeparator={false}
-      loading={plugin.loading}
-      error={plugin.error}
-      lines={plugin.data?.lines ?? []}
       skeletonLines={plugin.meta.lines}
-      lastManualRefreshAt={plugin.lastManualRefreshAt}
-      lastUpdatedAt={plugin.lastUpdatedAt}
+      accounts={accounts}
+      activeIndex={activeIndex}
+      onActiveIndexChange={
+        onSelectAccount
+          ? (i) => {
+              const accountId = accounts?.[i]?.accountId
+              if (accountId !== undefined) onSelectAccount(plugin.meta.id, accountId)
+            }
+          : undefined
+      }
+      onAddAccount={
+        onAddAccount && ADD_ACCOUNT_PROVIDERS.includes(plugin.meta.id)
+          ? onAddAccount
+          : undefined
+      }
       onRetry={onRetry}
       scopeFilter="all"
       displayMode={displayMode}

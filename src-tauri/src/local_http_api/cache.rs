@@ -302,13 +302,8 @@ struct PluginSettingsJson {
     disabled: Option<Vec<String>>,
 }
 
-fn read_plugin_settings(app_data_dir: &Path) -> (Vec<String>, HashSet<String>, bool) {
-    let path = app_data_dir.join(SETTINGS_FILE_NAME);
-    let data = match std::fs::read_to_string(&path) {
-        Ok(d) => d,
-        Err(_) => return (Vec::new(), HashSet::new(), false),
-    };
-    match serde_json::from_str::<SettingsFile>(&data) {
+fn parse_plugin_settings(data: &str) -> (Vec<String>, HashSet<String>, bool) {
+    match serde_json::from_str::<SettingsFile>(data) {
         Ok(sf) => {
             let ps = sf.plugins.unwrap_or(PluginSettingsJson {
                 order: None,
@@ -321,6 +316,14 @@ fn read_plugin_settings(app_data_dir: &Path) -> (Vec<String>, HashSet<String>, b
         }
         Err(_) => (Vec::new(), HashSet::new(), false),
     }
+}
+
+fn read_plugin_settings(app_data_dir: &Path) -> (Vec<String>, HashSet<String>, bool) {
+    let path = app_data_dir.join(SETTINGS_FILE_NAME);
+    let Ok(data) = std::fs::read_to_string(path) else {
+        return (Vec::new(), HashSet::new(), false);
+    };
+    parse_plugin_settings(&data)
 }
 
 /// Minimal struct for reading just the auto-update interval, isolated from
@@ -355,13 +358,13 @@ pub fn read_auto_update_interval_minutes(app_data_dir: &Path) -> u64 {
 /// unless explicitly disabled (or, with no stored settings, only detected
 /// plugins are enabled — detected means the provider's credentials/config were
 /// found on this machine).
-fn enabled_ids_for(
-    app_data_dir: &Path,
+fn enabled_ids_from_settings(
+    settings_order: &[String],
+    disabled: &HashSet<String>,
+    has_settings: bool,
     known_plugin_ids: &[String],
     detected_ids: &HashSet<String>,
 ) -> Vec<String> {
-    let (settings_order, disabled, has_settings) = read_plugin_settings(app_data_dir);
-
     let is_enabled = |id: &str| -> bool {
         if has_settings {
             !disabled.contains(id)
@@ -373,7 +376,7 @@ fn enabled_ids_for(
     // Build ordered plugin ids: settings order first, then remaining known ids.
     let mut ordered: Vec<String> = Vec::new();
     let mut seen = HashSet::new();
-    for id in &settings_order {
+    for id in settings_order {
         if seen.insert(id.clone()) {
             ordered.push(id.clone());
         }
@@ -385,6 +388,21 @@ fn enabled_ids_for(
     }
 
     ordered.into_iter().filter(|id| is_enabled(id)).collect()
+}
+
+fn enabled_ids_for(
+    app_data_dir: &Path,
+    known_plugin_ids: &[String],
+    detected_ids: &HashSet<String>,
+) -> Vec<String> {
+    let (settings_order, disabled, has_settings) = read_plugin_settings(app_data_dir);
+    enabled_ids_from_settings(
+        &settings_order,
+        &disabled,
+        has_settings,
+        known_plugin_ids,
+        detected_ids,
+    )
 }
 
 /// Public wrapper for the native scheduler to learn which plugins to probe.
@@ -407,10 +425,40 @@ pub fn enabled_usage_snapshots() -> Vec<CachedPluginSnapshot> {
 
 /// Build the ordered list of enabled cached snapshots for GET /v1/usage.
 pub(super) fn enabled_snapshots_ordered(state: &CacheState) -> Vec<CachedPluginSnapshot> {
-    enabled_ids_for(&state.app_data_dir, &state.known_plugin_ids, &state.detected_ids)
-        .into_iter()
-        .filter_map(|id| state.snapshots.get(&id).cloned())
-        .collect()
+    let settings = std::fs::read_to_string(state.app_data_dir.join(SETTINGS_FILE_NAME)).ok();
+    let (settings_order, disabled, has_settings) = settings
+        .as_deref()
+        .map(parse_plugin_settings)
+        .unwrap_or_else(|| (Vec::new(), HashSet::new(), false));
+    let mut accounts = settings
+        .as_deref()
+        .map(crate::accounts::parse_settings_accounts)
+        .unwrap_or_default();
+    let mut snapshots = Vec::new();
+
+    for provider_id in enabled_ids_from_settings(
+        &settings_order,
+        &disabled,
+        has_settings,
+        &state.known_plugin_ids,
+        &state.detected_ids,
+    ) {
+        if let Some(snapshot) = state.snapshots.get(&provider_id) {
+            snapshots.push(snapshot.clone());
+        }
+
+        if let Some(mut provider_accounts) = accounts.remove(&provider_id) {
+            provider_accounts.sort_by_key(|account| account.order);
+            snapshots.extend(provider_accounts.into_iter().filter_map(|account| {
+                state
+                    .snapshots
+                    .get(&cache_key(&provider_id, Some(&account.account_id)))
+                    .cloned()
+            }));
+        }
+    }
+
+    snapshots
 }
 
 #[cfg(test)]
@@ -510,6 +558,56 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn enabled_snapshots_include_each_configured_account_in_order() {
+        let dir = temp_dir("enabled-account-snapshots");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(SETTINGS_FILE_NAME),
+            r#"{
+                "plugins":{"order":["claude"],"disabled":[]},
+                "accounts":{"claude":[
+                    {"accountId":"home","label":"Home","order":1},
+                    {"accountId":"work","label":"Work","order":0}
+                ]}
+            }"#,
+        )
+        .unwrap();
+
+        let mut default = make_snapshot("claude", "Default");
+        default.account_id = None;
+        let mut work = make_snapshot("claude", "Work");
+        work.account_id = Some("work".to_string());
+        let mut home = make_snapshot("claude", "Home");
+        home.account_id = Some("home".to_string());
+        let mut removed = make_snapshot("claude", "Removed");
+        removed.account_id = Some("removed".to_string());
+
+        let state = CacheState {
+            snapshots: HashMap::from([
+                ("claude".to_string(), default),
+                ("claude::work".to_string(), work),
+                ("claude::home".to_string(), home),
+                ("claude::removed".to_string(), removed),
+            ]),
+            app_data_dir: dir.clone(),
+            known_plugin_ids: vec!["claude".to_string()],
+            detected_ids: HashSet::new(),
+            dirty_generation: 0,
+            flushed_generation: 0,
+            flush_scheduled: false,
+        };
+
+        let snapshots = enabled_snapshots_ordered(&state);
+        let account_ids: Vec<_> = snapshots
+            .iter()
+            .map(|snapshot| snapshot.account_id.as_deref())
+            .collect();
+        assert_eq!(account_ids, vec![None, Some("work"), Some("home")]);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

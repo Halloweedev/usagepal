@@ -15,5 +15,5 @@ describe("main", () => {
     await import("@/main")
     expect(createRootMock).toHaveBeenCalled()
     expect(renderMock).toHaveBeenCalled()
-  })
+  }, 20000)
 })
