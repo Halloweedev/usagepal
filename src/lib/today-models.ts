@@ -209,10 +209,14 @@ export function modelBreakdownDetailLines(
 export function buildModelUsage(plugins: TodayModelsSource[], period: UsagePeriod): TodayModelUsage {
   const { dollarField, providerLabel } = PERIOD[period]
   const models: TodayModelEntry[] = []
-  const providers: TodayProviderEntry[] = []
+  let providers: TodayProviderEntry[] = []
 
   for (const plugin of plugins) {
     if (!plugin.data) continue
+    // All accounts of a provider share one entry — the Overview shows
+    // combined stats ("all Codex in one"), not a slice per account.
+    const providerId = plugin.meta.id
+    const providerName = plugin.meta.name
     const base = {
       providerId: plugin.meta.id,
       providerName: plugin.meta.name,
@@ -274,8 +278,8 @@ export function buildModelUsage(plugins: TodayModelsSource[], period: UsagePerio
     if (providerTotal <= 0) continue
     models.push(...providerModels)
     providers.push({
-      id: plugin.meta.id,
-      name: plugin.meta.name,
+      id: providerId,
+      name: providerName,
       brandColor: plugin.meta.brandColor,
       todayCost: providerTotal,
       tokenCount: providerTokens,
@@ -284,6 +288,26 @@ export function buildModelUsage(plugins: TodayModelsSource[], period: UsagePerio
       models: providerModels,
     })
   }
+
+  // Multiple accounts of one provider each produce a provider entry; merge
+  // them into a single combined entry so the Overview shows one slice per
+  // provider with every account's spend folded in.
+  const mergedProviders = new Map<string, TodayProviderEntry>()
+  for (const provider of providers) {
+    const existing = mergedProviders.get(provider.id)
+    if (!existing) {
+      mergedProviders.set(provider.id, provider)
+      continue
+    }
+    existing.todayCost += provider.todayCost
+    existing.tokenCount =
+      existing.tokenCount != null || provider.tokenCount != null
+        ? (existing.tokenCount ?? 0) + (provider.tokenCount ?? 0)
+        : null
+    existing.models = mergeModelsByName([...existing.models, ...provider.models])
+    existing.models.sort((a, b) => b.todayCost - a.todayCost || a.name.localeCompare(b.name))
+  }
+  providers = [...mergedProviders.values()]
 
   models.sort((a, b) => b.todayCost - a.todayCost || a.name.localeCompare(b.name))
   providers.sort((a, b) => b.todayCost - a.todayCost || a.name.localeCompare(b.name))

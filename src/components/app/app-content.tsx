@@ -4,6 +4,7 @@ import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
 import { SharePage } from "@/pages/share"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
+import type { GroupedProviderView } from "@/hooks/app/group-provider-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
@@ -22,6 +23,7 @@ import type {
 
 type AppContentDerivedProps = {
   displayPlugins: DisplayPluginState[]
+  groupedPlugins: GroupedProviderView[]
   settingsPlugins: SettingsPluginState[]
   selectedPlugin: DisplayPluginState | null
 }
@@ -30,6 +32,8 @@ export type AppContentActionProps = {
   onRetryPlugin: (id: string) => void
   onReorder: (orderedIds: string[]) => void
   onToggle: (id: string) => void
+  onSelectAccount: (providerId: string, accountId: string | null) => void
+  onAddAccount: (providerId: string) => void
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void
   onThemeModeChange: (mode: ThemeMode) => void
   onDisplayModeChange: (mode: DisplayMode) => void
@@ -52,11 +56,14 @@ export type AppContentProps = AppContentDerivedProps & AppContentActionProps
 
 export function AppContent({
   displayPlugins,
+  groupedPlugins,
   settingsPlugins,
   selectedPlugin,
   onRetryPlugin,
   onReorder,
   onToggle,
+  onSelectAccount,
+  onAddAccount,
   onAutoUpdateIntervalChange,
   onThemeModeChange,
   onDisplayModeChange,
@@ -117,8 +124,10 @@ export function AppContent({
   if (activeView === "home") {
     return (
       <OverviewPage
-        plugins={displayPlugins}
+        groupedPlugins={groupedPlugins}
         onRetryPlugin={onRetryPlugin}
+        onSelectAccount={onSelectAccount}
+        onAddAccount={onAddAccount}
         displayMode={displayMode}
         resetTimerDisplayMode={resetTimerDisplayMode}
         timeFormatMode={timeFormatMode}
@@ -176,9 +185,17 @@ export function AppContent({
     ? () => onRetryPlugin(selectedPlugin.meta.id)
     : /* v8 ignore next */ undefined
 
+  const selectedGroup = selectedPlugin
+    ? groupedPlugins.find((group) => group.meta.id === selectedPlugin.meta.id)
+    : undefined
+
   return (
     <ProviderDetailPage
       plugin={selectedPlugin}
+      accounts={selectedGroup?.accounts}
+      activeIndex={selectedGroup?.activeIndex ?? 0}
+      onSelectAccount={onSelectAccount}
+      onAddAccount={onAddAccount}
       onRetry={handleRetry}
       displayMode={displayMode}
       resetTimerDisplayMode={resetTimerDisplayMode}

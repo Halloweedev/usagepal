@@ -246,7 +246,7 @@
 
   function tryAuth(ctx, auth) {
     const data = callCloud(ctx, auth)
-    if (data && data.__openusageAuthError) {
+    if (data && data.__usagepalAuthError) {
       return { authFailure: true }
     }
     if (!data || !data.userStatus) return {}
@@ -536,7 +536,7 @@
     return false
   }
 
-  globalThis.__openusage_plugin = {
+  globalThis.__usagepal_plugin = {
     id: "devin",
     probe: probe,
     __test: {

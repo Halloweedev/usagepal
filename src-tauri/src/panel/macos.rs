@@ -301,7 +301,7 @@ pub fn position_panel_at_tray_icon(
     let panel_width = match (window.outer_size(), window.scale_factor()) {
         (Ok(s), Ok(win_scale)) => s.width as f64 / win_scale,
         _ => {
-            let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+            let conf: serde_json::Value = serde_json::from_str(include_str!("../../tauri.conf.json"))
                 .expect("tauri.conf.json must be valid JSON");
             conf["app"]["windows"][0]["width"]
                 .as_f64()

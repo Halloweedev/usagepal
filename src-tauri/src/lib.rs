@@ -271,23 +271,36 @@ fn macos_bundle_path(exe: &std::path::Path) -> Option<std::path::PathBuf> {
 /// then `open`s the bundle, yielding a single clean instance. If the bundle
 /// path can't be resolved we fall back to a plain exit (matching the old
 /// failure mode rather than risking a stuck process).
+///
+/// `open -n` (new instance) is deliberate: right after this process dies,
+/// LaunchServices can still consider the bundle "running" and answer a plain
+/// `open` by doing nothing, so the app intermittently never comes back.
+/// Forcing a fresh instance sidesteps that race.
 #[tauri::command]
 #[specta::specta]
 fn relaunch_app(app_handle: tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     {
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(bundle) = macos_bundle_path(&exe) {
-                let pid = std::process::id();
-                let script = format!(
-                    "while /bin/kill -0 {pid} 2>/dev/null; do sleep 0.1; done; exec /usr/bin/open \"{}\"",
-                    bundle.display()
-                );
-                let _ = std::process::Command::new("/bin/sh")
-                    .arg("-c")
-                    .arg(script)
-                    .spawn();
-            }
+        match std::env::current_exe() {
+            Ok(exe) => match macos_bundle_path(&exe) {
+                Some(bundle) => {
+                    let pid = std::process::id();
+                    let script = format!(
+                        "while /bin/kill -0 {pid} 2>/dev/null; do sleep 0.1; done; exec /usr/bin/open -n \"{}\"",
+                        bundle.display()
+                    );
+                    match std::process::Command::new("/bin/sh")
+                        .arg("-c")
+                        .arg(script)
+                        .spawn()
+                    {
+                        Ok(_) => log::info!("relaunch scheduled for {}", bundle.display()),
+                        Err(error) => log::error!("failed to spawn relaunch helper: {error}"),
+                    }
+                }
+                None => log::warn!("relaunch skipped: no .app bundle for {exe:?}"),
+            },
+            Err(error) => log::warn!("relaunch skipped: could not resolve current exe: {error}"),
         }
     }
     app_handle.exit(0);
@@ -906,6 +919,7 @@ pub fn run() {
             opencode_go_key::save_opencode_go_key,
             opencode_go_key::clear_opencode_go_key,
             accounts::save_claude_account,
+            accounts::save_opencode_go_account,
             accounts::snapshot_cursor_account,
             accounts::begin_codex_login,
             accounts::finish_codex_login,
@@ -1133,6 +1147,7 @@ fn export_bindings() {
             opencode_go_key::save_opencode_go_key,
             opencode_go_key::clear_opencode_go_key,
             accounts::save_claude_account,
+            accounts::save_opencode_go_account,
             accounts::snapshot_cursor_account,
             accounts::begin_codex_login,
             accounts::finish_codex_login,
@@ -1227,8 +1242,8 @@ mod tests {
         let registry = AccountRegistry(map);
 
         let units = expand_probe_units(&plugins, &registry);
-        // claude → 2 accounts, codex → 1 default = 3 probe units
-        assert_eq!(units.len(), 3);
+        // claude → default + 2 managed, codex → default = 4 probe units
+        assert_eq!(units.len(), 4);
         let codex_default = units
             .iter()
             .find(|u| u.plugin.manifest.id == "codex")
@@ -1261,8 +1276,9 @@ mod tests {
         let registry = crate::accounts::load_account_registry(&app_data);
         let plugins = vec![test_loaded_plugin("codex")];
         let units = expand_probe_units(&plugins, &registry);
-        assert_eq!(units.len(), 1);
-        assert_eq!(units[0].account.account_id, "c1");
+        assert_eq!(units.len(), 2);
+        assert_eq!(units[0].account.output_account_id(), None);
+        assert_eq!(units[1].account.account_id, "c1");
     }
 
     #[test]

@@ -42,6 +42,7 @@ describe("useAppPluginViews", () => {
             lastUpdatedAt: null,
           },
         },
+        accountsByProvider: {},
       })
     )
 
@@ -72,6 +73,7 @@ describe("useAppPluginViews", () => {
         pluginSettings,
         pluginsMeta: [createPluginMeta("codex", "Codex")],
         pluginStates: {},
+        accountsByProvider: {},
       })
     )
 
@@ -91,6 +93,7 @@ describe("useAppPluginViews", () => {
           pluginSettings,
           pluginsMeta,
           pluginStates: {},
+          accountsByProvider: {},
         }),
       { initialProps: { pluginSettings: null } }
     )
@@ -122,6 +125,7 @@ describe("useAppPluginViews", () => {
         pluginSettings,
         pluginsMeta: [createPluginMeta("codex", "Codex")],
         pluginStates: {},
+        accountsByProvider: {},
       })
     )
 

@@ -285,6 +285,39 @@ export function removeAccountMeta(
   return copy;
 }
 
+// The account shown for a provider across the card UI and the menubar tray:
+// providerId -> accountId. Persisted so the choice survives restart and stays
+// consistent between surfaces (the card opens to it, the tray follows it).
+export type SelectedAccounts = Record<string, string>;
+
+const SELECTED_ACCOUNTS_KEY = "selectedAccounts";
+
+export async function loadSelectedAccounts(): Promise<SelectedAccounts> {
+  const stored = await store.get<SelectedAccounts>(SELECTED_ACCOUNTS_KEY);
+  return stored && typeof stored === "object" ? stored : {};
+}
+
+export async function saveSelectedAccounts(selected: SelectedAccounts): Promise<void> {
+  await store.set(SELECTED_ACCOUNTS_KEY, selected);
+  await store.save();
+}
+
+/**
+ * The accountId a provider should display. A valid persisted id selects a
+ * managed account. A missing or stale id selects the implicit Default account,
+ * represented by `null`. Shared by the card UI and tray.
+ */
+export function resolveSelectedAccountId(
+  providerId: string,
+  accountsByProvider: AccountsByProvider,
+  selectedByProvider: SelectedAccounts
+): string | null {
+  const accounts = accountsByProvider[providerId];
+  const selected = selectedByProvider[providerId];
+  if (selected && accounts?.some((a) => a.accountId === selected)) return selected;
+  return null;
+}
+
 /** Apply an onboarding provider selection: `keep` ids leave the disabled list,
  * `drop` ids join it. Pure — callers persist via savePluginSettings. */
 export function mergeProviderSelection(

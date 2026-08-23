@@ -29,9 +29,10 @@ import {
   AddClaudeAccountDialog,
   AddCodexAccountDialog,
   AddCursorAccountDialog,
+  AddOpenCodeGoAccountDialog,
   type SavedAccount,
 } from "@/components/add-account-dialog";
-import { useAccounts } from "@/hooks/app/use-accounts";
+import { emitAccountsChanged, useAccounts } from "@/hooks/app/use-accounts";
 import { SettingsAdvancedSection } from "@/components/settings-advanced-section";
 import { SupporterSection } from "@/components/supporter-section";
 import { ProviderIconMask } from "@/components/provider-icon-mask";
@@ -295,7 +296,7 @@ function MultiMenubarStylePreview({
   );
 }
 
-const ACCOUNT_PROVIDERS = ["claude", "codex", "cursor"];
+const ACCOUNT_PROVIDERS = ["claude", "codex", "cursor", "opencode-go"];
 
 /** Per-provider account manager: lists registered accounts (label + Remove) and
  * opens the right add-account dialog. Metadata is persisted frontend-side; the
@@ -327,6 +328,7 @@ function AccountsManagerDialog({
     );
     setAddOpen(false);
     await reload();
+    emitAccountsChanged({ added: true, providerId: savedProvider, accountId: account.accountId });
     onChanged();
   };
 
@@ -337,6 +339,7 @@ function AccountsManagerDialog({
       const current = await loadAccounts();
       await saveAccounts(removeAccountMeta(current, providerId, accountId));
       await reload();
+      emitAccountsChanged();
       onChanged();
     } catch (e) {
       setError(String(e));
@@ -406,8 +409,13 @@ function AccountsManagerDialog({
               onClose={() => setAddOpen(false)}
               onSaved={(p, a) => void handleSaved(p, a)}
             />
-          ) : (
+          ) : providerId === "cursor" ? (
             <AddCursorAccountDialog
+              onClose={() => setAddOpen(false)}
+              onSaved={(p, a) => void handleSaved(p, a)}
+            />
+          ) : (
+            <AddOpenCodeGoAccountDialog
               onClose={() => setAddOpen(false)}
               onSaved={(p, a) => void handleSaved(p, a)}
             />

@@ -102,6 +102,22 @@ describe("ModelsTodayStrip", () => {
     expect(screen.getByRole("button", { name: "Donut chart" })).toBeInTheDocument()
   })
 
+  it("merges multiple accounts of one provider into a single entry", async () => {
+    const work = makeSource({ id: "codex", name: "Codex", brandColor: "#74AA9C" }, [
+      ["Today", "$3.20 · 1M"],
+      ["GPT-5.4", "80% · Today $3.20"],
+    ])
+    const home = makeSource({ id: "codex", name: "Codex", brandColor: "#74AA9C" }, [
+      ["Today", "$1.80 · 0.6M"],
+      ["GPT-5.4", "80% · Today $1.80"],
+    ])
+    render(<ModelsTodayStrip plugins={[work, home]} />)
+
+    const rows = await screen.findAllByTestId("strip-entry-row")
+    expect(rows).toHaveLength(1)
+    expect(within(rows[0]).getByText("Codex")).toBeInTheDocument()
+  })
+
   it("lists every provider that used a model in the model hover", async () => {
     loadOverviewGraphGroupByMock.mockResolvedValue("model")
     const opencode = makeSource({ id: "opencode-go", name: "OpenCode Go", brandColor: "#000000" }, [

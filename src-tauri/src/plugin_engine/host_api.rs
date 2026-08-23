@@ -16,8 +16,10 @@ use std::process::Command;
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-const WHITELISTED_ENV_VARS: [&str; 21] = [
+const WHITELISTED_ENV_VARS: [&str; 24] = [
     "CODEX_HOME",
+    "CODEX_CCUSAGE_HOME",
+    "USAGEPAL_LOCAL_LOGS_UNAVAILABLE",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
     "USER_TYPE",
@@ -37,6 +39,7 @@ const WHITELISTED_ENV_VARS: [&str; 21] = [
     "OPENROUTER_KEY",
     "CLINE_API_KEY",
     "OPENCODE_API_KEY",
+    "USAGEPAL_OPENCODE_GO_API_KEY",
     "DEVIN_API_KEY",
 ];
 const MIN_BLOCKING_TIMEOUT: Duration = Duration::from_millis(1);
@@ -45,6 +48,11 @@ const MIN_BLOCKING_TIMEOUT: Duration = Duration::from_millis(1);
 /// its process group — ccusage is the longest host call in a probe, and a huge
 /// or network-mounted `~/.claude` must not pin a probe worker indefinitely.
 const CCUSAGE_TIMEOUT: Duration = Duration::from_secs(15);
+/// Ceiling on a single `ctx.host.sqlite.query` load, clamped further by the
+/// probe deadline. Same 15s as ccusage: a huge or network-mounted database
+/// (e.g. a multi-GB OpenCode history DB) must not pin a probe worker
+/// indefinitely.
+const SQLITE_TIMEOUT: Duration = Duration::from_secs(15);
 
 // Redaction patterns are compiled once and reused. They previously recompiled
 // on every call — `redact_body` alone built ~6 fixed regexes plus one per
@@ -382,7 +390,7 @@ fn read_env_from_interactive_shell(program: &str, name: &str) -> Option<String> 
     parse_interactive_shell_env_output(&output, START_MARKER, END_MARKER)
 }
 
-fn read_env_from_interactive_shells(name: &str) -> Option<String> {
+pub(crate) fn read_env_from_interactive_shells(name: &str) -> Option<String> {
     let mut programs: Vec<String> = Vec::new();
 
     if let Some(shell) = shell_from_env() {
@@ -726,7 +734,7 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     inject_env(ctx, &host, plugin_id, env_overrides)?;
     inject_http(ctx, &host, plugin_id, deadline)?;
     inject_keychain(ctx, &host, plugin_id)?;
-    inject_sqlite(ctx, &host)?;
+    inject_sqlite(ctx, &host, plugin_id, deadline)?;
     inject_ls(ctx, &host, plugin_id)?;
     inject_ccusage(ctx, &host, plugin_id, deadline)?;
 
@@ -2287,8 +2295,14 @@ fn inject_keychain<'js>(
     Ok(())
 }
 
-fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+fn inject_sqlite<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+    deadline: ProbeDeadline,
+) -> rquickjs::Result<()> {
     let sqlite_obj = Object::new(ctx.clone())?;
+    let pid = plugin_id.to_string();
 
     sqlite_obj.set(
         "query",
@@ -2302,48 +2316,10 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
-
-                // Prefer a normal read-only open so WAL contents are visible (common for app state DBs).
-                // Fall back to immutable=1 to bypass WAL/SHM lock issues after macOS sleep.
-                let primary = std::process::Command::new("sqlite3")
-                    .args(["-readonly", "-json", &expanded, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
-
-                if primary.status.success() {
-                    return Ok(String::from_utf8_lossy(&primary.stdout).to_string());
+                match run_sqlite_query_with_deadline(&pid, &expanded, &sql, deadline) {
+                    Ok(stdout) => Ok(stdout),
+                    Err(message) => Err(Exception::throw_message(&ctx_inner, &message)),
                 }
-
-                // Percent-encode special chars for valid URI (% must be first!)
-                let encoded = expanded
-                    .replace('%', "%25")
-                    .replace(' ', "%20")
-                    .replace('#', "%23")
-                    .replace('?', "%3F");
-                let uri_path = format!("file:{}?immutable=1", encoded);
-                let fallback = std::process::Command::new("sqlite3")
-                    .args(["-readonly", "-json", &uri_path, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
-
-                if !fallback.status.success() {
-                    let stderr_primary = String::from_utf8_lossy(&primary.stderr);
-                    let stderr_fallback = String::from_utf8_lossy(&fallback.stderr);
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!(
-                            "sqlite3 error: {} (fallback: {})",
-                            stderr_primary.trim(),
-                            stderr_fallback.trim()
-                        ),
-                    ));
-                }
-
-                Ok(String::from_utf8_lossy(&fallback.stdout).to_string())
             },
         )?,
     )?;
@@ -2382,6 +2358,88 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
 
     host.set("sqlite", sqlite_obj)?;
     Ok(())
+}
+
+/// Backs `ctx.host.sqlite.query(dbPath, sql)`.
+///
+/// Bounds the load the same way `run_ccusage_query` does: the timeout is the
+/// probe deadline clamped to `SQLITE_TIMEOUT`, and an already-spent budget
+/// refuses the query outright. The `sqlite3` subprocess runs on its own thread
+/// so the probe worker can stop waiting on it; a query that blows the deadline
+/// is abandoned, not cancelled — the subprocess keeps running until it exits.
+fn run_sqlite_query_with_deadline(
+    plugin_id: &str,
+    expanded: &str,
+    sql: &str,
+    deadline: ProbeDeadline,
+) -> Result<String, String> {
+    let Some(timeout) = deadline.clamp_duration(SQLITE_TIMEOUT) else {
+        log_probe_deadline_skip(plugin_id, "sqlite");
+        return Err("probe timed out".to_string());
+    };
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let expanded_owned = expanded.to_string();
+    let sql_owned = sql.to_string();
+    std::thread::spawn(move || {
+        let result = run_sqlite_query(&expanded_owned, &sql_owned);
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(timeout) {
+        Ok(result) => result,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            log::warn!(
+                "[plugin:{}] sqlite query timed out after {:?}; abandoning the load",
+                plugin_id,
+                timeout
+            );
+            Err("probe timed out".to_string())
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            log::warn!("[plugin:{}] sqlite query worker panicked", plugin_id);
+            Err("sqlite3 query failed".to_string())
+        }
+    }
+}
+
+/// Runs `sqlite3 -readonly -json` against `expanded`, preferring a normal
+/// read-only open so WAL contents are visible (common for app state DBs) and
+/// falling back to `immutable=1` to bypass WAL/SHM lock issues after macOS
+/// sleep. Returns the JSON stdout or a human-readable error.
+fn run_sqlite_query(expanded: &str, sql: &str) -> Result<String, String> {
+    let primary = std::process::Command::new("sqlite3")
+        .args(["-readonly", "-json", expanded, sql])
+        .output()
+        .map_err(|e| format!("sqlite3 exec failed: {}", e))?;
+
+    if primary.status.success() {
+        return Ok(String::from_utf8_lossy(&primary.stdout).to_string());
+    }
+
+    // Percent-encode special chars for valid URI (% must be first!)
+    let encoded = expanded
+        .replace('%', "%25")
+        .replace(' ', "%20")
+        .replace('#', "%23")
+        .replace('?', "%3F");
+    let uri_path = format!("file:{}?immutable=1", encoded);
+    let fallback = std::process::Command::new("sqlite3")
+        .args(["-readonly", "-json", &uri_path, sql])
+        .output()
+        .map_err(|e| format!("sqlite3 exec failed: {}", e))?;
+
+    if !fallback.status.success() {
+        let stderr_primary = String::from_utf8_lossy(&primary.stderr);
+        let stderr_fallback = String::from_utf8_lossy(&fallback.stderr);
+        return Err(format!(
+            "sqlite3 error: {} (fallback: {})",
+            stderr_primary.trim(),
+            stderr_fallback.trim()
+        ));
+    }
+
+    Ok(String::from_utf8_lossy(&fallback.stdout).to_string())
 }
 
 fn iso_now() -> String {
@@ -3570,6 +3628,74 @@ mod tests {
             clamped >= Duration::from_millis(1),
             "host timeout should stay non-zero for blocking clients"
         );
+    }
+
+    /// Creates a throwaway SQLite database with one row and returns its path.
+    fn temp_sqlite_db() -> String {
+        // The counter keeps parallel tests from colliding on the same
+        // nanosecond timestamp and sharing (or racing on) one temp dir.
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let unique = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "usagepal-sqlite-test-{}-{}-{}",
+            std::process::id(),
+            unique,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp sqlite dir");
+        let db = dir.join("test.db");
+        let create = std::process::Command::new("sqlite3")
+            .args([
+                db.to_str().unwrap(),
+                "CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('x');",
+            ])
+            .output()
+            .expect("sqlite3 must be on PATH to run this test");
+        assert!(
+            create.status.success(),
+            "failed to create temp sqlite db: {}",
+            String::from_utf8_lossy(&create.stderr)
+        );
+        db.to_string_lossy().to_string()
+    }
+
+    /// The sqlite load is bounded by the probe's budget, not just the 15s
+    /// ceiling: an already-spent budget must refuse the query outright rather
+    /// than start an unbounded, uninterruptible scan on a probe worker.
+    #[test]
+    fn sqlite_query_refuses_to_start_once_the_probe_deadline_is_spent() {
+        let db = temp_sqlite_db();
+        let result = run_sqlite_query_with_deadline(
+            "test",
+            &db,
+            "SELECT * FROM t;",
+            ProbeDeadline::at(Instant::now()),
+        );
+
+        assert_eq!(result, Err("probe timed out".to_string()));
+        std::fs::remove_dir_all(std::path::Path::new(&db).parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn sqlite_query_returns_json_rows_from_a_real_database() {
+        let db = temp_sqlite_db();
+        let result = run_sqlite_query_with_deadline(
+            "test",
+            &db,
+            "SELECT v FROM t;",
+            ProbeDeadline::none(),
+        );
+
+        let stdout = result.expect("query against a real db should succeed");
+        assert!(
+            stdout.contains("\"x\""),
+            "expected the inserted row in JSON output, got: {}",
+            stdout
+        );
+        std::fs::remove_dir_all(std::path::Path::new(&db).parent().unwrap()).ok();
     }
 
     #[test]

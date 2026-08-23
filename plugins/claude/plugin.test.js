@@ -211,6 +211,29 @@ describe("claude plugin", () => {
     )
   })
 
+  it("shows a 'no local data' spend state when not the local Claude login", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "CLAUDE_CODE_OAUTH_TOKEN") return "sk-ant-oat-xyz"
+      if (name === "USAGEPAL_LOCAL_LOGS_UNAVAILABLE") return "1"
+      return null
+    })
+    ctx.host.fs.exists = () => false
+    ctx.host.http.request.mockReturnValue({ status: 200, bodyText: "{}" })
+    ctx.host.ccusage.query = vi.fn(() => ({ status: "ok", data: { daily: [] } }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // ccusage is never queried for an account with no local logs.
+    expect(ctx.host.ccusage.query).not.toHaveBeenCalled()
+    const today = result.lines.find((l) => l.label === "Today")
+    expect(today).toMatchObject({ value: "—" })
+    expect(today.subtitle).toBeTruthy()
+    expect(result.lines.find((l) => l.label === "Yesterday")).toMatchObject({ value: "—" })
+    expect(result.lines.find((l) => l.label === "Last 30 Days")).toMatchObject({ value: "—" })
+  })
+
   it("looks up Claude Code-staging-oauth-credentials in keychain", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => false

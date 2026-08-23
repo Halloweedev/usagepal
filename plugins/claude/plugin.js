@@ -563,7 +563,16 @@
     return mins + "m"
   }
 
+  // This account isn't the current local Claude login, so its spend logs live
+  // under another login we can't read — the host flags it here.
+  function localLogsUnavailable(ctx) {
+    return readEnvText(ctx, "USAGEPAL_LOCAL_LOGS_UNAVAILABLE") === "1"
+  }
+
   function queryTokenUsage(ctx, homePath) {
+    if (localLogsUnavailable(ctx)) {
+      return { status: "no_local_data", data: null }
+    }
     const since = new Date()
     // Inclusive range: today + previous 30 days = 31 calendar days.
     since.setDate(since.getDate() - 30)
@@ -901,6 +910,23 @@
     }))
   }
 
+  var NO_LOCAL_DATA_COLOR = "#a3a3a3"
+  var NO_LOCAL_DATA_HINT = "No local Claude CLI usage for this account"
+
+  // Spend rows for an account that isn't the local CLI login: show a clear
+  // "no local data" state instead of another login's ~/.claude spend.
+  function pushNoLocalDataLines(lines, ctx) {
+    var labels = ["Today", "Yesterday", "Last 30 Days"]
+    for (var i = 0; i < labels.length; i++) {
+      lines.push(ctx.line.text({
+        label: labels[i],
+        value: "—",
+        color: NO_LOCAL_DATA_COLOR,
+        subtitle: i === 0 ? NO_LOCAL_DATA_HINT : null
+      }))
+    }
+  }
+
   function pushDayUsageLine(lines, ctx, label, dayEntry) {
     const tokens = Number(dayEntry && dayEntry.totalTokens) || 0
     const cost = usageCostUsd(dayEntry)
@@ -1209,6 +1235,8 @@
 
       pushUsageChartLine(lines, ctx, usage.daily)
       pushModelUsageLines(lines, ctx, usage.daily, now)
+    } else if (usageResult.status === "no_local_data") {
+      pushNoLocalDataLines(lines, ctx)
     }
 
     if (rateLimited) {
