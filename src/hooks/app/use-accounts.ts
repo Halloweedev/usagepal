@@ -92,6 +92,9 @@ export function useAccounts(): {
       const next = setDefaultAccountLabel(current, providerId, label)
       await saveDefaultAccountLabels(next)
       setDefaultLabels(next)
+      // Broadcast only after the write lands, so every mounted instance (the
+      // overview's included) reloads the fresh name instead of racing the save.
+      emitAccountsChanged()
     })().catch((error) => {
       console.error("Failed to rename default account:", error)
     })
