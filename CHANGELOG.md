@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.7.73
+
+### Bug Fixes
+- OpenRouter's API key dialog now rejects anything that doesn't look like an OpenRouter key
+  (they all start with `sk-or-`), so a stray clipboard paste can't save as a key and only
+  surface later as "API key invalid" on the card by @Halloweedev
+
+### Chores
+- Bump phf from 0.13.1 to 0.14.0 ([#22](https://github.com/Halloweedev/usagepal/pull/22)) by @dependabot[bot]
+- Bump memchr from 2.8.0 to 2.8.3 ([#23](https://github.com/Halloweedev/usagepal/pull/23)) by @dependabot[bot]
+- Bump tauri-plugin-store from 2.4.3 to 2.4.4 ([#24](https://github.com/Halloweedev/usagepal/pull/24)) by @dependabot[bot]
+- Bump smallvec from 1.15.1 to 1.15.2 ([#25](https://github.com/Halloweedev/usagepal/pull/25)) by @dependabot[bot]
+- Bump tauri-plugin-log from 2.8.0 to 2.9.0 ([#26](https://github.com/Halloweedev/usagepal/pull/26)) by @dependabot[bot]
+- Bump @testing-library/jest-dom from 6.10.0 to 7.0.1 ([#47](https://github.com/Halloweedev/usagepal/pull/47)) by @dependabot[bot]
+
+---
+
+**Full Changelog**: [v0.7.72...v0.7.73](https://github.com/Halloweedev/usagepal/compare/v0.7.72...v0.7.73)
+
 ## v0.7.72
 
 ### Bug Fixes
