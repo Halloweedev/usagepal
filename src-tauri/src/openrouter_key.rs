@@ -84,6 +84,12 @@ pub fn save_openrouter_key(key: String) -> Result<(), String> {
     if trimmed.is_empty() {
         return Err("API key is empty.".to_string());
     }
+    // Every OpenRouter key starts with `sk-or-`. Reject anything else early — a pasted
+    // clipboard stray (e.g. a shell command) would otherwise save fine and only surface
+    // later as "API key invalid" on the provider card.
+    if !trimmed.starts_with("sk-or-") {
+        return Err("That doesn't look like an OpenRouter key — it should start with \"sk-or-\". Copy it again from openrouter.ai/keys.".to_string());
+    }
     let path = primary_path().ok_or("No home directory available.")?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("Couldn't create the config directory: {e}"))?;
@@ -125,5 +131,14 @@ mod tests {
     fn no_key_from_empty_or_bad_json() {
         assert_eq!(key_from_text("   "), None);
         assert_eq!(key_from_text(r#"{"nope":"x"}"#), None);
+    }
+
+    #[test]
+    fn save_rejects_non_openrouter_keys() {
+        // Regression: a pasted shell command was accepted as a key and only surfaced
+        // later as "API key invalid" on the card.
+        assert!(save_openrouter_key("cd prototypes/home-concepts && npm run dev".into()).is_err());
+        assert!(save_openrouter_key("nvapi-abcdefghijklmnop".into()).is_err());
+        assert!(save_openrouter_key("   ".into()).is_err());
     }
 }

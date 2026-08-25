@@ -32,7 +32,8 @@ then provide it one of these ways (checked in this order, first match wins):
 
 1. **Settings → API Keys (recommended):** paste the key into the OpenRouter field and Save. It's
    written to the config file below and picked up on the next refresh. The saved key is never read
-   back into the app — the API Keys card only knows whether a key is present, not its value.
+   back into the app — the API Keys card only knows whether a key is present, not its value. The
+   key must start with `sk-or-` (all OpenRouter keys do); anything else is rejected at save time.
 
 2. **Config file:** `~/.config/usagepal/openrouter.json` (the file the Settings card writes)
 
