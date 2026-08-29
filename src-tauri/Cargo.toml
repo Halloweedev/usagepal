@@ -34,7 +34,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 # `float_roundtrip`: serde_json's DEFAULT float parser is not correctly rounded
@@ -71,10 +71,13 @@ netstat2 = "0.11.2"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# The panel is an NSPanel on macOS only; src/panel/other.rs covers the rest.
+# Keeping these here is what lets the crate compile for Linux and Windows.
+tauri = { version = "2", features = ["macos-private-api"] }
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 mac-notification-sys = "0.6.15"
 objc2 = "0.6"
 objc2-foundation = "0.3"
-tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2"
