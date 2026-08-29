@@ -2,17 +2,24 @@
   "schemaVersion": 1,
   "id": "antigravity",
   "name": "Antigravity",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#4285F4",
   "detect": [
     { "file": "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb" },
-    { "file": "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb" }
+    { "file": "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb" },
+    { "file": "~/.config/Antigravity IDE/User/globalStorage/state.vscdb" },
+    { "file": "~/.config/Antigravity/User/globalStorage/state.vscdb" },
+    { "file": "~/AppData/Roaming/Antigravity IDE/User/globalStorage/state.vscdb" },
+    { "file": "~/AppData/Roaming/Antigravity/User/globalStorage/state.vscdb" },
+    { "file": "~/.gemini/antigravity-cli/antigravity-oauth-token" }
   ],
   "lines": [
     { "type": "progress", "label": "Gemini Pro", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Gemini Flash", "scope": "overview" },
-    { "type": "progress", "label": "Claude", "scope": "overview" }
+    { "type": "progress", "label": "Claude", "scope": "overview" },
+    { "type": "text", "label": "Burn Rate", "scope": "detail" },
+    { "type": "barChart", "label": "Usage Trend", "scope": "detail" }
   ]
 }

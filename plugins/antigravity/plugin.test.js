@@ -10,7 +10,24 @@ const OAUTH_TOKEN_KEY = "antigravityUnifiedStateSync.oauthToken"
 const OAUTH_TOKEN_SENTINEL = "oauthTokenInfoSentinelKey"
 const STATE_DB_V2 = "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb"
 const STATE_DB_V1 = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+const LINUX_STATE_DB_V2 = "~/.config/Antigravity IDE/User/globalStorage/state.vscdb"
+const LINUX_STATE_DB_V1 = "~/.config/Antigravity/User/globalStorage/state.vscdb"
+const WINDOWS_STATE_DB_V2 = "~/AppData/Roaming/Antigravity IDE/User/globalStorage/state.vscdb"
+const WINDOWS_STATE_DB_V1 = "~/AppData/Roaming/Antigravity/User/globalStorage/state.vscdb"
+const AGY_TOKEN_FILE = "~/.gemini/antigravity-cli/antigravity-oauth-token"
+const HISTORY_FILE = "/tmp/usagepal-test/plugin/history.json"
 const LOGIN_MESSAGE = "Start Antigravity or run `agy` and try again."
+const UNREACHABLE_MESSAGE = "Can't reach Antigravity right now. Try again shortly."
+
+// Pool lines carry the manifest labels and drive the overview card; every other
+// progress line is a per-model detail row.
+const POOL_LABELS = ["Gemini Pro", "Gemini Flash", "Claude"]
+const poolLabels = (result) =>
+  result.lines.filter((line) => POOL_LABELS.includes(line.label)).map((line) => line.label)
+const modelLabels = (result) =>
+  result.lines
+    .filter((line) => line.type === "progress" && !POOL_LABELS.includes(line.label))
+    .map((line) => line.label)
 
 // --- Fixtures ---
 
@@ -272,7 +289,7 @@ describe("antigravity plugin", () => {
 
     expect(capturedCsrf).toBe("")
     expect(result.plan).toBe("Google AI Pro")
-    expect(result.lines.map((l) => l.label)).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
+    expect(poolLabels(result)).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
   })
 
   it("returns models + plan from GetUserStatus", async () => {
@@ -288,7 +305,7 @@ describe("antigravity plugin", () => {
     expect(result.plan).toBe("Pro")
 
     // Model lines exist — 3 pool lines
-    const labels = result.lines.map((l) => l.label)
+    const labels = poolLabels(result)
     expect(labels).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
   })
 
@@ -316,7 +333,7 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    const labels = result.lines.map((l) => l.label)
+    const labels = poolLabels(result)
 
     expect(labels).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
   })
@@ -439,7 +456,7 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result).toBeTruthy()
-    const labels = result.lines.map((l) => l.label)
+    const labels = poolLabels(result)
     expect(labels).toEqual(["Gemini Pro", "Claude"])
     expect(result.lines.every((l) => l.used === 100)).toBe(true)
   })
@@ -458,8 +475,8 @@ describe("antigravity plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.length).toBe(1)
-    expect(result.lines[0].label).toBe("Gemini Pro")
+    expect(poolLabels(result)).toEqual(["Gemini Pro"])
+    expect(modelLabels(result)).toEqual(["Gemini 3 Pro"])
   })
 
   it("includes resetsAt on model lines", async () => {
@@ -676,7 +693,7 @@ describe("antigravity plugin", () => {
       "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota",
     ])
     expect(result.plan).toBe("Google AI Pro")
-    expect(result.lines.map((l) => l.label)).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
+    expect(poolLabels(result)).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
   })
 
   it("tries agy Cloud Code even when the keychain token matches a SQLite token", async () => {
@@ -1306,7 +1323,7 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    const labels = result.lines.map((l) => l.label)
+    const labels = poolLabels(result)
     expect(labels).toEqual(["Gemini Pro"])
   })
 
@@ -1347,7 +1364,7 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    const labels = result.lines.map((l) => l.label)
+    const labels = poolLabels(result)
     expect(labels).toEqual(["Claude"])
   })
 
@@ -1388,7 +1405,7 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    const labels = result.lines.map((l) => l.label)
+    const labels = poolLabels(result)
     expect(labels).toEqual(["Gemini Pro", "Claude"])
   })
 
@@ -1419,7 +1436,7 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    const labels = result.lines.map((l) => l.label)
+    const labels = poolLabels(result)
     expect(labels).toEqual(["Gemini Pro", "Claude"])
   })
 
@@ -1544,7 +1561,7 @@ describe("antigravity plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("Google AI Ultra")
-    const labels = result.lines.map((l) => l.label)
+    const labels = poolLabels(result)
     expect(labels).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
   })
 
@@ -1686,7 +1703,7 @@ describe("antigravity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow(LOGIN_MESSAGE)
+    expect(() => plugin.probe(ctx)).toThrow(UNREACHABLE_MESSAGE)
     expect(refreshCalls).toBe(0)
   })
 
@@ -1716,7 +1733,360 @@ describe("antigravity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow(LOGIN_MESSAGE)
+    expect(() => plugin.probe(ctx)).toThrow(UNREACHABLE_MESSAGE)
     expect(refreshCalls).toBe(0)
+  })
+
+  // --- Platform paths ---
+
+  const queriedDbs = (ctx) => ctx.host.sqlite.query.mock.calls.map((call) => call[0])
+
+  const platformCases = [
+    { platform: "macos", expected: [STATE_DB_V2, STATE_DB_V1] },
+    { platform: "linux", expected: [LINUX_STATE_DB_V2, LINUX_STATE_DB_V1] },
+    { platform: "windows", expected: [WINDOWS_STATE_DB_V2, WINDOWS_STATE_DB_V1] },
+  ]
+
+  for (const testCase of platformCases) {
+    it("reads the " + testCase.platform + " state databases, current folder first", async () => {
+      const ctx = makeCtx()
+      ctx.app.platform = testCase.platform
+      ctx.host.ls.discover.mockReturnValue(null)
+
+      const plugin = await loadPlugin()
+      expect(() => plugin.probe(ctx)).toThrow(LOGIN_MESSAGE)
+      expect(queriedDbs(ctx)).toEqual(testCase.expected)
+    })
+  }
+
+  it("probes every platform's state databases when the platform is unknown", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "freebsd"
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow(LOGIN_MESSAGE)
+    expect(queriedDbs(ctx)).toEqual([
+      STATE_DB_V2,
+      STATE_DB_V1,
+      LINUX_STATE_DB_V2,
+      LINUX_STATE_DB_V1,
+      WINDOWS_STATE_DB_V2,
+      WINDOWS_STATE_DB_V1,
+    ])
+  })
+
+  it("reads Linux credentials from the XDG config path", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "linux"
+    ctx.host.ls.discover.mockReturnValue(null)
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteByPath(ctx, {
+      [LINUX_STATE_DB_V2]: makeOAuthSentinelB64(ctx, { accessToken: "linux-token", expirySeconds: futureExpiry }),
+    })
+
+    const seen = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      seen.push(opts.headers.Authorization)
+      return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(seen[0]).toBe("Bearer linux-token")
+    expect(poolLabels(result)).toEqual(["Gemini Pro", "Claude"])
+  })
+
+  it("sends the host platform in language server metadata", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "linux"
+    setupLsMock(ctx, makeDiscovery(), makeUserStatusResponse())
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const probeCall = ctx.host.http.request.mock.calls.find((call) =>
+      String(call[0].url).includes("GetUnleashData")
+    )
+    expect(JSON.parse(probeCall[0].bodyText).context.properties.os).toBe("linux")
+  })
+
+  // --- agy token file ---
+
+  it("falls back to the agy token file when the keychain is unavailable", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "linux"
+    ctx.host.ls.discover.mockReturnValue(null)
+    // Off macOS the binding exists but throws, so only the catch protects us.
+    ctx.host.keychain.readGenericPassword.mockImplementation(() => {
+      throw new Error("keychain API is only supported on macOS")
+    })
+    ctx.host.fs.writeText(AGY_TOKEN_FILE, JSON.stringify({ tokens: { access_token: "agy-file-token" } }))
+
+    const seen = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      seen.push(opts.headers.Authorization)
+      if (url.includes("loadCodeAssist")) {
+        return { status: 200, bodyText: JSON.stringify(makeAgyLoadResponse()) }
+      }
+      if (url.includes("retrieveUserQuota")) {
+        return { status: 200, bodyText: JSON.stringify(makeAgyQuotaResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Google AI Pro")
+    expect(seen.every((auth) => auth === "Bearer agy-file-token")).toBe(true)
+  })
+
+  it("accepts a bare token in the agy token file", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "linux"
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.fs.writeText(AGY_TOKEN_FILE, "  ya29.bare-agy-token\n")
+
+    const seen = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      seen.push(opts.headers.Authorization)
+      if (url.includes("loadCodeAssist")) {
+        return { status: 200, bodyText: JSON.stringify(makeAgyLoadResponse()) }
+      }
+      if (url.includes("retrieveUserQuota")) {
+        return { status: 200, bodyText: JSON.stringify(makeAgyQuotaResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(seen.every((auth) => auth === "Bearer ya29.bare-agy-token")).toBe(true)
+  })
+
+  // --- Per-model detail lines ---
+
+  it("adds one detail line per model beneath the pool lines", async () => {
+    const ctx = makeCtx()
+    setupLsMock(ctx, makeDiscovery(), makeUserStatusResponse())
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(poolLabels(result)).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
+    expect(modelLabels(result)).toEqual([
+      "Gemini 3.1 Pro",
+      "Gemini 3 Flash",
+      "Claude Opus 4.6",
+      "Claude Sonnet 4.6",
+      "GPT-OSS 120B",
+    ])
+  })
+
+  it("collapses model variants and keeps the worst fraction on the model line", async () => {
+    const ctx = makeCtx()
+    const response = makeUserStatusResponse({
+      configs: [
+        {
+          label: "Gemini 3.1 Pro (High)",
+          quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T09:10:56Z" },
+        },
+        {
+          label: "Gemini 3.1 Pro (Low)",
+          quotaInfo: { remainingFraction: 0.25, resetTime: "2026-02-08T09:10:56Z" },
+        },
+      ],
+    })
+    setupLsMock(ctx, makeDiscovery(), response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(modelLabels(result)).toEqual(["Gemini 3.1 Pro"])
+    const model = result.lines.find((line) => line.label === "Gemini 3.1 Pro")
+    expect(model.used).toBe(75)
+  })
+
+  it("logs a model that matches no pool rule and still shows its own line", async () => {
+    const ctx = makeCtx()
+    const response = makeUserStatusResponse({
+      configs: [
+        {
+          label: "Nova 1 (Fast)",
+          quotaInfo: { remainingFraction: 0.5, resetTime: "2026-02-08T09:10:56Z" },
+        },
+      ],
+    })
+    setupLsMock(ctx, makeDiscovery(), response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(ctx.host.log.info).toHaveBeenCalledWith(expect.stringContaining("matched no pool rule"))
+    expect(poolLabels(result)).toEqual(["Claude"])
+    expect(modelLabels(result)).toEqual(["Nova 1"])
+  })
+
+  // --- Usage history ---
+
+  const lastHistoryWrite = (ctx) => {
+    const writes = ctx.host.fs.writeText.mock.calls.filter((call) => call[0] === HISTORY_FILE)
+    return writes.length ? JSON.parse(writes[writes.length - 1][1]) : null
+  }
+
+  const noonDaysAgo = (days) => {
+    const day = new Date()
+    day.setHours(12, 0, 0, 0)
+    return day.getTime() - days * 24 * 60 * 60 * 1000
+  }
+
+  it("records a usage sample on the first probe", async () => {
+    const ctx = makeCtx()
+    setupLsMock(ctx, makeDiscovery(), makeUserStatusResponse())
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const state = lastHistoryWrite(ctx)
+    expect(state.v).toBe(1)
+    expect(state.samples).toHaveLength(1)
+    expect(state.samples[0].pools).toEqual({
+      "Gemini Pro": 20,
+      "Gemini Flash": 0,
+      Claude: 100,
+    })
+  })
+
+  it("omits the trend chart until two days of samples exist", async () => {
+    const ctx = makeCtx()
+    setupLsMock(ctx, makeDiscovery(), makeUserStatusResponse())
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.type === "barChart")).toBeUndefined()
+  })
+
+  it("charts the daily peak across pools once two days exist", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(HISTORY_FILE, JSON.stringify({
+      v: 1,
+      samples: [
+        { ts: noonDaysAgo(2), pools: { "Gemini Pro": 10, Claude: 40 } },
+        { ts: noonDaysAgo(2) + 3600000, pools: { "Gemini Pro": 30, Claude: 20 } },
+        { ts: noonDaysAgo(1), pools: { "Gemini Pro": 55, Claude: 5 } },
+      ],
+    }))
+    setupLsMock(ctx, makeDiscovery(), makeUserStatusResponse())
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const chart = result.lines.find((line) => line.type === "barChart")
+    expect(chart.label).toBe("Usage Trend")
+    expect(chart.points).toHaveLength(3)
+    expect(chart.points[0]).toMatchObject({ value: 40, valueLabel: "40% Claude" })
+    expect(chart.points[1]).toMatchObject({ value: 55, valueLabel: "55% Gemini Pro" })
+    expect(chart.points[2]).toMatchObject({ value: 100, valueLabel: "100% Claude" })
+  })
+
+  it("drops samples older than the retention window", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(HISTORY_FILE, JSON.stringify({
+      v: 1,
+      samples: [
+        { ts: noonDaysAgo(40), pools: { "Gemini Pro": 90 } },
+        { ts: noonDaysAgo(1), pools: { "Gemini Pro": 55 } },
+      ],
+    }))
+    setupLsMock(ctx, makeDiscovery(), makeUserStatusResponse())
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const state = lastHistoryWrite(ctx)
+    expect(state.samples).toHaveLength(2)
+    expect(state.samples[0].ts).toBe(noonDaysAgo(1))
+  })
+
+  it("ignores a corrupt history file instead of failing the probe", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(HISTORY_FILE, "{not json")
+    setupLsMock(ctx, makeDiscovery(), makeUserStatusResponse())
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(poolLabels(result)).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
+    expect(lastHistoryWrite(ctx).samples).toHaveLength(1)
+  })
+
+  // --- Burn rate ---
+
+  it("reports burn rate for the pool closest to running out", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(HISTORY_FILE, JSON.stringify({
+      v: 1,
+      samples: [
+        {
+          ts: Date.now() - 2 * 60 * 60 * 1000,
+          pools: { "Gemini Pro": 10, "Gemini Flash": 0, Claude: 60 },
+        },
+      ],
+    }))
+    setupLsMock(ctx, makeDiscovery(), makeUserStatusResponse())
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const burnRate = result.lines.find((line) => line.label === "Burn Rate")
+    expect(burnRate.value).toBe("20%/hr")
+    expect(burnRate.subtitle).toContain("Claude")
+  })
+
+  it("omits burn rate when the only in-window samples span too little time", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(HISTORY_FILE, JSON.stringify({
+      v: 1,
+      samples: [{ ts: Date.now() - 2 * 60 * 1000, pools: { "Gemini Pro": 10, Claude: 60 } }],
+    }))
+    setupLsMock(ctx, makeDiscovery(), makeUserStatusResponse())
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Burn Rate")).toBeUndefined()
+  })
+
+  it("omits burn rate after a quota reset refills the pool", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(HISTORY_FILE, JSON.stringify({
+      v: 1,
+      samples: [
+        {
+          ts: Date.now() - 2 * 60 * 60 * 1000,
+          pools: { "Gemini Pro": 10, "Gemini Flash": 0, Claude: 100 },
+        },
+      ],
+    }))
+    const response = makeUserStatusResponse({
+      configs: [
+        {
+          label: "Claude Opus 4.6 (Thinking)",
+          quotaInfo: { remainingFraction: 1, resetTime: "2026-02-26T15:23:41Z" },
+        },
+      ],
+    })
+    setupLsMock(ctx, makeDiscovery(), response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Burn Rate")).toBeUndefined()
   })
 })

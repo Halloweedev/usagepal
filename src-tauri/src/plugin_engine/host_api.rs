@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
 const WHITELISTED_ENV_VARS: [&str; 24] = [
     "CODEX_HOME",
@@ -85,9 +86,13 @@ static DEVIN_SESSION_RE: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
 static ACCOUNT_RE: LazyLock<regex_lite::Regex> =
     LazyLock::new(|| regex_lite::Regex::new(r#"(account=)([^,\s]+)"#).expect("valid account regex"));
 
+// Both separators are covered: a plugin reading credential files on Windows
+// puts backslash paths into log messages the same way a POSIX one does.
 static PATH_RE: LazyLock<regex_lite::Regex> = LazyLock::new(|| {
-    regex_lite::Regex::new(r#"(/(?:Users|home|opt|private|var|tmp|Applications)/[^\s"')]+)"#)
-        .expect("valid path regex")
+    regex_lite::Regex::new(
+        r#"(/(?:Users|home|opt|private|var|tmp|Applications)/[^\s"')]+|[A-Za-z]:\\(?:Users|Windows|Program Files|ProgramData)\\[^\s"')]+)"#,
+    )
+    .expect("valid path regex")
 });
 
 /// JSON keys whose string values get redacted in response bodies. Order is
@@ -1470,23 +1475,12 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     opts.markers
                 );
 
-                let ps_output = match std::process::Command::new("/bin/ps")
-                    .args(["-ax", "-o", "pid=,command="])
-                    .output()
-                {
-                    Ok(o) => o,
-                    Err(e) => {
-                        log::warn!("[plugin:{}] ps failed: {}", pid, e);
-                        return Ok("null".to_string());
-                    }
-                };
-
-                if !ps_output.status.success() {
-                    log::warn!("[plugin:{}] ps returned non-zero", pid);
+                let processes = ls_list_processes();
+                if processes.is_empty() {
+                    log::warn!("[plugin:{}] no processes returned by the OS", pid);
                     return Ok("null".to_string());
                 }
 
-                let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
                 let process_name_lower = opts.process_name.to_lowercase();
                 let markers_lower: Vec<String> = opts
                     .markers
@@ -1502,21 +1496,11 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                 //   2. Path substring (/<marker>/) as fallback when no flags found
                 let mut candidates: Vec<(u8, i32, String)> = Vec::new();
 
-                for line in ps_stdout.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() {
+                for (process_pid, command) in processes {
+                    let command = command.trim();
+                    if command.is_empty() {
                         continue;
                     }
-
-                    let mut parts = trimmed.splitn(2, char::is_whitespace);
-                    let pid_str = match parts.next() {
-                        Some(s) => s.trim(),
-                        None => continue,
-                    };
-                    let command = match parts.next() {
-                        Some(s) => s.trim(),
-                        None => continue,
-                    };
 
                     if !ls_command_matches_process(command, &process_name_lower) {
                         continue;
@@ -1526,9 +1510,7 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                         continue;
                     };
 
-                    if let Ok(p) = pid_str.parse::<i32>() {
-                        candidates.push((marker_rank, p, command.to_string()));
-                    }
+                    candidates.push((marker_rank, process_pid, command.to_string()));
                 }
 
                 if candidates.is_empty() {
@@ -1536,12 +1518,16 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     return Ok("null".to_string());
                 }
 
-                let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
-                    .iter()
-                    .find(|p| std::path::Path::new(p).exists())
-                    .copied();
+                // Sorting by pid within a rank keeps the choice stable across
+                // probes: the OS hands back processes in no particular order,
+                // and an IDE typically runs several language-server children.
+                candidates.sort_by_key(|(marker_rank, process_pid, _)| (*marker_rank, *process_pid));
 
-                candidates.sort_by_key(|(marker_rank, _, _)| *marker_rank);
+                // A process that is actually listening always wins. One that
+                // only advertises --extension_server_port is held back as a
+                // fallback, since the port it names may belong to a sibling.
+                let mut fallback: Option<LsDiscoverResult> = None;
+
                 for (_, process_pid, command) in candidates {
                     let csrf = if opts.csrf_flag.trim().is_empty() {
                         String::new()
@@ -1569,34 +1555,7 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                         }
                     }
 
-                    let ports = if let Some(lsof) = lsof_path {
-                        match std::process::Command::new(lsof)
-                            .args([
-                                "-nP",
-                                "-iTCP",
-                                "-sTCP:LISTEN",
-                                "-a",
-                                "-p",
-                                &process_pid.to_string(),
-                            ])
-                            .output()
-                        {
-                            Ok(o) if o.status.success() => {
-                                ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
-                            }
-                            Ok(_) => {
-                                log::warn!("[plugin:{}] lsof returned non-zero", pid);
-                                Vec::new()
-                            }
-                            Err(e) => {
-                                log::warn!("[plugin:{}] lsof failed: {}", pid, e);
-                                Vec::new()
-                            }
-                        }
-                    } else {
-                        log::warn!("[plugin:{}] lsof not found", pid);
-                        Vec::new()
-                    };
+                    let ports = ls_listening_ports(&pid, process_pid);
 
                     if ports.is_empty() && extension_port.is_none() {
                         log::warn!(
@@ -1607,13 +1566,7 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                         continue;
                     }
 
-                    log::info!(
-                        "[plugin:{}] LS found: pid={}, ports={:?}, csrf=[REDACTED]",
-                        pid,
-                        process_pid,
-                        ports
-                    );
-
+                    let has_ports = !ports.is_empty();
                     let result = LsDiscoverResult {
                         pid: process_pid,
                         csrf,
@@ -1622,6 +1575,32 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                         extension_port,
                     };
 
+                    if !has_ports {
+                        if fallback.is_none() {
+                            fallback = Some(result);
+                        }
+                        continue;
+                    }
+
+                    log::info!(
+                        "[plugin:{}] LS found: pid={}, ports={:?}, csrf=[REDACTED]",
+                        pid,
+                        process_pid,
+                        result.ports
+                    );
+
+                    return serde_json::to_string(&result).map_err(|e| {
+                        Exception::throw_message(&ctx_inner, &format!("serialize failed: {}", e))
+                    });
+                }
+
+                if let Some(result) = fallback {
+                    log::info!(
+                        "[plugin:{}] LS found: pid={}, no listening sockets, using extension port {:?}",
+                        pid,
+                        result.pid,
+                        result.extension_port
+                    );
                     return serde_json::to_string(&result).map_err(|e| {
                         Exception::throw_message(&ctx_inner, &format!("serialize failed: {}", e))
                     });
@@ -1669,6 +1648,132 @@ fn ls_extract_flag(command: &str, flag: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Every running process as `(pid, command line)`, where the command line is
+/// argv joined by spaces — the same shape `ps -o command=` produced, so the
+/// matching helpers below are unchanged. Reading the process table through
+/// sysinfo rather than `/bin/ps` is what makes discovery work on Windows.
+fn ls_list_processes() -> Vec<(i32, String)> {
+    // The argument vector has to be requested explicitly — a plain
+    // refresh_processes leaves it empty, which would strip the very flags
+    // discovery reads (--csrf_token, --extension_server_port).
+    let refresh_kind = ProcessRefreshKind::nothing()
+        .with_cmd(UpdateKind::Always)
+        .with_exe(UpdateKind::Always);
+
+    let mut system = System::new();
+    system.refresh_processes_specifics(ProcessesToUpdate::All, true, refresh_kind);
+
+    system
+        .processes()
+        .iter()
+        .filter_map(|(process_pid, process)| {
+            let process_pid = i32::try_from(process_pid.as_u32()).ok()?;
+            let mut parts: Vec<String> = process
+                .cmd()
+                .iter()
+                .map(|arg| arg.to_string_lossy().to_string())
+                .collect();
+            // A process with no argv still has an executable path to match on.
+            if parts.is_empty() {
+                parts.push(process.exe()?.to_string_lossy().to_string());
+            }
+            Some((process_pid, parts.join(" ")))
+        })
+        .collect()
+}
+
+/// TCP ports the process is listening on.
+///
+/// netstat2 covers macOS, Linux and Windows from one code path. It reads the
+/// kernel's socket tables directly, which can come back empty where the OS
+/// withholds socket ownership, so on Unix an `lsof` sweep still backs it up.
+fn ls_listening_ports(plugin_id: &str, process_pid: i32) -> Vec<i32> {
+    let flags = netstat2::AddressFamilyFlags::IPV4 | netstat2::AddressFamilyFlags::IPV6;
+    let mut ports = std::collections::BTreeSet::new();
+    // Whether the socket table named an owner for any listener at all. Without
+    // this, a process that simply isn't listening is indistinguishable from an
+    // OS that withholds ownership, and every sibling process would pay for an
+    // lsof sweep.
+    let mut saw_any_owner = false;
+
+    match netstat2::get_sockets_info(flags, netstat2::ProtocolFlags::TCP) {
+        Ok(sockets) => {
+            for socket in sockets {
+                let netstat2::ProtocolSocketInfo::Tcp(ref tcp) = socket.protocol_socket_info else {
+                    continue;
+                };
+                if tcp.state != netstat2::TcpState::Listen || socket.associated_pids.is_empty() {
+                    continue;
+                }
+                saw_any_owner = true;
+                if socket
+                    .associated_pids
+                    .iter()
+                    .any(|owner| i32::try_from(*owner).is_ok_and(|owner| owner == process_pid))
+                {
+                    ports.insert(i32::from(tcp.local_port));
+                }
+            }
+        }
+        Err(e) => log::warn!("[plugin:{}] socket table read failed: {}", plugin_id, e),
+    }
+
+    if ports.is_empty() && !saw_any_owner {
+        for port in ls_listening_ports_via_lsof(plugin_id, process_pid) {
+            ports.insert(port);
+        }
+    }
+
+    ports.into_iter().collect()
+}
+
+#[cfg(unix)]
+fn ls_listening_ports_via_lsof(plugin_id: &str, process_pid: i32) -> Vec<i32> {
+    let Some(lsof) = ["/usr/sbin/lsof", "/usr/bin/lsof"]
+        .iter()
+        .find(|path| Path::new(path).exists())
+        .copied()
+    else {
+        log::warn!("[plugin:{}] no listening sockets found and lsof is not installed", plugin_id);
+        return Vec::new();
+    };
+
+    log::warn!(
+        "[plugin:{}] socket table reported no listening ports for pid {}; falling back to lsof",
+        plugin_id,
+        process_pid
+    );
+
+    match std::process::Command::new(lsof)
+        .args([
+            "-nP",
+            "-iTCP",
+            "-sTCP:LISTEN",
+            "-a",
+            "-p",
+            &process_pid.to_string(),
+        ])
+        .output()
+    {
+        Ok(o) if o.status.success() => {
+            ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
+        }
+        Ok(_) => {
+            log::warn!("[plugin:{}] lsof returned non-zero", plugin_id);
+            Vec::new()
+        }
+        Err(e) => {
+            log::warn!("[plugin:{}] lsof failed: {}", plugin_id, e);
+            Vec::new()
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn ls_listening_ports_via_lsof(_plugin_id: &str, _process_pid: i32) -> Vec<i32> {
+    Vec::new()
 }
 
 fn ls_marker_rank(command: &str, markers_lower: &[String]) -> Option<u8> {
@@ -1737,6 +1842,8 @@ fn ls_command_matches_process(command: &str, process_name_lower: &str) -> bool {
 }
 
 /// Parse listening port numbers from `lsof -nP -iTCP -sTCP:LISTEN` output.
+/// Parses `lsof` output. Only reachable through the Unix fallback above.
+#[cfg_attr(not(unix), allow(dead_code))]
 fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
     let mut ports = std::collections::BTreeSet::new();
     for line in output.lines() {
@@ -2830,6 +2937,38 @@ mod tests {
     }
 
     #[test]
+    fn ls_list_processes_reports_this_process_with_its_arguments() {
+        let processes = ls_list_processes();
+        assert!(!processes.is_empty(), "the OS must report running processes");
+
+        let own_pid = i32::try_from(std::process::id()).expect("pid fits in i32");
+        let (_, command) = processes
+            .iter()
+            .find(|(pid, _)| *pid == own_pid)
+            .expect("the running test process must appear in the process list");
+
+        // The whole argument vector has to survive, not just argv0: discovery
+        // reads --csrf_token and --extension_server_port out of it, and sysinfo
+        // omits arguments unless they are requested explicitly.
+        for arg in std::env::args() {
+            assert!(
+                command.contains(&arg),
+                "process command {:?} is missing argument {:?}",
+                command,
+                arg
+            );
+        }
+    }
+
+    #[test]
+    fn ls_listening_ports_is_empty_for_a_process_with_no_sockets() {
+        // The test binary listens on nothing, so this exercises the real socket
+        // table lookup and its "not listening" answer on every platform.
+        let own_pid = i32::try_from(std::process::id()).expect("pid fits in i32");
+        assert!(ls_listening_ports("test", own_pid).is_empty());
+    }
+
+    #[test]
     fn env_api_respects_allowlist_in_host_and_js() {
         let claude_env_vars = [
             "CLAUDE_CONFIG_DIR",
@@ -3370,6 +3509,22 @@ mod tests {
         assert!(
             redacted.contains("devi...3456"),
             "Devin session token should use first4...last4 redaction, got: {}",
+            redacted
+        );
+    }
+
+    #[test]
+    fn redact_log_message_redacts_windows_paths() {
+        let msg = "agy token file read failed: C:\\Users\\rebers\\.gemini\\antigravity-cli\\antigravity-oauth-token not found";
+        let redacted = redact_log_message(msg);
+        assert!(
+            !redacted.contains("rebers"),
+            "Windows user path should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("[PATH]"),
+            "Windows path should be replaced with the path placeholder, got: {}",
             redacted
         );
     }

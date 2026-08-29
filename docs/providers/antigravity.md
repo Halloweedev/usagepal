@@ -9,11 +9,19 @@ Antigravity is built on Codeium/Windsurf-derived infrastructure and uses the sam
 - **Vendor:** Google (internal codename "Jetski")
 - **Protocol:** Connect RPC v1 (JSON over HTTP) on local language server
 - **Service:** `exa.language_server_pb.LanguageServerService`
-- **Auth:** CSRF token from app/IDE process args; Google OAuth tokens from SQLite; `agy` token from macOS Keychain
+- **Auth:** CSRF token from app/IDE process args; Google OAuth tokens from SQLite; `agy` token from the macOS Keychain or its token file
 - **Quota:** fraction (0.0–1.0, where 1.0 = 100% remaining)
 - **Quota window:** 5 hours
 - **Timestamps:** ISO 8601
+- **Platforms:** macOS, Windows, Linux
 - **Requires:** Antigravity app/IDE running, signed-in app/IDE SQLite credentials, or `agy` signed in
+
+## What Antigravity Does Not Report
+
+Antigravity publishes a remaining-quota fraction per model and nothing else. There are **no token
+counts, no request counts and no costs** — not in the language server, not in the Cloud Code
+endpoints, and not in any local file the IDE or `agy` writes. UsagePal therefore shows no spend for
+this provider, and any dollar figure would be invented rather than measured.
 
 ## Discovery
 
@@ -21,13 +29,18 @@ The Antigravity app/IDE language server listens on a random localhost port. Thre
 
 ```bash
 # 1. Find process and extract CSRF token
+#    UsagePal reads the process table directly, which works the same on
+#    macOS, Windows and Linux. The shell equivalent on macOS/Linux is:
 ps -ax -o pid=,command= | grep -i '[l]anguage_server.*antigravity'
-# Process name: language_server, language_server_macos, or language_server_macos_arm
+# Process name: language_server plus a per-OS suffix —
+#   language_server_macos, language_server_macos_arm,
+#   language_server_linux_x64, language_server_windows_x64.exe
 # Match: --app_data_dir antigravity / antigravity-ide OR path contains /antigravity/
 # Extract: --csrf_token <token>
 # Extract: --extension_server_port <port>  (HTTP fallback)
 
 # 2. Find listening ports
+#    UsagePal reads the kernel socket table; lsof is only a fallback.
 lsof -nP -iTCP -sTCP:LISTEN -a -p <pid>
 
 # 3. Probe each port to find the Connect-RPC endpoint
@@ -35,6 +48,10 @@ POST https://127.0.0.1:<port>/.../GetUnleashData  → first 200 OK wins
 ```
 
 Port and CSRF token change on every app/IDE restart. The LS may use HTTPS with a self-signed cert.
+
+An IDE usually runs several language-server child processes and only one of them listens, so
+discovery prefers a process with real listening sockets and falls back to the process that
+advertises `--extension_server_port`.
 
 `agy` can also expose the same local service via an `agy` process. It has listening ports but no CSRF token or Antigravity marker flags, so discovery matches the `agy` executable directly.
 
@@ -161,10 +178,19 @@ Interestingly, non-Google models (Claude, GPT-OSS) are proxied through Codeium/W
 
 The Antigravity IDE stores auth credentials in VS Code-compatible state databases.
 
-- **Paths, tried in order:**
-  - `~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb`
-  - `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb`
+Antigravity IDE is a VS Code fork, so the database lives under the standard user-data directory for
+each OS. `Antigravity IDE` is the current folder name and `Antigravity` the pre-2.0 one, still
+present on machines that upgraded; both are tried, current first.
+
+- **Paths, by platform:**
+  - macOS: `~/Library/Application Support/Antigravity IDE|Antigravity/User/globalStorage/state.vscdb`
+  - Linux: `~/.config/Antigravity IDE|Antigravity/User/globalStorage/state.vscdb`
+  - Windows: `%APPDATA%\Antigravity IDE|Antigravity\User\globalStorage\state.vscdb`
 - **Table:** `ItemTable` (`key` TEXT, `value` TEXT)
+
+The same table also holds a cached `antigravityUnifiedStateSync.userStatus` blob. It is wrapped like
+the OAuth value but under a `userStatusSentinelKey` sentinel, and its payload carries no model
+display names — only unlabeled numbers — so UsagePal does not use it as an offline fallback.
 
 ### antigravityUnifiedStateSync.oauthToken (sentinel envelope → protobuf)
 
@@ -225,9 +251,20 @@ Base URLs tried in order:
 1. `https://daily-cloudcode-pa.googleapis.com`
 2. `https://cloudcode-pa.googleapis.com`
 
-### agy keychain fallback
+### agy credential fallback
 
-`agy` stores its auth in the macOS Keychain under service `gemini`, account `antigravity`. UsagePal reads that exact account only; it does not use legacy Gemini CLI files.
+`agy` caches its auth in the OS keyring — service `gemini`, account `antigravity`. UsagePal reads
+that exact account only; it does not use legacy Gemini CLI files.
+
+When the keyring is unavailable, `agy` falls back to a token file and drops a marker beside it:
+
+- Token: `~/.gemini/antigravity-cli/antigravity-oauth-token`
+- Marker: `~/.gemini/antigravity-cli/cache/antigravity-keyring-unavailable`
+
+This is the normal case on Linux, where a session often has no secret service. UsagePal tries the
+keyring first and then the file, so macOS behaviour is unchanged and Linux works without a keyring.
+The file may hold a bare token, a `Bearer` value, JSON containing a token field, or a
+`go-keyring-base64:` wrapper; all four are accepted.
 
 For `agy`, UsagePal calls:
 
@@ -262,8 +299,23 @@ The Cloud Code model set is a superset of the LS model set. The LS returns only 
 
 1. Probe the Antigravity app/IDE language server.
 2. Probe the `agy` local language server.
-3. Read SQLite token candidates from both Antigravity state DB paths.
+3. Read SQLite token candidates from this platform's Antigravity state DB paths.
 4. Try unexpired SQLite/cached access tokens with `fetchAvailableModels`.
 5. Refresh SQLite refresh tokens only after auth failure or when no access token exists.
-6. Read `agy` keychain token from service `gemini`, account `antigravity`, then call `loadCodeAssist` and `retrieveUserQuota`.
-7. If all strategies fail: error "Start Antigravity or run `agy` and try again."
+6. Read the `agy` token from the keyring, then from its token file, then call `loadCodeAssist` and `retrieveUserQuota`.
+7. If no credentials were found anywhere: error "Start Antigravity or run `agy` and try again."
+8. If credentials existed but Cloud Code was unreachable or answered with an error: "Can't reach Antigravity right now. Try again shortly."
+
+## What UsagePal Shows
+
+- **Three pool bars** — Gemini Pro, Gemini Flash and Claude, each reporting the worst remaining
+  fraction among the models in that pool. Non-Gemini models share one quota bucket, so anything
+  that matches no rule is folded into Claude and logged, which is how a new model family shows up.
+- **A line per model**, below the pools, at its own remaining fraction. Variants that differ only by
+  a suffix — "Gemini 3 Pro (High)" and "(Low)" — collapse into one line at the worse value.
+- **Usage Trend** — a bar per day holding that day's peak quota used across pools. Antigravity keeps
+  no history, so UsagePal samples what it reports and stores the series in the plugin's data
+  directory (`history.json`, 31 days). Days when the app was not running read low.
+- **Burn Rate** — quota consumed per hour inside the current reset window, for whichever pool is
+  closest to running out. Needs at least two samples spanning 15 minutes, and is withheld after a
+  reset refills the pool.
