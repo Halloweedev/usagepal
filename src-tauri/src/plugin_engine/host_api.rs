@@ -1957,6 +1957,13 @@ fn ccusage_home_override<'a>(
     }
 }
 
+fn set_provider_cancel(provider: CcusageProvider, cancelled: bool) {
+    match provider {
+        CcusageProvider::Claude => ccusage_vendor::set_claude_cancel(cancelled),
+        CcusageProvider::Codex => ccusage_vendor::set_codex_cancel(cancelled),
+    }
+}
+
 fn inject_ccusage<'js>(
     ctx: &Ctx<'js>,
     host: &Object<'js>,
@@ -2037,12 +2044,18 @@ fn run_ccusage_query(opts_json: &str, plugin_id: &str, deadline: ProbeDeadline) 
     // or Codex cost. `None` before startup wiring, which is embedded-only.
     let pricing_overlay = pricing_cache::global().and_then(|cache| cache.overlay());
 
+    // Clear any stale cancel flag from a previous timed-out load that has since
+    // finished and cleared it in the worker. The worker itself clears the flag
+    // on exit, but if it panicked we clear here to avoid poisoning the next query.
+    set_provider_cancel(provider, false);
+
     // The load runs on its own thread so the probe worker can stop waiting on
     // it. An in-process loader cannot be killed the way the old subprocess's
-    // process group could, so a load that blows the deadline is abandoned, not
-    // cancelled: it keeps running, and drops `active_query` when it finishes.
-    // The vendored home override is a thread-local set inside `query_daily`, so
-    // it lands on this worker thread — not the caller's.
+    // process group could, so a load that blows the deadline is now *cancelled*
+    // via a flag that the vendored loader polls every ~1k lines. The abandoned
+    // worker will abort soon, free its allocations, and drop `active_query`
+    // before clearing the flag. The vendored home override is a thread-local set
+    // inside `query_daily`, so it lands on this worker thread — not the caller's.
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let _active_query = active_query;
@@ -2054,6 +2067,10 @@ fn run_ccusage_query(opts_json: &str, plugin_id: &str, deadline: ProbeDeadline) 
             pricing_overlay.as_deref(),
         );
         let _ = tx.send(result);
+        // Clear the cancel flag for this provider when the worker exits,
+        // whether via success, error, or cancellation. This allows the next
+        // query to start without inheriting a stale cancel.
+        set_provider_cancel(provider, false);
     });
 
     match rx.recv_timeout(timeout) {
@@ -2068,10 +2085,11 @@ fn run_ccusage_query(opts_json: &str, plugin_id: &str, deadline: ProbeDeadline) 
         }
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
             log::warn!(
-                "[plugin:{}] ccusage query timed out after {:?}; abandoning the load",
+                "[plugin:{}] ccusage query timed out after {:?}; cancelling the load",
                 plugin_id,
                 timeout
             );
+            set_provider_cancel(provider, true);
             runner_failed()
         }
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {

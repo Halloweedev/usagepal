@@ -16,7 +16,7 @@ use crate::{
     calculate_cost, calculate_cost_for_usage,
     cli::{CostMode, SharedArgs},
     cli_error, debug_log,
-    fast::{byte_lines, suffix_string, FxHashMap, FxHashSet, SmallIndexVec},
+    fast::{suffix_string, FxHashMap, FxHashSet, SmallIndexVec},
     format_date_tz, home, log_level, parse_ts_timestamp, parse_tz, progress, LoadedEntry,
     LoadedFile, ModelBreakdown, PricingMap, Result, Speed, TimestampMs, TokenCounts, TokenUsageRaw,
     UsageEntry, UsageSummary,
@@ -47,7 +47,9 @@ fn load_daily_summaries_inner(
     group_by_project: bool,
 ) -> Result<Vec<UsageSummary>> {
     let paths = claude_paths()?;
-    let files = usage_files(&paths, project_filter);
+    let mut files = usage_files(&paths, project_filter);
+    crate::apply_file_filters(&mut files, shared.since.as_deref(), "claude");
+    crate::check_claude_cancelled()?;
     if files.is_empty() {
         return Ok(Vec::new());
     }
@@ -133,8 +135,10 @@ fn load_entries_inner(
                 .join(", ")
         ),
     );
-    let files = usage_files(&paths, project_filter);
+    let mut files = usage_files(&paths, project_filter);
     debug_log(shared, format!("Found {} JSONL usage files", files.len()));
+    crate::apply_file_filters(&mut files, shared.since.as_deref(), "claude");
+    crate::check_claude_cancelled()?;
     if files.is_empty() {
         return Ok(Vec::new());
     }
@@ -419,24 +423,20 @@ fn read_daily_usage_file(
         timestamp: None,
         entries: Vec::new(),
     };
-    let Ok(content) = fs::read(path) else {
-        return loaded_file;
-    };
-
     let usage_marker = memmem::Finder::new(br#""usage":{"#);
-    for line in byte_lines(&content) {
+    crate::for_each_line(path, 2048, crate::is_claude_cancelled, |line| {
         if usage_marker.find(line).is_none() {
-            continue;
+            return;
         }
         if has_unsupported_null_field(line) {
-            continue;
+            return;
         }
         let Ok(data) = serde_json::from_slice::<DailyUsageLine>(line) else {
-            continue;
+            return;
         };
         let data = data.into_entry();
         let Some(timestamp) = parse_ts_timestamp(&data.timestamp) else {
-            continue;
+            return;
         };
         loaded_file.timestamp = Some(
             loaded_file
@@ -444,7 +444,7 @@ fn read_daily_usage_file(
                 .map_or(timestamp, |current| current.min(timestamp)),
         );
         if !is_valid_daily_usage_entry(&data) {
-            continue;
+            return;
         }
         let usage = data.message.usage;
         let cost = calculate_cost_for_usage(
@@ -473,7 +473,7 @@ fn read_daily_usage_file(
             request_id: data.request_id,
             is_sidechain: data.is_sidechain,
         });
-    }
+    });
     loaded_file
 }
 
@@ -747,27 +747,23 @@ fn read_usage_file(
         timestamp: None,
         entries: Vec::new(),
     };
-    let Ok(content) = fs::read(path) else {
-        return loaded_file;
-    };
-
     let usage_marker = memmem::Finder::new(br#""usage":{"#);
-    for line in byte_lines(&content) {
+    crate::for_each_line(path, 2048, crate::is_claude_cancelled, |line| {
         if usage_marker.find(line).is_none() {
-            continue;
+            return;
         }
         if has_unsupported_null_field(line) {
-            continue;
+            return;
         }
         let Ok(data) = serde_json::from_slice::<UsageEntry>(line) else {
-            continue;
+            return;
         };
         let Some(timestamp) = parse_ts_timestamp(&data.timestamp) else {
-            continue;
+            return;
         };
         update_loaded_file_timestamp(&mut loaded_file, timestamp);
         if !is_valid_usage_entry(&data) {
-            continue;
+            return;
         }
         let date = format_date_tz(timestamp, tz);
         let cost = calculate_cost(&data, mode, pricing);
@@ -796,7 +792,7 @@ fn read_usage_file(
             model,
             usage_limit_reset_time,
         });
-    }
+    });
     loaded_file
 }
 

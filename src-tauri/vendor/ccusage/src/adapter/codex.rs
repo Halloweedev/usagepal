@@ -106,6 +106,8 @@ fn load_groups_from_directory_with_dedupe(
 ) -> Result<BTreeMap<String, CodexGroup>> {
     let mut files = Vec::new();
     crate::collect_usage_files(sessions_dir, &mut files);
+    crate::apply_file_filters(&mut files, shared.since.as_deref(), "codex");
+    crate::check_codex_cancelled()?;
     if shared.single_thread {
         return aggregate_files(sessions_dir, &files, shared, kind, seen);
     }
@@ -122,6 +124,7 @@ fn aggregate_files(
     let mut groups = BTreeMap::new();
     let timezone = parse_tz(shared.timezone.as_deref()).or_else(|| Some(JiffTimeZone::system()));
     for file in files {
+        crate::check_codex_cancelled()?;
         aggregate_file(
             sessions_dir,
             file,
@@ -159,6 +162,7 @@ fn aggregate_files_parallel(
                 let timezone =
                     parse_tz(shared.timezone.as_deref()).or_else(|| Some(JiffTimeZone::system()));
                 for index in chunk {
+                    crate::check_codex_cancelled()?;
                     aggregate_file(
                         sessions_dir,
                         &files[index],

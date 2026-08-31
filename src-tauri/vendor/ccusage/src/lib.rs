@@ -53,7 +53,17 @@ mod terminal_stub;
 mod types;
 mod utils;
 
-use std::{cell::RefCell, env::VarError, ffi::OsString, fmt, path::Path, sync::Arc};
+use std::{
+    cell::RefCell,
+    env::VarError,
+    ffi::OsString,
+    fmt,
+    fs,
+    io::{BufRead, BufReader},
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use serde_json::json;
 
@@ -272,6 +282,235 @@ impl PricingTable {
 // override is always visible where it is read, and is invisible to every other
 // thread in the process.
 // ---------------------------------------------------------------------------
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static CLAUDE_CANCEL: AtomicBool = AtomicBool::new(false);
+static CODEX_CANCEL: AtomicBool = AtomicBool::new(false);
+
+fn set_cancel(flag: &AtomicBool, v: bool) {
+    flag.store(v, Ordering::Relaxed);
+}
+
+fn is_cancelled(flag: &AtomicBool) -> bool {
+    flag.load(Ordering::Relaxed)
+}
+
+pub fn set_claude_cancel(v: bool) {
+    set_cancel(&CLAUDE_CANCEL, v);
+}
+
+pub fn set_codex_cancel(v: bool) {
+    set_cancel(&CODEX_CANCEL, v);
+}
+
+pub(crate) fn is_claude_cancelled() -> bool {
+    is_cancelled(&CLAUDE_CANCEL)
+}
+
+pub(crate) fn is_codex_cancelled() -> bool {
+    is_cancelled(&CODEX_CANCEL)
+}
+
+pub(crate) fn check_claude_cancelled() -> Result<()> {
+    if is_claude_cancelled() {
+        Err(cli_error("cancelled"))
+    } else {
+        Ok(())
+    }
+}
+
+pub(crate) fn check_codex_cancelled() -> Result<()> {
+    if is_codex_cancelled() {
+        Err(cli_error("cancelled"))
+    } else {
+        Ok(())
+    }
+}
+
+fn file_mtime_or_epoch(path: &Path) -> SystemTime {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .unwrap_or(UNIX_EPOCH)
+}
+
+fn is_file_older_than(path: &Path, cutoff: SystemTime) -> bool {
+    let Ok(modified) = fs::metadata(path).and_then(|m| m.modified()) else {
+        return false;
+    };
+    modified < cutoff
+}
+
+/// Whether a file should be skipped because it is too old to contain data
+/// for the 31-day window the app queries. Codex and Claude session files are
+/// append-only, so a file not modified in 32 days cannot contain a recent
+/// event. This is a coarse pre-filter; the per-record timestamp filter remains
+/// authoritative for Today/Yesterday/30d totals.
+pub(crate) fn should_skip_file_due_to_age(path: &Path) -> bool {
+    const CUTOFF_DAYS: u64 = 32;
+    let cutoff = SystemTime::now()
+        .checked_sub(Duration::from_secs(CUTOFF_DAYS * 24 * 3600))
+        .unwrap_or(UNIX_EPOCH);
+    is_file_older_than(path, cutoff)
+}
+
+pub(crate) fn should_skip_file_due_to_age_with_since(path: &Path, since: Option<&str>) -> bool {
+    let Some(since_str) = since else {
+        return false;
+    };
+    // Parse YYYYMMDD to SystemTime at 00:00 UTC, then subtract 2 days slop.
+    // If parsing fails, fall back to the 32-day cutoff.
+    let cutoff = parse_since_to_system_time(since_str)
+        .and_then(|t| t.checked_sub(Duration::from_secs(2 * 24 * 3600)))
+        .unwrap_or_else(|| {
+            SystemTime::now()
+                .checked_sub(Duration::from_secs(32 * 24 * 3600))
+                .unwrap_or(UNIX_EPOCH)
+        });
+    is_file_older_than(path, cutoff)
+}
+
+fn parse_since_to_system_time(since: &str) -> Option<SystemTime> {
+    if since.len() != 8 {
+        return None;
+    }
+    let year: i32 = since[0..4].parse().ok()?;
+    let month: u32 = since[4..6].parse().ok()?;
+    let day: u32 = since[6..8].parse().ok()?;
+    // Use jiff to handle leap years etc., then convert to SystemTime.
+    let date = jiff::civil::Date::new(year as i16, month as i8, day as i8).ok()?;
+    let zoned = date.to_zoned(jiff::tz::TimeZone::UTC).ok()?;
+    let secs = zoned.timestamp().as_second();
+    if secs < 0 {
+        return None;
+    }
+    Some(UNIX_EPOCH + Duration::from_secs(secs as u64))
+}
+
+/// Hard budget: keep most-recent files until `max_bytes`, drop the rest.
+/// Shared by Claude and Codex loaders — sorts by mtime (recent first) so the
+/// window the UI needs is preserved.
+pub(crate) const FILE_BUDGET_BYTES: u64 = 1_000_000_000;
+
+pub(crate) fn enforce_file_size_limit(files: &mut Vec<PathBuf>, max_bytes: u64) {
+    if files.is_empty() {
+        return;
+    }
+    files.sort_by(|a, b| file_mtime_or_epoch(b).cmp(&file_mtime_or_epoch(a)));
+
+    let mut total: u64 = 0;
+    let mut kept: Vec<PathBuf> = Vec::with_capacity(files.len());
+    let mut skipped_bytes: u64 = 0;
+    let mut skipped_count: usize = 0;
+    for path in files.drain(..) {
+        let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        if total + size > max_bytes && !kept.is_empty() {
+            skipped_bytes += size;
+            skipped_count += 1;
+            continue;
+        }
+        total += size;
+        kept.push(path);
+    }
+    if skipped_count > 0 {
+        ::log::warn!(
+            "ccusage: skipped {} files ({} bytes) beyond {}-byte budget; kept {} files ({} bytes)",
+            skipped_count,
+            skipped_bytes,
+            max_bytes,
+            kept.len(),
+            total
+        );
+    }
+    *files = kept;
+}
+
+/// Apply the coarse mtime pre-filter and the byte-budget cap. Only filters by
+/// age when `since` is Some (the 31-day query); `None` keeps all fixtures for
+/// differential tests. Logs when files are dropped.
+pub(crate) fn apply_file_filters(
+    files: &mut Vec<PathBuf>,
+    since: Option<&str>,
+    label: &str,
+) {
+    let before = files.len();
+    files.retain(|p| !should_skip_file_due_to_age_with_since(p, since));
+    if files.len() != before {
+        ::log::info!(
+            "{}: filtered {} files by age ({} -> {})",
+            label,
+            before - files.len(),
+            before,
+            files.len()
+        );
+    }
+    enforce_file_size_limit(files, FILE_BUDGET_BYTES);
+}
+
+pub(crate) fn trim_line_ending(line: &[u8]) -> &[u8] {
+    if line.ends_with(b"\n") {
+        let mut s = &line[..line.len() - 1];
+        if s.ends_with(b"\r") {
+            s = &s[..s.len() - 1];
+        }
+        s
+    } else {
+        line
+    }
+}
+
+/// Stream a file line-by-line with periodic cancellation polling. Opens the
+/// file (silently ignores missing files), then calls `visit` for each trimmed
+/// line. Returns `true` if cancellation was observed and the stream was
+/// aborted early; the caller decides whether that is a `break` (Claude's
+/// partial-file) or an `Err("cancelled")` (Codex's fail-fast).
+pub(crate) fn for_each_line(
+    path: &Path,
+    cancel_every: usize,
+    is_cancelled: impl Fn() -> bool,
+    mut visit: impl FnMut(&[u8]),
+) -> bool {
+    try_for_each_line(path, cancel_every, is_cancelled, |line| {
+        visit(line);
+        Ok::<(), CliError>(())
+    })
+    .unwrap_or(false)
+}
+
+/// Fallible variant of `for_each_line`: `visit` may return `Err`, which
+/// aborts the stream and is propagated. Returns `Ok(true)` if cancelled,
+/// `Ok(false)` if completed, `Err(e)` if `visit` failed.
+pub(crate) fn try_for_each_line(
+    path: &Path,
+    cancel_every: usize,
+    is_cancelled: impl Fn() -> bool,
+    mut visit: impl FnMut(&[u8]) -> Result<()>,
+) -> Result<bool> {
+    let Ok(file) = fs::File::open(path) else {
+        return Ok(false);
+    };
+    let mut reader = BufReader::new(file);
+    let mut buf = Vec::new();
+    let mut count: usize = 0;
+    loop {
+        buf.clear();
+        let n = match reader.read_until(b'\n', &mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(_) => break,
+        };
+        let line = trim_line_ending(&buf);
+        count += 1;
+        if count % cancel_every == 0 && is_cancelled() {
+            return Ok(true);
+        }
+        if n == 0 {
+            break;
+        }
+        visit(line)?;
+    }
+    Ok(false)
+}
 
 thread_local! {
     static HOME_OVERRIDE: RefCell<Option<(&'static str, OsString)>> = const { RefCell::new(None) };

@@ -1,8 +1,4 @@
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-    thread,
-};
+use std::{env, fs, path::{Path, PathBuf}, thread};
 
 use compact_str::CompactString;
 use serde_json::Value;
@@ -11,7 +7,7 @@ use crate::{
     chunk_file_indexes_by_size,
     cli::SharedArgs,
     cli_error, collect_usage_files,
-    fast::{byte_lines, FxHashSet},
+    fast::FxHashSet,
     home, non_empty_json_string, progress, CodexRawUsage, CodexTokenUsageEvent, Result,
     TimestampMs,
 };
@@ -22,6 +18,8 @@ pub(crate) fn load_codex_events_from_directory(
 ) -> Result<Vec<CodexTokenUsageEvent>> {
     let mut files = Vec::new();
     collect_usage_files(sessions_dir, &mut files);
+    crate::apply_file_filters(&mut files, None, "codex_loader");
+    crate::check_codex_cancelled()?;
     let mut events = if single_thread {
         files
             .iter()
@@ -139,25 +137,19 @@ pub(crate) fn visit_codex_session_file(
     path: &Path,
     mut visit: impl FnMut(CodexTokenUsageEvent) -> Result<()>,
 ) -> Result<()> {
-    let Ok(content) = fs::read(path) else {
-        return Ok(());
-    };
     let session_id = codex_session_id(sessions_dir, path);
     let mut previous_totals: Option<CodexRawUsage> = None;
     let mut current_model: Option<String> = None;
     let mut current_model_is_fallback = false;
-    // Tracks the service tier applied to subsequent turns. Codex records tier
-    // changes as `thread_settings_applied` events, so fast pricing is scoped to
-    // the turns that actually ran fast rather than the whole session/history.
     let mut current_fast_tier = false;
     let fallback_timestamp = file_modified_timestamp(path);
 
-    for line in byte_lines(&content) {
+    let cancelled = crate::try_for_each_line(path, 1024, crate::is_codex_cancelled, |line| {
         if !codex_line_may_contain_usage(line) {
-            continue;
+            return Ok(());
         }
         let Ok(value) = serde_json::from_slice::<Value>(line) else {
-            continue;
+            return Ok(());
         };
         let entry_type = value.get("type").and_then(Value::as_str);
         if entry_type == Some("turn_context") {
@@ -168,7 +160,7 @@ pub(crate) fn visit_codex_session_file(
             if let Some(fast) = codex_thread_settings_fast_tier(&value) {
                 current_fast_tier = fast;
             }
-            continue;
+            return Ok(());
         }
         if entry_type == Some("thread_settings_applied")
             || codex_payload_type_is(&value, "thread_settings_applied")
@@ -176,7 +168,7 @@ pub(crate) fn visit_codex_session_file(
             if let Some(fast) = codex_thread_settings_fast_tier(&value) {
                 current_fast_tier = fast;
             }
-            continue;
+            return Ok(());
         }
         if entry_type != Some("event_msg") {
             add_codex_exec_event(
@@ -188,16 +180,16 @@ pub(crate) fn visit_codex_session_file(
                 current_fast_tier,
                 &mut visit,
             )?;
-            continue;
+            return Ok(());
         }
         let Some(timestamp) = value.get("timestamp").and_then(Value::as_str) else {
-            continue;
+            return Ok(());
         };
         let Some(payload) = value.get("payload") else {
-            continue;
+            return Ok(());
         };
         if payload.get("type").and_then(Value::as_str) != Some("token_count") {
-            continue;
+            return Ok(());
         }
         let info = payload.get("info");
         let total_usage = info.and_then(|info| {
@@ -218,14 +210,14 @@ pub(crate) fn visit_codex_session_file(
             previous_totals = Some(total_usage);
         }
         let Some(raw_usage) = raw_usage else {
-            continue;
+            return Ok(());
         };
         if raw_usage.input_tokens == 0
             && raw_usage.cached_input_tokens == 0
             && raw_usage.output_tokens == 0
             && raw_usage.reasoning_output_tokens == 0
         {
-            continue;
+            return Ok(());
         }
 
         let parsed_model = codex_model_from_payload(Some(payload))
@@ -257,8 +249,12 @@ pub(crate) fn visit_codex_session_file(
             is_fallback_model,
             is_fast_tier: current_fast_tier,
         })?;
-    }
+        Ok(())
+    })?;
 
+    if cancelled {
+        return Err(crate::cli_error("cancelled"));
+    }
     Ok(())
 }
 
