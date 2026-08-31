@@ -8,7 +8,9 @@ export const makeCtx = () => {
     nowIso: "2026-02-02T00:00:00.000Z",
     app: {
       version: "0.0.0",
-      platform: "darwin",
+      // Matches the host, which reports Rust's std::env::consts::OS —
+      // "macos" / "linux" / "windows", never Node's "darwin".
+      platform: "macos",
       appDataDir: "/tmp/usagepal-test",
       pluginDataDir: "/tmp/usagepal-test/plugin",
     },

@@ -265,6 +265,55 @@ if (ctx.host.fs.exists("~/.myapp/credentials.json")) {
 }
 ```
 
+## Local Language Server Discovery
+
+```typescript
+host.ls.discover(opts: {
+  processName: string,      // Executable name to match, e.g. "language_server"
+  markers: string[],        // Accepted --ide_name / --app_data_dir values; [] matches any
+  csrfFlag: string,         // Flag holding the CSRF token; "" when the process has none
+  portFlag?: string | null, // Flag holding a fallback port
+  extraFlags?: string[],    // Other flags to read out of the command line
+}): {
+  pid: number,
+  csrf: string,
+  ports: number[],          // TCP ports the process is listening on
+  extra: Record<string, string>,
+  extensionPort: number | null,
+} | null
+```
+
+Finds a locally running language server started by a provider's app, so a plugin can talk to it
+over localhost.
+
+### Behavior
+
+- **Cross-platform**: reads the process table and the kernel socket table directly, so it works on
+  macOS, Windows and Linux. On Unix an `lsof` sweep backs up the socket lookup.
+- **Returns `null`**: when no matching process is found. It never throws.
+- **Marker priority**: a process whose `--ide_name` or `--app_data_dir` matches a marker exactly is
+  preferred over one matched only by its path, which keeps sibling IDEs apart.
+- **Prefers a listening process**: apps often run several language-server children while only one
+  listens. A process with real listening sockets wins; one that only advertises `portFlag` is used
+  as a fallback and returned as `extensionPort`.
+- **Values change per restart**: the port and CSRF token are regenerated every time the app starts,
+  so discover on every probe rather than caching them.
+
+### Example
+
+```javascript
+const discovery = ctx.host.ls.discover({
+  processName: "language_server",
+  markers: ["antigravity", "antigravity-ide"],
+  csrfFlag: "--csrf_token",
+  portFlag: "--extension_server_port",
+})
+
+if (!discovery) throw "Start the app and try again."
+
+const port = discovery.ports[0] || discovery.extensionPort
+```
+
 ## SQLite
 
 ### Query (Read-Only)
