@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.7.74-beta.1
+
+### New Features
+- feat(antigravity): add Linux support and per-model metrics ([#56](https://github.com/Halloweedev/usagepal/pull/56)) by @rmems
+
+### Bug Fixes
+- fix(ccusage): bound Codex/Claude scans to prevent OOM on large histories ([#58](https://github.com/Halloweedev/usagepal/pull/58)) by @Halloweedev
+
+### Refactor
+- refactor: simplify OOM fix – dedupe streaming and filter helpers ([#58](https://github.com/Halloweedev/usagepal/pull/58)) by @Halloweedev
+
+### Chores
+- build(tauri): scope macOS-only dependencies to macOS targets ([#56](https://github.com/Halloweedev/usagepal/pull/56)) by @rmems
+
+---
+
+**Full Changelog**: [v0.7.73...v0.7.74-beta.1](https://github.com/Halloweedev/usagepal/compare/v0.7.73...v0.7.74-beta.1)
+
+- [b6170ec](https://github.com/Halloweedev/usagepal/commit/b6170ec60162b30de1680830c7f3a54a744c4fe1) feat(antigravity): add Linux support and per-model metrics by @rmems
+- [80d0bf3](https://github.com/Halloweedev/usagepal/commit/80d0bf3eea080969724e2aea58995af9d0f5445d) build(tauri): scope macOS-only dependencies to macOS targets by @rmems
+- [a0d0560](https://github.com/Halloweedev/usagepal/commit/a0d0560c1233d33c5b714bcb815cfdbe53307d9c) fix(ccusage): bound Codex/Claude scans to prevent OOM on large histories by @Halloweedev
+- [c31fa66](https://github.com/Halloweedev/usagepal/commit/c31fa663301cee024cf4e0f90289f065c6264544) refactor: simplify OOM fix – dedupe streaming and filter helpers by @Halloweedev
+
 ## v0.7.73
 
 ### Bug Fixes
