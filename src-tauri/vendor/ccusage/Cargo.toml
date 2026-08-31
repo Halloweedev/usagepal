@@ -27,7 +27,7 @@ jiff = { version = "0.2.24", default-features = false, features = [
     "tzdb-zoneinfo",
 ] }
 memchr = "2"
-compact_str = "0.9"
+compact_str = "0.10"
 phf = { version = "0.14", features = ["macros"] }
 rustc-hash = "2"
 serde = { version = "1", features = ["derive"] }
