@@ -106,28 +106,8 @@ fn load_groups_from_directory_with_dedupe(
 ) -> Result<BTreeMap<String, CodexGroup>> {
     let mut files = Vec::new();
     crate::collect_usage_files(sessions_dir, &mut files);
-    // Coarse pre-filter: drop files not modified in the last 32 days. For the
-    // 31-day window the plugin queries, this can cut a 57 GB history to a few
-    // hundred MB without touching record timestamps (which remain authoritative).
-    // Only when the caller asked for a recent window; the differential gate
-    // queries with since=None and must see all fixtures.
-    let before_filter = files.len();
-    files.retain(|p| !crate::should_skip_file_due_to_age_with_since(p, shared.since.as_deref()));
-    if files.len() != before_filter {
-        ::log::info!(
-            "codex: filtered {} files by age ({} -> {})",
-            before_filter - files.len(),
-            before_filter,
-            files.len()
-        );
-    }
-    // Hard budget: cap total bytes to keep RSS bounded even if recent history
-    // is huge (e.g. a single 1 GB rollout file). Most-recent files win.
-    crate::enforce_file_size_limit(&mut files, 1_000_000_000);
-    // Also respect cancellation before fanning out threads.
-    if crate::is_codex_cancelled() {
-        return Err(crate::cli_error("cancelled"));
-    }
+    crate::apply_file_filters(&mut files, shared.since.as_deref(), "codex");
+    crate::check_codex_cancelled()?;
     if shared.single_thread {
         return aggregate_files(sessions_dir, &files, shared, kind, seen);
     }
@@ -144,9 +124,7 @@ fn aggregate_files(
     let mut groups = BTreeMap::new();
     let timezone = parse_tz(shared.timezone.as_deref()).or_else(|| Some(JiffTimeZone::system()));
     for file in files {
-        if crate::is_codex_cancelled() {
-            return Err(crate::cli_error("cancelled"));
-        }
+        crate::check_codex_cancelled()?;
         aggregate_file(
             sessions_dir,
             file,
@@ -184,9 +162,7 @@ fn aggregate_files_parallel(
                 let timezone =
                     parse_tz(shared.timezone.as_deref()).or_else(|| Some(JiffTimeZone::system()));
                 for index in chunk {
-                    if crate::is_codex_cancelled() {
-                        return Err(crate::cli_error("cancelled"));
-                    }
+                    crate::check_codex_cancelled()?;
                     aggregate_file(
                         sessions_dir,
                         &files[index],

@@ -2,7 +2,6 @@ use std::{
     collections::BTreeMap,
     env, fs,
     hash::{Hash, Hasher},
-    io::{BufRead, BufReader},
     path::{Path, PathBuf},
     sync::Arc,
     thread,
@@ -17,7 +16,7 @@ use crate::{
     calculate_cost, calculate_cost_for_usage,
     cli::{CostMode, SharedArgs},
     cli_error, debug_log,
-    fast::{byte_lines, suffix_string, FxHashMap, FxHashSet, SmallIndexVec},
+    fast::{suffix_string, FxHashMap, FxHashSet, SmallIndexVec},
     format_date_tz, home, log_level, parse_ts_timestamp, parse_tz, progress, LoadedEntry,
     LoadedFile, ModelBreakdown, PricingMap, Result, Speed, TimestampMs, TokenCounts, TokenUsageRaw,
     UsageEntry, UsageSummary,
@@ -49,23 +48,8 @@ fn load_daily_summaries_inner(
 ) -> Result<Vec<UsageSummary>> {
     let paths = claude_paths()?;
     let mut files = usage_files(&paths, project_filter);
-    // Pre-filter by mtime to avoid scanning years of history for a 31-day window.
-    // Only when the caller asked for a recent window (since is Some); the
-    // differential gate and other tests query with since=None and must see all fixtures.
-    let before = files.len();
-    files.retain(|p| !crate::should_skip_file_due_to_age_with_since(p, shared.since.as_deref()));
-    if files.len() != before {
-        ::log::info!(
-            "claude: filtered {} files by age ({} -> {})",
-            before - files.len(),
-            before,
-            files.len()
-        );
-    }
-    crate::enforce_file_size_limit(&mut files, 1_000_000_000);
-    if crate::is_claude_cancelled() {
-        return Err(crate::cli_error("cancelled"));
-    }
+    crate::apply_file_filters(&mut files, shared.since.as_deref(), "claude");
+    crate::check_claude_cancelled()?;
     if files.is_empty() {
         return Ok(Vec::new());
     }
@@ -153,20 +137,8 @@ fn load_entries_inner(
     );
     let mut files = usage_files(&paths, project_filter);
     debug_log(shared, format!("Found {} JSONL usage files", files.len()));
-    let before = files.len();
-    files.retain(|p| !crate::should_skip_file_due_to_age_with_since(p, shared.since.as_deref()));
-    if files.len() != before {
-        ::log::info!(
-            "claude: filtered {} files by age ({} -> {})",
-            before - files.len(),
-            before,
-            files.len()
-        );
-    }
-    crate::enforce_file_size_limit(&mut files, 1_000_000_000);
-    if crate::is_claude_cancelled() {
-        return Err(crate::cli_error("cancelled"));
-    }
+    crate::apply_file_filters(&mut files, shared.since.as_deref(), "claude");
+    crate::check_claude_cancelled()?;
     if files.is_empty() {
         return Ok(Vec::new());
     }
@@ -451,48 +423,20 @@ fn read_daily_usage_file(
         timestamp: None,
         entries: Vec::new(),
     };
-    let Ok(file) = fs::File::open(path) else {
-        return loaded_file;
-    };
-    let mut reader = BufReader::new(file);
-    let mut line = Vec::new();
-    let mut line_count: usize = 0;
-
     let usage_marker = memmem::Finder::new(br#""usage":{"#);
-    loop {
-        line.clear();
-        let n = match reader.read_until(b'\n', &mut line) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(_) => break,
-        };
-        let mut slice: &[u8] = &line;
-        if slice.ends_with(b"\n") {
-            slice = &slice[..slice.len() - 1];
-            if slice.ends_with(b"\r") {
-                slice = &slice[..slice.len() - 1];
-            }
-        }
-        line_count += 1;
-        if line_count % 2048 == 0 && crate::is_claude_cancelled() {
-            break;
-        }
-        if n == 0 {
-            break;
-        }
-        let line = slice;
+    crate::for_each_line(path, 2048, crate::is_claude_cancelled, |line| {
         if usage_marker.find(line).is_none() {
-            continue;
+            return;
         }
         if has_unsupported_null_field(line) {
-            continue;
+            return;
         }
         let Ok(data) = serde_json::from_slice::<DailyUsageLine>(line) else {
-            continue;
+            return;
         };
         let data = data.into_entry();
         let Some(timestamp) = parse_ts_timestamp(&data.timestamp) else {
-            continue;
+            return;
         };
         loaded_file.timestamp = Some(
             loaded_file
@@ -500,7 +444,7 @@ fn read_daily_usage_file(
                 .map_or(timestamp, |current| current.min(timestamp)),
         );
         if !is_valid_daily_usage_entry(&data) {
-            continue;
+            return;
         }
         let usage = data.message.usage;
         let cost = calculate_cost_for_usage(
@@ -529,7 +473,7 @@ fn read_daily_usage_file(
             request_id: data.request_id,
             is_sidechain: data.is_sidechain,
         });
-    }
+    });
     loaded_file
 }
 
@@ -803,51 +747,23 @@ fn read_usage_file(
         timestamp: None,
         entries: Vec::new(),
     };
-    let Ok(file) = fs::File::open(path) else {
-        return loaded_file;
-    };
-    let mut reader = BufReader::new(file);
-    let mut line = Vec::new();
-    let mut line_count: usize = 0;
-
     let usage_marker = memmem::Finder::new(br#""usage":{"#);
-    loop {
-        line.clear();
-        let n = match reader.read_until(b'\n', &mut line) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(_) => break,
-        };
-        let mut slice: &[u8] = &line;
-        if slice.ends_with(b"\n") {
-            slice = &slice[..slice.len() - 1];
-            if slice.ends_with(b"\r") {
-                slice = &slice[..slice.len() - 1];
-            }
-        }
-        line_count += 1;
-        if line_count % 2048 == 0 && crate::is_claude_cancelled() {
-            break;
-        }
-        if n == 0 {
-            break;
-        }
-        let line = slice;
+    crate::for_each_line(path, 2048, crate::is_claude_cancelled, |line| {
         if usage_marker.find(line).is_none() {
-            continue;
+            return;
         }
         if has_unsupported_null_field(line) {
-            continue;
+            return;
         }
         let Ok(data) = serde_json::from_slice::<UsageEntry>(line) else {
-            continue;
+            return;
         };
         let Some(timestamp) = parse_ts_timestamp(&data.timestamp) else {
-            continue;
+            return;
         };
         update_loaded_file_timestamp(&mut loaded_file, timestamp);
         if !is_valid_usage_entry(&data) {
-            continue;
+            return;
         }
         let date = format_date_tz(timestamp, tz);
         let cost = calculate_cost(&data, mode, pricing);
@@ -876,7 +792,7 @@ fn read_usage_file(
             model,
             usage_limit_reset_time,
         });
-    }
+    });
     loaded_file
 }
 

@@ -1,9 +1,4 @@
-use std::{
-    env, fs,
-    io::{BufRead, BufReader},
-    path::{Path, PathBuf},
-    thread,
-};
+use std::{env, fs, path::{Path, PathBuf}, thread};
 
 use compact_str::CompactString;
 use serde_json::Value;
@@ -12,7 +7,7 @@ use crate::{
     chunk_file_indexes_by_size,
     cli::SharedArgs,
     cli_error, collect_usage_files,
-    fast::{byte_lines, FxHashSet},
+    fast::FxHashSet,
     home, non_empty_json_string, progress, CodexRawUsage, CodexTokenUsageEvent, Result,
     TimestampMs,
 };
@@ -23,20 +18,8 @@ pub(crate) fn load_codex_events_from_directory(
 ) -> Result<Vec<CodexTokenUsageEvent>> {
     let mut files = Vec::new();
     collect_usage_files(sessions_dir, &mut files);
-    let before = files.len();
-    files.retain(|p| !crate::should_skip_file_due_to_age_with_since(p, None));
-    if files.len() != before {
-        ::log::info!(
-            "codex_loader: filtered {} files by age ({} -> {})",
-            before - files.len(),
-            before,
-            files.len()
-        );
-    }
-    crate::enforce_file_size_limit(&mut files, 1_000_000_000);
-    if crate::is_codex_cancelled() {
-        return Err(crate::cli_error("cancelled"));
-    }
+    crate::apply_file_filters(&mut files, None, "codex_loader");
+    crate::check_codex_cancelled()?;
     let mut events = if single_thread {
         files
             .iter()
@@ -154,56 +137,19 @@ pub(crate) fn visit_codex_session_file(
     path: &Path,
     mut visit: impl FnMut(CodexTokenUsageEvent) -> Result<()>,
 ) -> Result<()> {
-    // Stream the file instead of `fs::read`-ing it whole: a single rollout file
-    // can be ~1 GB, and the old path allocated that plus a second copy via
-    // `byte_lines`. Streaming caps RSS to one line at a time and lets us abort
-    // promptly when the host's 15s deadline fires.
-    let file = match fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => return Ok(()),
-    };
-    let mut reader = BufReader::new(file);
-    let mut line = Vec::new();
-    let mut line_count: usize = 0;
     let session_id = codex_session_id(sessions_dir, path);
     let mut previous_totals: Option<CodexRawUsage> = None;
     let mut current_model: Option<String> = None;
     let mut current_model_is_fallback = false;
-    // Tracks the service tier applied to subsequent turns. Codex records tier
-    // changes as `thread_settings_applied` events, so fast pricing is scoped to
-    // the turns that actually ran fast rather than the whole session/history.
     let mut current_fast_tier = false;
     let fallback_timestamp = file_modified_timestamp(path);
 
-    loop {
-        line.clear();
-        let n = match reader.read_until(b'\n', &mut line) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(_) => break,
-        };
-        // Trim trailing newline(s) so downstream `from_slice` sees the same bytes
-        // as the old `byte_lines` iterator did.
-        let mut line_slice: &[u8] = &line;
-        if line_slice.ends_with(b"\n") {
-            line_slice = &line_slice[..line_slice.len() - 1];
-            if line_slice.ends_with(b"\r") {
-                line_slice = &line_slice[..line_slice.len() - 1];
-            }
-        }
-        line_count += 1;
-        if line_count % 1024 == 0 && crate::is_codex_cancelled() {
-            return Err(crate::cli_error("cancelled"));
-        }
-        if n == 0 {
-            break;
-        }
-        let line = line_slice;
+    let cancelled = crate::try_for_each_line(path, 1024, crate::is_codex_cancelled, |line| {
         if !codex_line_may_contain_usage(line) {
-            continue;
+            return Ok(());
         }
         let Ok(value) = serde_json::from_slice::<Value>(line) else {
-            continue;
+            return Ok(());
         };
         let entry_type = value.get("type").and_then(Value::as_str);
         if entry_type == Some("turn_context") {
@@ -214,7 +160,7 @@ pub(crate) fn visit_codex_session_file(
             if let Some(fast) = codex_thread_settings_fast_tier(&value) {
                 current_fast_tier = fast;
             }
-            continue;
+            return Ok(());
         }
         if entry_type == Some("thread_settings_applied")
             || codex_payload_type_is(&value, "thread_settings_applied")
@@ -222,7 +168,7 @@ pub(crate) fn visit_codex_session_file(
             if let Some(fast) = codex_thread_settings_fast_tier(&value) {
                 current_fast_tier = fast;
             }
-            continue;
+            return Ok(());
         }
         if entry_type != Some("event_msg") {
             add_codex_exec_event(
@@ -234,16 +180,16 @@ pub(crate) fn visit_codex_session_file(
                 current_fast_tier,
                 &mut visit,
             )?;
-            continue;
+            return Ok(());
         }
         let Some(timestamp) = value.get("timestamp").and_then(Value::as_str) else {
-            continue;
+            return Ok(());
         };
         let Some(payload) = value.get("payload") else {
-            continue;
+            return Ok(());
         };
         if payload.get("type").and_then(Value::as_str) != Some("token_count") {
-            continue;
+            return Ok(());
         }
         let info = payload.get("info");
         let total_usage = info.and_then(|info| {
@@ -264,14 +210,14 @@ pub(crate) fn visit_codex_session_file(
             previous_totals = Some(total_usage);
         }
         let Some(raw_usage) = raw_usage else {
-            continue;
+            return Ok(());
         };
         if raw_usage.input_tokens == 0
             && raw_usage.cached_input_tokens == 0
             && raw_usage.output_tokens == 0
             && raw_usage.reasoning_output_tokens == 0
         {
-            continue;
+            return Ok(());
         }
 
         let parsed_model = codex_model_from_payload(Some(payload))
@@ -303,8 +249,12 @@ pub(crate) fn visit_codex_session_file(
             is_fallback_model,
             is_fast_tier: current_fast_tier,
         })?;
-    }
+        Ok(())
+    })?;
 
+    if cancelled {
+        return Err(crate::cli_error("cancelled"));
+    }
     Ok(())
 }
 
