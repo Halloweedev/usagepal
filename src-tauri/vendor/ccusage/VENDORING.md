@@ -639,9 +639,47 @@ single-token edits across `adapter/codex.rs`, `codex_loader.rs` and
 backports: the sidechain dedup (`claude_loader.rs`, item 6), the word-boundary
 matcher (`pricing.rs`, item 7), 1h-cache pricing (`types.rs` + `cost.rs` +
 `claude_loader.rs`, item 8), and the models.dev fallback (`pricing.rs` + new
-`models-dev-pricing.json`, item 9) — so those files are **no longer
+`models-dev-pricing.json`, item 9). Item 10 is the OOM/memory-bounding fix
+(`lib.rs`, `claude_loader.rs`, `codex_loader.rs`, `adapter/codex.rs` — streaming,
+age/size caps, cancellation). So those files are **no longer
 byte-identical to v20.0.2**, by design. `git diff` against a fresh `v20.0.2`
 checkout of every *other* file under "Files taken" is empty.
+
+10. **OOM/memory-bounding fix for large histories** (issue #57). `lib.rs`,
+    `claude_loader.rs`, `codex_loader.rs`, `adapter/codex.rs`.
+
+    With a 57 GB `~/.codex/sessions` history the app was OOM-killed at startup:
+    the vendored loader `fs::read`-ed each session file whole (a single rollout
+    file can be ~1 GB), collected every `CodexTokenUsageEvent` into a
+    `Vec` and only then filtered by the 31-day window. The 15 s host deadline
+    abandoned the thread rather than cancelling it, so it kept allocating past
+    11 GB. Fixed in three layers, all local to this crate and `usagepal`'s
+    `host_api` glue:
+
+    - **Streaming** — `visit_codex_session_file` (`codex_loader.rs`) and
+      `read_daily_usage_file`/`read_usage_file` (`claude_loader.rs`) now use
+      `BufReader::read_until` instead of `fs::read` + `byte_lines`. RSS is one
+      line, not one file. The old `byte_lines` helper is still used elsewhere
+      but not for these hot paths.
+
+    - **Age/size caps** — `lib.rs` adds `should_skip_file_due_to_age_with_since`
+      (skip files whose mtime is before `since - 2 days`; only when the caller
+      asked for a recent window, so `since=None` differential fixtures are
+      untouched) and `enforce_file_size_limit` (keep most-recent files until a
+      1 GB budget, drop the rest with a warning). Both loaders call them after
+      `collect_usage_files` and before fanning out threads. For the 31-day
+      Codex query this typically cuts a 57 GB history to a few hundred MB.
+
+    - **Cancellation** — `lib.rs` exposes `set_claude_cancel`/`set_codex_cancel`
+      and `is_*_cancelled` (global `AtomicBool` per provider, `pub` for
+      `usagepal`'s `host_api`). Every hot loop polls every ~1-2 k lines and
+      returns `Err("cancelled")` promptly. `host_api::run_ccusage_query` clears
+      the flag before spawning, sets it on `recv_timeout`, and the worker clears
+      it on exit. `CcusageQueryGuard` already serialises same-provider loads,
+      so the flag + guard together make timeout actually bound memory.
+
+    `git diff` for these files now shows the streaming, filtering and cancellation
+    changes in addition to the previously recorded edits.
 
 ## Public API (consumed by `usagepal`'s `plugin_engine/ccusage.rs`)
 

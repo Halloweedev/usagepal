@@ -1,5 +1,6 @@
 use std::{
     env, fs,
+    io::{BufRead, BufReader},
     path::{Path, PathBuf},
     thread,
 };
@@ -22,6 +23,20 @@ pub(crate) fn load_codex_events_from_directory(
 ) -> Result<Vec<CodexTokenUsageEvent>> {
     let mut files = Vec::new();
     collect_usage_files(sessions_dir, &mut files);
+    let before = files.len();
+    files.retain(|p| !crate::should_skip_file_due_to_age_with_since(p, None));
+    if files.len() != before {
+        ::log::info!(
+            "codex_loader: filtered {} files by age ({} -> {})",
+            before - files.len(),
+            before,
+            files.len()
+        );
+    }
+    crate::enforce_file_size_limit(&mut files, 1_000_000_000);
+    if crate::is_codex_cancelled() {
+        return Err(crate::cli_error("cancelled"));
+    }
     let mut events = if single_thread {
         files
             .iter()
@@ -139,9 +154,17 @@ pub(crate) fn visit_codex_session_file(
     path: &Path,
     mut visit: impl FnMut(CodexTokenUsageEvent) -> Result<()>,
 ) -> Result<()> {
-    let Ok(content) = fs::read(path) else {
-        return Ok(());
+    // Stream the file instead of `fs::read`-ing it whole: a single rollout file
+    // can be ~1 GB, and the old path allocated that plus a second copy via
+    // `byte_lines`. Streaming caps RSS to one line at a time and lets us abort
+    // promptly when the host's 15s deadline fires.
+    let file = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return Ok(()),
     };
+    let mut reader = BufReader::new(file);
+    let mut line = Vec::new();
+    let mut line_count: usize = 0;
     let session_id = codex_session_id(sessions_dir, path);
     let mut previous_totals: Option<CodexRawUsage> = None;
     let mut current_model: Option<String> = None;
@@ -152,7 +175,30 @@ pub(crate) fn visit_codex_session_file(
     let mut current_fast_tier = false;
     let fallback_timestamp = file_modified_timestamp(path);
 
-    for line in byte_lines(&content) {
+    loop {
+        line.clear();
+        let n = match reader.read_until(b'\n', &mut line) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(_) => break,
+        };
+        // Trim trailing newline(s) so downstream `from_slice` sees the same bytes
+        // as the old `byte_lines` iterator did.
+        let mut line_slice: &[u8] = &line;
+        if line_slice.ends_with(b"\n") {
+            line_slice = &line_slice[..line_slice.len() - 1];
+            if line_slice.ends_with(b"\r") {
+                line_slice = &line_slice[..line_slice.len() - 1];
+            }
+        }
+        line_count += 1;
+        if line_count % 1024 == 0 && crate::is_codex_cancelled() {
+            return Err(crate::cli_error("cancelled"));
+        }
+        if n == 0 {
+            break;
+        }
+        let line = line_slice;
         if !codex_line_may_contain_usage(line) {
             continue;
         }

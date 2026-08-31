@@ -53,7 +53,16 @@ mod terminal_stub;
 mod types;
 mod utils;
 
-use std::{cell::RefCell, env::VarError, ffi::OsString, fmt, path::Path, sync::Arc};
+use std::{
+    cell::RefCell,
+    env::VarError,
+    ffi::OsString,
+    fmt,
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use serde_json::json;
 
@@ -272,6 +281,136 @@ impl PricingTable {
 // override is always visible where it is read, and is invisible to every other
 // thread in the process.
 // ---------------------------------------------------------------------------
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static CLAUDE_CANCEL: AtomicBool = AtomicBool::new(false);
+static CODEX_CANCEL: AtomicBool = AtomicBool::new(false);
+
+pub fn set_claude_cancel(v: bool) {
+    CLAUDE_CANCEL.store(v, Ordering::Relaxed);
+}
+
+pub fn set_codex_cancel(v: bool) {
+    CODEX_CANCEL.store(v, Ordering::Relaxed);
+}
+
+pub(crate) fn is_claude_cancelled() -> bool {
+    CLAUDE_CANCEL.load(Ordering::Relaxed)
+}
+
+pub(crate) fn is_codex_cancelled() -> bool {
+    CODEX_CANCEL.load(Ordering::Relaxed)
+}
+
+/// Whether a file should be skipped because it is too old to contain data
+/// for the 31-day window the app queries. Codex and Claude session files are
+/// append-only, so a file not modified in 32 days cannot contain a recent
+/// event. This is a coarse pre-filter; the per-record timestamp filter remains
+/// authoritative for Today/Yesterday/30d totals.
+pub(crate) fn should_skip_file_due_to_age(path: &Path) -> bool {
+    const CUTOFF_DAYS: u64 = 32;
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    let Ok(modified) = metadata.modified() else {
+        return false;
+    };
+    let Ok(age) = SystemTime::now().duration_since(modified) else {
+        return false;
+    };
+    age > Duration::from_secs(CUTOFF_DAYS * 24 * 3600)
+}
+
+pub(crate) fn should_skip_file_due_to_age_with_since(path: &Path, since: Option<&str>) -> bool {
+    let Some(since_str) = since else {
+        return false;
+    };
+    // Parse YYYYMMDD to SystemTime at 00:00 UTC, then subtract 2 days slop.
+    // If parsing fails, fall back to the 32-day cutoff.
+    let cutoff = parse_since_to_system_time(since_str)
+        .and_then(|t| t.checked_sub(Duration::from_secs(2 * 24 * 3600)))
+        .unwrap_or_else(|| {
+            SystemTime::now()
+                .checked_sub(Duration::from_secs(32 * 24 * 3600))
+                .unwrap_or(UNIX_EPOCH)
+        });
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    let Ok(modified) = metadata.modified() else {
+        return false;
+    };
+    // If file was modified before the cutoff, it cannot contain data for the
+    // requested window (files are append-only, mtime ~ last event).
+    match modified.duration_since(cutoff) {
+        Ok(_) => false, // modified >= cutoff, keep
+        Err(_) => true,  // modified < cutoff, skip
+    }
+}
+
+fn parse_since_to_system_time(since: &str) -> Option<SystemTime> {
+    if since.len() != 8 {
+        return None;
+    }
+    let year: i32 = since[0..4].parse().ok()?;
+    let month: u32 = since[4..6].parse().ok()?;
+    let day: u32 = since[6..8].parse().ok()?;
+    // Use jiff to handle leap years etc., then convert to SystemTime.
+    let date = jiff::civil::Date::new(year as i16, month as i8, day as i8).ok()?;
+    let zoned = date.to_zoned(jiff::tz::TimeZone::UTC).ok()?;
+    let secs = zoned.timestamp().as_second();
+    if secs < 0 {
+        return None;
+    }
+    Some(UNIX_EPOCH + Duration::from_secs(secs as u64))
+}
+
+/// Enforce a hard budget on the number of bytes we will read. Files are
+/// assumed to have been collected already; this sorts them most-recent first
+/// (by mtime) and keeps the prefix that fits within `max_bytes`. The rest are
+/// dropped with a warning. This caps RSS when a user has a multi-GB history.
+pub(crate) fn enforce_file_size_limit(files: &mut Vec<PathBuf>, max_bytes: u64) {
+    if files.is_empty() {
+        return;
+    }
+    // Sort most-recent first so we keep the data the UI actually needs.
+    files.sort_by(|a, b| {
+        let ma = fs::metadata(a)
+            .and_then(|m| m.modified())
+            .unwrap_or(UNIX_EPOCH);
+        let mb = fs::metadata(b)
+            .and_then(|m| m.modified())
+            .unwrap_or(UNIX_EPOCH);
+        mb.cmp(&ma)
+    });
+
+    let mut total: u64 = 0;
+    let mut kept: Vec<PathBuf> = Vec::with_capacity(files.len());
+    let mut skipped_bytes: u64 = 0;
+    let mut skipped_count: usize = 0;
+    for path in files.drain(..) {
+        let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        if total + size > max_bytes && !kept.is_empty() {
+            skipped_bytes += size;
+            skipped_count += 1;
+            continue;
+        }
+        total += size;
+        kept.push(path);
+    }
+    if skipped_count > 0 {
+        ::log::warn!(
+            "ccusage: skipped {} files ({} bytes) beyond {}-byte budget; kept {} files ({} bytes)",
+            skipped_count,
+            skipped_bytes,
+            max_bytes,
+            kept.len(),
+            total
+        );
+    }
+    *files = kept;
+}
 
 thread_local! {
     static HOME_OVERRIDE: RefCell<Option<(&'static str, OsString)>> = const { RefCell::new(None) };
