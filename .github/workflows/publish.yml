@@ -252,11 +252,99 @@ jobs:
           printf '%s\n' "$ASSETS" | grep -Eq '\.sig$' || { echo "Missing updater signatures (.sig)"; exit 1; }
           printf '%s\n' "$ASSETS" | grep -Eq '^UsagePal-[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?-${{ matrix.arch }}\.dmg$' || { echo "Missing Lutin DMG for ${{ matrix.arch }}"; exit 1; }
 
-      - name: Publish beta updater feed
-        if: contains(github.ref_name, '-')
+  # Single-writer repair for the updater manifests. The `publish` matrix uses
+  # `tauri-action` in parallel, which claims to merge `latest.json` safely but
+  # in practice races: both jobs fetch the old manifest before either uploads,
+  # so the last writer clobbers the other's arch. 0.7.74-beta.1 shipped with
+  # only darwin-x86_64 for exactly this reason (arm users saw no beta update).
+  # This job runs once after both arch builds, heals a single-arch
+  # `latest.json` if needed, and only then publishes the beta feed serially.
+  repair-updater:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    permissions:
+      contents: write
+    steps:
+      - name: Heal latest.json if it lost an arch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/repair"
+          for attempt in 1 2 3 4 5; do
+            if gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir "$RUNNER_TEMP/repair" --clobber; then
+              break
+            fi
+            echo "latest.json not ready (attempt $attempt/5), retrying..." >&2
+            sleep 3
+          done
+          test -f "$RUNNER_TEMP/repair/latest.json"
+          cp "$RUNNER_TEMP/repair/latest.json" "$RUNNER_TEMP/repair/latest.json.orig"
+          if python3 - <<'PY'
+          import json, os, pathlib, subprocess, sys
+          tmp = pathlib.Path(os.environ["RUNNER_TEMP"]) / "repair"
+          data = json.loads((tmp / "latest.json").read_text())
+          plats = set(data.get("platforms", {}).keys())
+          need = {"darwin-aarch64", "darwin-x86_64"}
+          missing = need - plats
+          if not missing:
+              print(f"latest.json OK: {sorted(plats)}")
+              sys.exit(0)
+          print(f"latest.json missing {sorted(missing)}, found {sorted(plats)} — healing...", file=sys.stderr)
+          tag = os.environ["RELEASE_TAG"]
+          base = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{tag}"
+          for arch in sorted(missing):
+              art = "UsagePal_aarch64.app.tar.gz.sig" if "aarch64" in arch else "UsagePal_x64.app.tar.gz.sig"
+              url_arch = "UsagePal_aarch64.app.tar.gz" if "aarch64" in arch else "UsagePal_x64.app.tar.gz"
+              subprocess.run(["gh","release","download", tag, "--repo", os.environ["GITHUB_REPOSITORY"], "--pattern", art, "--dir", str(tmp), "--clobber"], check=True)
+              sig = (tmp / art).read_text().strip()
+              for key in [arch, f"{arch}-app"]:
+                  data["platforms"][key] = {"signature": sig, "url": f"{base}/{url_arch}"}
+          (tmp / "latest.json").write_text(json.dumps(data, indent=2) + "\n")
+          print(f"healed latest.json now {sorted(data['platforms'].keys())}")
+          # Signal that we healed by exiting 2
+          sys.exit(2)
+          PY
+          then
+            echo "latest.json already complete — no heal needed."
+          else
+            code=$?
+            if [ $code -eq 2 ]; then
+              echo "Healed latest.json — re-uploading..."
+              gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/repair/latest.json" --repo "$GITHUB_REPOSITORY" --clobber
+            else
+              echo "latest.json healing failed (exit $code)" >&2
+              exit $code
+            fi
+          fi
+          cat "$RUNNER_TEMP/repair/latest.json" | python3 -m json.tool | head -n 60
+          # Final guard: after healing, both arches must be present
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+          d=json.loads(pathlib.Path(f"{os.environ['RUNNER_TEMP']}/repair/latest.json").read_text())
+          need={"darwin-aarch64","darwin-x86_64"}
+          missing=need - set(d.get("platforms",{}))
+          if missing:
+              print(f"still missing {missing}", file=sys.stderr); sys.exit(1)
+          PY
+
+  beta-feed:
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-')
+    needs: repair-updater
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    permissions:
+      contents: write
+    steps:
+      - name: Publish beta updater feed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
           if ! gh release view beta-feed --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create beta-feed \
               --repo "$GITHUB_REPOSITORY" \
@@ -274,11 +362,34 @@ jobs:
 
           mkdir -p "$RUNNER_TEMP/beta-feed"
 
-          gh release download "$RELEASE_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern latest.json \
-            --dir "$RUNNER_TEMP/beta-feed" \
-            --clobber
+          # Latest.json is now guaranteed healed by the repair-updater job.
+          for attempt in 1 2 3 4 5; do
+            if gh release download "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern latest.json \
+              --dir "$RUNNER_TEMP/beta-feed" \
+              --clobber; then
+              break
+            fi
+            echo "latest.json not ready (attempt $attempt/5), retrying..." >&2
+            sleep 3
+          done
+          test -f "$RUNNER_TEMP/beta-feed/latest.json"
+
+          # Guard against a single-arch feed (the 0.7.74-beta.1 bug): the feed
+          # must contain both darwin arches or the updater on the missing arch
+          # returns no update at all.
+          python3 - <<'PY'
+          import json, pathlib, sys
+          data = json.loads(pathlib.Path(f"{__import__('os').environ['RUNNER_TEMP']}/beta-feed/latest.json").read_text())
+          plats = set(data.get("platforms", {}).keys())
+          need = {"darwin-aarch64", "darwin-x86_64"}
+          missing = need - plats
+          if missing:
+              print(f"beta feed latest.json missing platforms: {sorted(missing)}", file=sys.stderr)
+              print(f"found: {sorted(plats)}", file=sys.stderr)
+              sys.exit(1)
+          PY
 
           cp "$RUNNER_TEMP/beta-feed/latest.json" "$RUNNER_TEMP/beta-feed/latest_beta.json"
 
