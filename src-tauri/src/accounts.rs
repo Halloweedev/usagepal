@@ -584,6 +584,7 @@ pub fn remove_account(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::fs;
 
     fn tmp_dir(label: &str) -> PathBuf {
@@ -770,6 +771,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn opencode_go_local_login_key_reads_nested_auth_field() {
         let dir = tmp_dir("opencode-auth");
         let auth = dir.join(".local/share/opencode/auth.json");
@@ -794,6 +796,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn opencode_go_local_login_key_none_when_absent() {
         let dir = tmp_dir("opencode-auth-missing");
         let original_home = std::env::var_os("HOME");
