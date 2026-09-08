@@ -300,6 +300,71 @@ describe("grok plugin", () => {
     expect(result.lines.find((l) => l.label === "Current period")).toBeUndefined()
     expect(result.lines.find((l) => l.label === "Billing cycle")).toBeUndefined()
   })
+  it("shows Free subscription tier from settings", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData(), {
+      status: 200,
+      bodyText: JSON.stringify({subscription_tier_display: "Free"}),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Free")
+  })
+
+  it("passes through unrecognized tier strings verbatim", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData(), {
+      status: 200,
+      bodyText: JSON.stringify({subscription_tier_display: "X Premium+"})
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("X Premium+")
+  })
+
+  it("still probes for SuperGrok when pool fields are omitted", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData({
+      monthlyLimit: undefined,
+      used: undefined,
+    }), {
+      status: 200,
+      bodyText: JSON.stringify({subscription_tier_display: "SuperGrok"})
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("SuperGrok")
+    expect(result.lines.find((l) => l.label === "Credits used")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Pay as you go")).toBeDefined()
+  })
+
+  it("still probes for SuperGrok Plus when pool fields are omitted", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData({
+      monthlyLimit: undefined,
+      used: undefined,
+    }), {
+      status: 200,
+      bodyText: JSON.stringify({subscription_tier_display: "SuperGrok Plus"})
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("SuperGrok Plus")
+    expect(result.lines.find((l) => l.label === "Credits used")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Pay as you go")).toBeDefined()
+  })
 
   it("still probes when included credit limit is zero", async () => {
     const ctx = makeCtx()
@@ -389,6 +454,34 @@ describe("grok plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("SuperGrok")
+  })
+
+  it("shows SuperGrok Plus subscription tier from settings", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData(), {
+      status: 200,
+      bodyText: JSON.stringify({subscription_tier_display: "SuperGrok Plus"}),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("SuperGrok Plus")
+  })
+
+  it("shows SuperGrok Heavy subscription tier from settings", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData(), {
+      status: 200,
+      bodyText: JSON.stringify({subscription_tier_display: "SuperGrok Heavy"}),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("SuperGrok Heavy")
   })
 
   it("treats missing onDemandCap as disabled for subscription-only billing", async () => {
