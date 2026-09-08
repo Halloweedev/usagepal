@@ -77,7 +77,7 @@ describe("grok plugin", () => {
 
   it("throws when auth file has no usable token", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.writeText(AUTH_PATH, JSON.stringify({ account: { email: "user@example.com" } }))
+    ctx.host.fs.writeText(AUTH_PATH, JSON.stringify({account: {email: "user@example.com"}}))
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Grok auth invalid. Run `grok login` again.")
   })
@@ -122,10 +122,10 @@ describe("grok plugin", () => {
       if (req.url === SETTINGS_URL) {
         return {
           status: 200,
-          bodyText: JSON.stringify({ subscription_tier_display: "SuperGrok Heavy" }),
+          bodyText: JSON.stringify({subscription_tier_display: "SuperGrok Heavy"}),
         }
       }
-      return { status: 404, bodyText: "" }
+      return {status: 404, bodyText: ""}
     })
 
     const plugin = await loadPlugin()
@@ -158,7 +158,7 @@ describe("grok plugin", () => {
     ctx.host.http.request.mockImplementation((req) => {
       if (req.url === BILLING_URL) {
         billingCalls += 1
-        if (billingCalls === 1) return { status: 401, bodyText: "" }
+        if (billingCalls === 1) return {status: 401, bodyText: ""}
         return {
           status: 200,
           bodyText: JSON.stringify(billingData()),
@@ -177,10 +177,10 @@ describe("grok plugin", () => {
       if (req.url === SETTINGS_URL) {
         return {
           status: 200,
-          bodyText: JSON.stringify({ subscription_tier_display: "SuperGrok Heavy" }),
+          bodyText: JSON.stringify({subscription_tier_display: "SuperGrok Heavy"}),
         }
       }
-      return { status: 404, bodyText: "" }
+      return {status: 404, bodyText: ""}
     })
 
     const plugin = await loadPlugin()
@@ -188,8 +188,8 @@ describe("grok plugin", () => {
 
     expect(result.plan).toBe("SuperGrok Heavy")
     const billingAuths = ctx.host.http.request.mock.calls
-      .filter((call) => call[0].url === BILLING_URL)
-      .map((call) => call[0].headers.Authorization)
+        .filter((call) => call[0].url === BILLING_URL)
+        .map((call) => call[0].headers.Authorization)
     expect(billingAuths).toEqual(["Bearer old-token", "Bearer new-token"])
     const refreshCall = ctx.host.http.request.mock.calls.find((call) => call[0].url === REFRESH_URL)[0]
     expect(refreshCall.bodyText).toContain("client_id=client")
@@ -208,7 +208,7 @@ describe("grok plugin", () => {
       if (req.url === REFRESH_URL) {
         return {
           status: 401,
-          bodyText: JSON.stringify({ error: "invalid_grant" }),
+          bodyText: JSON.stringify({error: "invalid_grant"}),
         }
       }
       if (req.url === BILLING_URL) {
@@ -220,10 +220,10 @@ describe("grok plugin", () => {
       if (req.url === SETTINGS_URL) {
         return {
           status: 200,
-          bodyText: JSON.stringify({ subscription_tier_display: "SuperGrok Heavy" }),
+          bodyText: JSON.stringify({subscription_tier_display: "SuperGrok Heavy"}),
         }
       }
-      return { status: 404, bodyText: "" }
+      return {status: 404, bodyText: ""}
     })
 
     const plugin = await loadPlugin()
@@ -284,7 +284,7 @@ describe("grok plugin", () => {
     expect(line.type).toBe("progress")
     expect(line.used).toBeCloseTo(7.128, 3)
     expect(line.limit).toBe(100)
-    expect(line.format).toEqual({ kind: "percent" })
+    expect(line.format).toEqual({kind: "percent"})
     expect(line.resetsAt).toBe("2026-06-01T00:00:00.000Z")
   })
 
@@ -301,10 +301,26 @@ describe("grok plugin", () => {
     expect(result.lines.find((l) => l.label === "Billing cycle")).toBeUndefined()
   })
 
+  it("still probes when included credit limit is zero", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData({
+      monthlyLimit: {val: 0},
+      used: {val: 0},
+    }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("SuperGrok Heavy")
+    expect(result.lines.find((l) => l.label === "Credits used")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Pay as you go").text).toBe("Disabled")
+  })
+
   it("renders pay as you go disabled when cap is zero", async () => {
     const ctx = makeCtx()
     writeAuth(ctx)
-    mockGrokApi(ctx, billingData({ onDemandCap: { val: 0 } }))
+    mockGrokApi(ctx, billingData({onDemandCap: {val: 0}}))
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -318,7 +334,7 @@ describe("grok plugin", () => {
   it("renders pay as you go cap when enabled", async () => {
     const ctx = makeCtx()
     writeAuth(ctx)
-    mockGrokApi(ctx, billingData({ onDemandCap: { val: "2500" } }))
+    mockGrokApi(ctx, billingData({onDemandCap: {val: "2500"}}))
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -332,9 +348,9 @@ describe("grok plugin", () => {
     const ctx = makeCtx()
     writeAuth(ctx)
     mockGrokApi(ctx, billingData({
-      monthlyLimit: { val: "10000" },
-      used: { val: "2500" },
-      onDemandCap: { val: "0" },
+      monthlyLimit: {val: "10000"},
+      used: {val: "2500"},
+      onDemandCap: {val: "0"},
     }))
 
     const plugin = await loadPlugin()
@@ -349,7 +365,7 @@ describe("grok plugin", () => {
     writeAuth(ctx)
     mockGrokApi(ctx, billingData(), {
       status: 200,
-      bodyText: JSON.stringify({ subscription_tier_display: "SuperGrok Heavy" }),
+      bodyText: JSON.stringify({subscription_tier_display: "SuperGrok Heavy"}),
     })
 
     const plugin = await loadPlugin()
@@ -366,7 +382,7 @@ describe("grok plugin", () => {
     writeAuth(ctx)
     mockGrokApi(ctx, billingData(), {
       status: 200,
-      bodyText: JSON.stringify({ subscription_tier_display: "SuperGrok" }),
+      bodyText: JSON.stringify({subscription_tier_display: "SuperGrok"}),
     })
 
     const plugin = await loadPlugin()
@@ -378,7 +394,7 @@ describe("grok plugin", () => {
   it("treats missing onDemandCap as disabled for subscription-only billing", async () => {
     const ctx = makeCtx()
     writeAuth(ctx)
-    mockGrokApi(ctx, billingData({ onDemandCap: undefined }))
+    mockGrokApi(ctx, billingData({onDemandCap: undefined}))
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -393,7 +409,7 @@ describe("grok plugin", () => {
     writeAuth(ctx)
     mockGrokApi(ctx, billingData(), {
       status: 200,
-      bodyText: JSON.stringify({ release_channel: "stable" }),
+      bodyText: JSON.stringify({release_channel: "stable"}),
     })
 
     const plugin = await loadPlugin()
@@ -405,7 +421,7 @@ describe("grok plugin", () => {
   it("throws when billing request returns auth error", async () => {
     const ctx = makeCtx()
     writeAuth(ctx)
-    ctx.host.http.request.mockReturnValue({ status: 401, bodyText: "" })
+    ctx.host.http.request.mockReturnValue({status: 401, bodyText: ""})
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Grok auth expired. Run `grok login` again.")
@@ -414,7 +430,7 @@ describe("grok plugin", () => {
   it("throws on billing HTTP error", async () => {
     const ctx = makeCtx()
     writeAuth(ctx)
-    ctx.host.http.request.mockReturnValue({ status: 500, bodyText: "" })
+    ctx.host.http.request.mockReturnValue({status: 500, bodyText: ""})
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Grok billing request failed (HTTP 500). Try again later.")
@@ -434,16 +450,27 @@ describe("grok plugin", () => {
   it("throws on invalid billing JSON", async () => {
     const ctx = makeCtx()
     writeAuth(ctx)
-    ctx.host.http.request.mockReturnValue({ status: 200, bodyText: "not-json" })
+    ctx.host.http.request.mockReturnValue({status: 200, bodyText: "not-json"})
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Grok billing response changed.")
   })
+  it("omits Credits used when pool fields are absent instead of throwing",
+      async () => {
+        const ctx = makeCtx()
+        writeAuth(ctx)
+        mockGrokApi(ctx, {config: {used: {val: 1 } } })
 
-  it("throws on unexpected billing response shape", async () => {
+        const plugin = await loadPlugin()
+        const result = plugin.probe(ctx)
+
+        expect(result.lines.find((l) => l.label === "Credits used")).toBeUndefined()
+        expect(result.lines.find((l) => l.label === "Pay as you go")).toBeDefined()
+      })
+  it("throws when billing config is missing entirely", async () => {
     const ctx = makeCtx()
     writeAuth(ctx)
-    mockGrokApi(ctx, { config: { used: { val: 1 } } })
+    mockGrokApi(ctx, {})
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Grok billing response changed.")
@@ -480,6 +507,138 @@ describe("grok spend aggregation", () => {
     expect(plugin.__test.resolveModelRates("grok-build")).toEqual(
       plugin.__test.GROK_PRICING.models["grok-build-0.1"],
     )
+  })
+
+  it("resolves grok-4.5-build onto grok-4.5 rates", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.resolveModelRates("grok-4.5-build")).toEqual(
+      plugin.__test.GROK_PRICING.models["grok-4.5"],
+    )
+    expect(plugin.__test.resolveModelRates("grok-4.6-build")).toEqual(
+      plugin.__test.GROK_PRICING.models["grok-4.6"],
+    )
+    expect(plugin.__test.prettifyGrokModelName("grok-4.5-build")).toBe("Grok 4.5")
+    expect(plugin.__test.prettifyGrokModelName("grok-4.6-build")).toBe("Grok 4.6")
+  })
+
+  it("resolves grok-4.6 to published xAI text rates", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.resolveModelRates("grok-4.6")).toEqual({
+      input: 2.0,
+      cache_write: null,
+      cache_read: 0.5,
+      output: 6.0,
+    })
+    expect(plugin.__test.resolveModelRates("grok-4.6-beta")).toEqual(
+      plugin.__test.GROK_PRICING.models["grok-4.6"],
+    )
+    expect(plugin.__test.estimatedCostDollars("grok-4.6", 1_000_000, 0, 100_000)).toBeCloseTo(2.6)
+  })
+
+  it("attributes inference_done rows that occur before the first model event", async () => {
+    const plugin = await loadPlugin()
+    const text = [
+      inferenceLine("2026-07-01T01:00:00.000Z", 7, { prompt: 1_000_000, completion: 100_000 }),
+      modelLine(7, "grok-4.5"),
+      inferenceLine("2026-07-01T02:00:00.000Z", 7, { prompt: 1_000_000, completion: 100_000 }),
+    ].join("\n")
+    const rows = plugin.__test.buildUsageRowsFromLog(
+      makeCtx(),
+      text,
+      Date.parse("2026-06-01T00:00:00.000Z"),
+    )
+    expect(rows).toHaveLength(2)
+    expect(rows.every((row) => row.model === "grok-4.5")).toBe(true)
+    expect(rows[0].cost).toBeGreaterThan(0)
+  })
+
+  it("reads grok-4.5-build spend from session turn_completed updates", async () => {
+    const plugin = await loadPlugin()
+    const line = JSON.stringify({
+      timestamp: Date.parse("2026-07-01T12:00:00.000Z") / 1000,
+      method: "session/update",
+      params: {
+        update: {
+          sessionUpdate: "turn_completed",
+          usage: {
+            modelUsage: {
+              "grok-4.5-build": {
+                inputTokens: 1_000_000,
+                outputTokens: 100_000,
+                cachedReadTokens: 0,
+                reasoningTokens: 0,
+                totalTokens: 1_100_000,
+                costUsdTicks: 26_000_000_000,
+              },
+            },
+          },
+        },
+      },
+    })
+    const rows = plugin.__test.buildUsageRowsFromSessionLines([line], Date.parse("2026-06-01T00:00:00.000Z"))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].model).toBe("grok-4.5-build")
+    expect(rows[0].tokens).toBe(1_100_000)
+    expect(rows[0].cost).toBeCloseTo(2.6)
+  })
+
+  it("prefers session turn totals over truncated CLI logs so Grok 4.5 remains in Last 30 Days", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-15T12:00:00.000Z"))
+    try {
+      const plugin = await loadPlugin()
+      const ctx = makeCtx()
+      const sessionLine = JSON.stringify({
+        timestamp: Date.parse("2026-07-01T12:00:00.000Z") / 1000,
+        method: "session/update",
+        params: {
+          update: {
+            sessionUpdate: "turn_completed",
+            usage: {
+              modelUsage: {
+                "grok-4.5-build": {
+                  inputTokens: 2_000_000,
+                  outputTokens: 200_000,
+                  cachedReadTokens: 0,
+                  reasoningTokens: 0,
+                  totalTokens: 2_200_000,
+                  costUsdTicks: 52_000_000_000,
+                },
+              },
+            },
+          },
+        },
+      })
+      ctx.host.fs.writeText("~/.grok/sessions/proj/sess/updates.jsonl", sessionLine + "\nignored\n")
+      ctx.host.fs.writeText(
+        "~/.grok/logs/unified.jsonl",
+        [
+          modelLine(1, "grok-4.6"),
+          inferenceLine("2026-07-15T01:00:00.000Z", 1, { prompt: 10_000, completion: 1_000 }),
+        ].join("\n"),
+      )
+      const lines = []
+      plugin.__test.appendSpendHistory(ctx, lines, Date.now())
+      const byLabel = Object.fromEntries(lines.map((l) => [l.label, l]))
+      expect(byLabel["Last 30 Days"].value).toMatch(/\$/)
+      expect(byLabel["Grok 4.5"]).toBeDefined()
+      expect(byLabel["Grok 4.6"]).toBeDefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("prices grok-4.6 log rows instead of zeroing them", async () => {
+    const plugin = await loadPlugin()
+    const text = [
+      modelLine(7, "grok-4.6"),
+      inferenceLine("2026-07-01T01:00:00.000Z", 7, { prompt: 1_000_000, completion: 100_000 }),
+    ].join("\n")
+    const ctx = makeCtx()
+    const rows = plugin.__test.buildUsageRowsFromLog(ctx, text, Date.parse("2026-06-01T00:00:00.000Z"))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].model).toBe("grok-4.6")
+    expect(rows[0].cost).toBeCloseTo(2.6)
   })
 
   it("keeps token rows for unknown models with zero cost", async () => {

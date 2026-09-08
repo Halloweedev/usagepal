@@ -1013,17 +1013,13 @@
     const usedUnits = unitsValue(config.used)
     const limitUnits = unitsValue(config.monthlyLimit)
     const onDemandCapUnits = unitsValue(config.onDemandCap) ?? 0
-    if (usedUnits === null || limitUnits === null) {
-      throw "Grok billing response changed."
-    }
-
-    const resetsAt = ctx.util.toIso(config.billingPeriodEnd)
-    if (!resetsAt) {
-      throw "Grok billing response changed."
-    }
+    const hasCreditPool = usedUnits !== null && limitUnits !== null
 
     const lines = []
-    if (limitUnits > 0) {
+    if (hasCreditPool && limitUnits > 0) {
+      const resetsAt = ctx.util.toIso(config.billingPeriodEnd)
+      if (!resetsAt)
+        throw "Grok billing response changed."
       lines.push(
         ctx.line.progress({
           label: "Credits used",
@@ -1034,6 +1030,7 @@
         }),
       )
     }
+
     lines.push(
       ctx.line.badge({
         label: "Pay as you go",
