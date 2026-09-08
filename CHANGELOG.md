@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.7.75-beta.1
+
+### New Features
+- feat(agents): live local session list across Claude, Codex, Cursor, OpenCode by @Halloweedev
+
+### Bug Fixes
+- fix(tests): serialize HOME-mutating accounts tests by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.74...v0.7.75-beta.1](https://github.com/Halloweedev/usagepal/compare/v0.7.74...v0.7.75-beta.1)
+
+- [cc7e04e](https://github.com/Halloweedev/usagepal/commit/cc7e04e) feat(agents): live local session list across Claude, Codex, Cursor, OpenCode by @Halloweedev
+- [858aae0](https://github.com/Halloweedev/usagepal/commit/858aae0) fix(tests): serialize HOME-mutating accounts tests by @Halloweedev
+
 ## v0.7.74
 
 Stable release rolling up the 0.7.74 beta: Antigravity gains Linux support and per-model metrics, large Codex and Claude histories can no longer exhaust memory, and the updater feed stays complete on both Mac chip types.
