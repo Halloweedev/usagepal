@@ -1,6 +1,6 @@
 # Grok
 
-Tracks Grok Build credit usage from the local Grok CLI login. This single provider covers **SuperGrok**, **SuperGrok Heavy**, and **X Premium+** subscribers — there is no separate SuperGrok plugin.
+Tracks Grok Build credit usage from the local Grok CLI login. This single provider covers **Free**, **X Premium+**, **SuperGrok**, **SuperGrok Plus**, and **SuperGrok Heavy** subscribers — there is no separate SuperGrok plugin.
 
 > Reverse-engineered, undocumented API. May change without notice.
 
@@ -22,7 +22,7 @@ SuperGrok subscribers use the **same data path** as pay-as-you-go Grok Build use
 |------|------|
 | Auth | `~/.grok/auth.json` (created by `grok login`) |
 | Billing credits | `GET https://cli-chat-proxy.grok.com/v1/billing` |
-| Plan label | `GET https://cli-chat-proxy.grok.com/v1/settings` → `subscription_tier_display` (e.g. `SuperGrok`, `SuperGrok Heavy`) |
+| Plan label | `GET https://cli-chat-proxy.grok.com/v1/settings` → `subscription_tier_display` (e.g. `Free`, `X Premium+`, `SuperGrok`, `SuperGrok Plus`, and `SuperGrok Heavy`) |
 | Share graph / model breakdown | `~/.grok/logs/unified.jsonl` (or `$GROK_HOME/logs/unified.jsonl`), plus OpenCode xAI history from `~/.local/share/opencode/opencode.db` when present |
 
 A web-only SuperGrok subscription does **not** populate UsagePal by itself. Run `grok login` once so the CLI auth file exists, then enable the Grok plugin. After that:
@@ -34,7 +34,7 @@ X Premium+ subscribers with bundled Grok Build access follow the same flow.
 
 ## Setup
 
-1. Install and sign in to the Grok CLI (works for SuperGrok, SuperGrok Heavy, and X Premium+):
+1. Install and sign in to the Grok CLI (works for Free, X Premium+, SuperGrok, SuperGrok Plus, SuperGrok Heavy):
 
 ```bash
 grok login
@@ -87,7 +87,7 @@ Returns remote CLI settings. UsagePal reads `subscription_tier_display` from thi
 Used fields:
 
 - `used.val` — current billing period usage
-- `monthlyLimit.val` — included credit limit. `0` is valid for SuperGrok / X Premium+ accounts that do not have a Grok Build credit pool; UsagePal then omits the Credits used bar and still shows plan plus local spend.
+- `monthlyLimit.val` — included credit limit. `0` is valid for accounts without a Grok Build credit pool (observed on lapsed/`Free` accounts); some tiers may omit `used`/`monthlyLimit` entirely, in which case UsagePal likewise omits the Credits used bar and still shows plan plus local spend. SuperGrok Plus/Heavy pool shapes are handled defensively and await confirmation against live payloads.
 - `onDemandCap.val` — pay-as-you-go cap; `0` or omitted means disabled (typical for subscription-only accounts)
 - `billingPeriodEnd` — current billing period reset time
 
