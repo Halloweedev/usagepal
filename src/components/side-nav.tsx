@@ -1,5 +1,5 @@
 import { useCallback } from "react"
-import { Gear } from "@phosphor-icons/react"
+import { Gear, Robot } from "@phosphor-icons/react"
 import { ExportIcon } from "@/components/export-icon"
 import { invoke } from "@tauri-apps/api/core"
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu"
@@ -228,6 +228,15 @@ export function SideNav({
           </SortableContext>
         </DndContext>
       </div>
+
+      {/* Agents */}
+      <NavButton
+        isActive={activeView === "agents"}
+        onClick={() => onViewChange("agents")}
+        aria-label="Agents"
+      >
+        <Robot className="size-6" />
+      </NavButton>
 
       {/* Share */}
       <NavButton

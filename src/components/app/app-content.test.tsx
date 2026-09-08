@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { overviewPageMock, providerDetailPageMock, settingsPageMock, sharePageMock, isTauriMock } = vi.hoisted(() => ({
+const { agentsPageMock, overviewPageMock, providerDetailPageMock, settingsPageMock, sharePageMock, isTauriMock } = vi.hoisted(() => ({
+  agentsPageMock: vi.fn(),
   overviewPageMock: vi.fn(),
   settingsPageMock: vi.fn(),
   providerDetailPageMock: vi.fn(),
@@ -17,6 +18,13 @@ vi.mock("@/pages/overview", () => ({
   OverviewPage: (props: unknown) => {
     overviewPageMock(props)
     return <div data-testid="overview-page" />
+  },
+}))
+
+vi.mock("@/pages/agents", () => ({
+  AgentsPage: (props: unknown) => {
+    agentsPageMock(props)
+    return <div data-testid="agents-page" />
   },
 }))
 
@@ -85,6 +93,7 @@ function createProps(): AppContentProps {
 
 describe("AppContent", () => {
   beforeEach(() => {
+    agentsPageMock.mockReset()
     overviewPageMock.mockReset()
     settingsPageMock.mockReset()
     providerDetailPageMock.mockReset()
@@ -128,6 +137,14 @@ describe("AppContent", () => {
 
     expect(screen.getByTestId("share-page")).toBeInTheDocument()
     expect(sharePageMock).toHaveBeenCalledWith(expect.objectContaining({ plugins: [] }))
+  })
+
+  it("renders the agents page for the agents view", () => {
+    useAppUiStore.getState().setActiveView("agents")
+    render(<AppContent {...createProps()} />)
+
+    expect(screen.getByTestId("agents-page")).toBeInTheDocument()
+    expect(agentsPageMock).toHaveBeenCalledTimes(1)
   })
 
   it("renders the share page under Tauri too (no separate pop-out window)", () => {

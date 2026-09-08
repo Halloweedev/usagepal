@@ -82,6 +82,12 @@ export const commands = {
 	beginCodexLogin: (label: string) => typedError<CodexLoginStarted, string>(__TAURI_INVOKE("begin_codex_login", { label })),
 	finishCodexLogin: (stagingId: string) => typedError<AccountAdded, string>(__TAURI_INVOKE("finish_codex_login", { stagingId })),
 	removeAccount: (providerId: string, accountId: string) => typedError<null, string>(__TAURI_INVOKE("remove_account", { providerId, accountId })),
+	/**
+	 *  List recent local agent sessions across Claude Code, Codex, Cursor,
+	 *  OpenCode, and OpenCode2, most recently active first. 100% local: transcript
+	 *  metadata only, never message content, nothing leaves the machine.
+	 */
+	listAgentSessions: () => __TAURI_INVOKE<AgentSession[]>("list_agent_sessions"),
 };
 
 /** Events */
@@ -94,6 +100,20 @@ export const events = {
 /* Types */
 export type AccountAdded = {
 	accountId: string,
+};
+
+export type AgentSession = {
+	providerId: string,
+	providerName: string,
+	projectName: string,
+	sessionId: string,
+	cwd: string | null,
+	/**  Session title when the source has one (OpenCode stores titles). */
+	title: string | null,
+	/**  Unix-ms of the last observed file activity. f64 because specta forbids u64. */
+	lastActiveMs: number | null,
+	/**  `"active"` when the last activity is inside the active window, else `"idle"`. */
+	status: string,
 };
 
 export type BarChartPoint = {

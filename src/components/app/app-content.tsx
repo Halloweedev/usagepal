@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { useShallow } from "zustand/react/shallow"
+import { AgentsPage } from "@/pages/agents"
 import { OverviewPage } from "@/pages/overview"
 import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
@@ -187,6 +188,10 @@ export function AppContent({
 
   if (activeView === "share") {
     return <SharePage plugins={displayPlugins} sources={shareSources} />
+  }
+
+  if (activeView === "agents") {
+    return <AgentsPage />
   }
 
   const handleRetry = selectedPlugin

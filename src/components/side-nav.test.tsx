@@ -100,4 +100,18 @@ describe("SideNav", () => {
     expect(onShareClick).toHaveBeenCalledTimes(1)
     expect(onViewChange).not.toHaveBeenCalledWith("share")
   })
+
+  it("renders Agents above Share and calls onViewChange", async () => {
+    const onViewChange = vi.fn()
+    render(<SideNav activeView="home" onViewChange={onViewChange} plugins={[]} />)
+
+    const buttons = screen.getAllByRole("button")
+    const agentsIndex = buttons.findIndex((btn) => btn.getAttribute("aria-label") === "Agents")
+    const shareIndex = buttons.findIndex((btn) => btn.getAttribute("aria-label") === "Share")
+    expect(agentsIndex).toBeGreaterThanOrEqual(0)
+    expect(agentsIndex).toBeLessThan(shareIndex)
+
+    await userEvent.click(screen.getByRole("button", { name: "Agents" }))
+    expect(onViewChange).toHaveBeenCalledWith("agents")
+  })
 })

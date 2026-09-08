@@ -1,4 +1,5 @@
 mod accounts;
+mod agents;
 mod beta_updater;
 mod clinepass_key;
 mod config;
@@ -923,7 +924,8 @@ pub fn run() {
             accounts::snapshot_cursor_account,
             accounts::begin_codex_login,
             accounts::finish_codex_login,
-            accounts::remove_account
+            accounts::remove_account,
+            agents::list_agent_sessions
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,
@@ -1151,7 +1153,8 @@ fn export_bindings() {
             accounts::snapshot_cursor_account,
             accounts::begin_codex_login,
             accounts::finish_codex_login,
-            accounts::remove_account
+            accounts::remove_account,
+            agents::list_agent_sessions
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,

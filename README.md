@@ -31,6 +31,7 @@ UsagePal lives in your menu bar and shows you how much of your AI coding subscri
 - **Always up-to-date.** Refreshes automatically on a schedule you pick.
 - **[Pace alerts](docs/notifications.md).** Optional notifications when a limit is on track to run out.
 - **Global shortcut.** Toggle the panel from anywhere with a customizable keyboard shortcut.
+- **[Agents](docs/agents.md).** See which Claude Code, Codex, and Cursor sessions are active on this Mac — 100% local.
 - **Lightweight.** Opens instantly, stays out of your way.
 - **Plugin-based.** New providers get added without updating the whole app.
 - **[Local HTTP API](docs/local-http-api.md).** Other apps can read your usage data from `127.0.0.1:6736`.
