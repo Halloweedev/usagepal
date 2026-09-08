@@ -28,7 +28,7 @@ SuperGrok subscribers use the **same data path** as pay-as-you-go Grok Build use
 A web-only SuperGrok subscription does **not** populate UsagePal by itself. Run `grok login` once so the CLI auth file exists, then enable the Grok plugin. After that:
 
 - **Provider card & overview** show your subscription tier and included-credit usage from the billing API.
-- **Share graph** estimates spend from local CLI logs and/or OpenCode xAI history (Today, Yesterday, Last 30 Days, per-model lines). Usage on grok.com that never goes through the CLI or OpenCode is not included.
+- **Share graph** estimates spend from Grok session turns, CLI logs, and/or OpenCode xAI history (Today, Yesterday, Last 30 Days, per-model lines). Usage on grok.com that never goes through the CLI, sessions, or OpenCode is not included.
 
 X Premium+ subscribers with bundled Grok Build access follow the same flow.
 
@@ -87,9 +87,11 @@ Returns remote CLI settings. UsagePal reads `subscription_tier_display` from thi
 Used fields:
 
 - `used.val` — current billing period usage
-- `monthlyLimit.val` — included credit limit
+- `monthlyLimit.val` — included credit limit. `0` is valid for SuperGrok / X Premium+ accounts that do not have a Grok Build credit pool; UsagePal then omits the Credits used bar and still shows plan plus local spend.
 - `onDemandCap.val` — pay-as-you-go cap; `0` or omitted means disabled (typical for subscription-only accounts)
 - `billingPeriodEnd` — current billing period reset time
+
+Linux uses the same `~/.grok/auth.json` and `~/.grok/logs/unified.jsonl` paths as macOS.
 
 ## Displayed Lines
 
@@ -100,16 +102,17 @@ Used fields:
 
 ## Share Graph
 
-UsagePal estimates local spend for the Share graph from two sources on the **Grok** provider only:
+UsagePal estimates local spend for the Share graph from three sources on the **Grok** provider only:
 
-1. **Grok CLI logs** — `~/.grok/logs/unified.jsonl` (or `$GROK_HOME/logs/unified.jsonl`)
-2. **OpenCode xAI history** — assistant messages in `~/.local/share/opencode/opencode.db` with `providerID = 'xai'` (OpenCode OAuth / xAI usage). Estimated USD when OpenCode stores cost or when tokens can be priced from embedded `GROK_PRICING` rates.
+1. **Grok session turns** — `turn_completed` usage in `~/.grok/sessions/**/updates.jsonl` (includes `grok-4.5-build` / `grok-4.6-build` and survives `unified.jsonl` truncation)
+2. **Grok CLI logs** — `~/.grok/logs/unified.jsonl` (or `$GROK_HOME/logs/unified.jsonl`)
+3. **OpenCode xAI history** — assistant messages in `~/.local/share/opencode/opencode.db` with `providerID = 'xai'` (OpenCode OAuth / xAI usage). Estimated USD when OpenCode stores cost or when tokens can be priced from embedded `GROK_PRICING` rates (including grok-4.6 at $2 input / $0.50 cached / $6 output per 1M tokens, the published below-200k list price).
 
 OpenCode Go (`providerID = 'opencode-go'`) stays on its own provider card and does **not** include xAI rows.
 
 ### Merge rule
 
-When both sources have data for the same UTC day, UsagePal prefers the CLI log for that entire day (CLI inference rows win). OpenCode xAI rows are used only for days with no CLI inference. Days are never summed across sources, so overlapping spend is not double-counted.
+When more than one source has data for the same UTC day, UsagePal uses session turns for that entire day if any exist; otherwise the CLI log; otherwise OpenCode xAI. Days are never summed across sources, so overlapping spend is not double-counted. `grok-4.5-build` is shown as Grok 4.5.
 
 Displayed lines:
 
@@ -132,3 +135,4 @@ If both sources are missing or unreadable, billing lines still render and share-
 | HTTP error | "Grok billing request failed (HTTP {status}). Try again later." |
 | Network error | "Grok billing request failed. Check your connection." |
 | Invalid response | "Grok billing response changed." |
+| Included credit limit is `0` | Not an error. Credits used is omitted; plan and local spend still show. |

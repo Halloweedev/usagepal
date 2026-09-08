@@ -247,6 +247,10 @@
   }
 
   const LOG_RELATIVE = "/logs/unified.jsonl"
+  const SESSIONS_ROOT = "~/.grok/sessions"
+  const COST_USD_TICKS_PER_DOLLAR = 1e10
+  const MAX_SESSION_WALK_DEPTH = 8
+  const MAX_SESSION_UPDATE_FILES = 4000
   const OPENCODE_DB_PATH = "~/.local/share/opencode/opencode.db"
 
   // OpenCode assistant rows with providerID = 'xai' (not 'opencode-go').
@@ -298,6 +302,7 @@
     models: {
       "grok-4.20": { input: 2.0, cache_write: null, cache_read: 0.2, output: 6.0 },
       "grok-4.3": { input: 1.25, cache_write: null, cache_read: 0.2, output: 2.5 },
+      "grok-4.6": { input: 2.0, cache_write: null, cache_read: 0.5, output: 6.0 },
       "grok-4.5": { input: 2.0, cache_write: null, cache_read: 0.2, output: 6.0 },
       "grok-4.5-fast": { input: 4.0, cache_write: null, cache_read: 0.4, output: 18.0 },
       "grok-build-0.1": { input: 1.0, cache_write: null, cache_read: 0.2, output: 2.0 },
@@ -308,6 +313,7 @@
       { pattern: "^grok-composer-2\\.5-fast", canonical: "composer-2.5-fast" },
       { pattern: "^grok-4\\.20", canonical: "grok-4.20" },
       { pattern: "^grok-4\\.3", canonical: "grok-4.3" },
+      { pattern: "^grok-4\\.6", canonical: "grok-4.6" },
       { pattern: "^grok-4\\.5-fast", canonical: "grok-4.5-fast" },
       { pattern: "^grok-4\\.5", canonical: "grok-4.5" },
     ],
@@ -477,64 +483,195 @@
     return Number.isFinite(ms) ? ms : null
   }
 
+  function parseLogLine(line) {
+    if (!line) return null
+    if (line.indexOf("inference_done") === -1 && line.indexOf("model") === -1) return null
+    let object = null
+    try {
+      object = JSON.parse(line)
+    } catch (e) {
+      return null
+    }
+    if (!object || typeof object !== "object") return null
+    const msg = typeof object.msg === "string" ? object.msg : ""
+    const ctxObj = object.ctx && typeof object.ctx === "object" ? object.ctx : {}
+    const pid = readNumber(object.pid)
+    const modelFromEvent = modelIDFromEvent(msg, ctxObj)
+    if (modelFromEvent) {
+      return { kind: "model", pid: pid, model: modelFromEvent }
+    }
+    if (msg !== "shell.turn.inference_done") return null
+    const promptTokens = readNumber(ctxObj.prompt_tokens)
+    if (promptTokens === null) return null
+    const tsMs = parseTimestamp(object.ts)
+    if (tsMs === null) return null
+    const completion = readNumber(ctxObj.completion_tokens) || 0
+    const reasoning = readNumber(ctxObj.reasoning_tokens) || 0
+    const cachedRaw = readNumber(ctxObj.cached_prompt_tokens) || 0
+    const cached = Math.min(cachedRaw, promptTokens)
+    return {
+      kind: "inference",
+      pid: pid,
+      tsMs: tsMs,
+      promptTokens: promptTokens,
+      cacheRead: cached,
+      output: completion + reasoning,
+      totalTokens: promptTokens + completion + reasoning,
+    }
+  }
+
   function buildUsageRowsFromLog(ctx, text, sinceMs) {
-    const modelByPID = {}
-    const rows = []
-
     const lines = String(text || "").split(/\r?\n/)
+    const events = []
+    const firstByPid = {}
+    let firstGlobal = null
     for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i]
-      if (!line) continue
-      if (line.indexOf("inference_done") === -1 && line.indexOf("model") === -1) continue
+      const event = parseLogLine(lines[i])
+      if (!event) continue
+      events.push(event)
+      if (event.kind !== "model") continue
+      if (!firstGlobal) firstGlobal = event.model
+      if (event.pid !== null && firstByPid[event.pid] === undefined) {
+        firstByPid[event.pid] = event.model
+      }
+    }
 
+    const modelByPID = {}
+    const firstKeys = Object.keys(firstByPid)
+    for (let i = 0; i < firstKeys.length; i += 1) {
+      modelByPID[firstKeys[i]] = firstByPid[firstKeys[i]]
+    }
+    let lastModel = firstGlobal
+    const rows = []
+    for (let i = 0; i < events.length; i += 1) {
+      const event = events[i]
+      if (event.kind === "model") {
+        lastModel = event.model
+        if (event.pid !== null) modelByPID[event.pid] = event.model
+        continue
+      }
+      if (event.tsMs < sinceMs) continue
+      const pidKey = event.pid !== null ? String(event.pid) : ""
+      const model = (pidKey && modelByPID[pidKey]) || lastModel
+      if (!model) continue
+      const inputNoCache = Math.max(0, event.promptTokens - event.cacheRead)
+      const cost = estimatedCostDollars(model, inputNoCache, event.cacheRead, event.output)
+      rows.push({
+        createdMs: event.tsMs,
+        cost: cost !== null ? cost : 0,
+        model: model,
+        tokens: event.totalTokens,
+      })
+    }
+    return rows
+  }
+
+  function timestampToMs(raw) {
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n <= 0) return null
+    return n > 1e12 ? n : n * 1000
+  }
+
+  function sessionTurnCostUsd(usage, model) {
+    const ticks = readNumber(usage && usage.costUsdTicks)
+    if (ticks !== null && ticks > 0) return ticks / COST_USD_TICKS_PER_DOLLAR
+    const input = Math.max(0, readNumber(usage && usage.inputTokens) || 0)
+    const cached = Math.min(Math.max(0, readNumber(usage && usage.cachedReadTokens) || 0), input)
+    const output =
+      Math.max(0, readNumber(usage && usage.outputTokens) || 0) +
+      Math.max(0, readNumber(usage && usage.reasoningTokens) || 0)
+    const estimated = estimatedCostDollars(model, Math.max(0, input - cached), cached, output)
+    return estimated !== null ? estimated : 0
+  }
+
+  function buildUsageRowsFromSessionLines(lines, sinceMs) {
+    const rows = []
+    const list = Array.isArray(lines) ? lines : []
+    for (let i = 0; i < list.length; i += 1) {
       let object = null
       try {
-        object = JSON.parse(line)
+        object = JSON.parse(list[i])
       } catch (e) {
         continue
       }
       if (!object || typeof object !== "object") continue
+      const update =
+        object.params && object.params.update && typeof object.params.update === "object"
+          ? object.params.update
+          : object.update && typeof object.update === "object"
+            ? object.update
+            : object
+      if (update.sessionUpdate !== "turn_completed") continue
+      const createdMs = timestampToMs(object.timestamp)
+      if (createdMs === null || createdMs < sinceMs) continue
+      const usage = update.usage && typeof update.usage === "object" ? update.usage : null
+      const modelUsage = usage && usage.modelUsage && typeof usage.modelUsage === "object"
+        ? usage.modelUsage
+        : null
+      if (!modelUsage) continue
+      const models = Object.keys(modelUsage)
+      for (let m = 0; m < models.length; m += 1) {
+        const model = models[m]
+        const part = modelUsage[model]
+        if (!part || typeof part !== "object") continue
+        const tokens = readNumber(part.totalTokens)
+        const tokenCount =
+          tokens !== null && tokens > 0
+            ? Math.round(tokens)
+            : Math.max(0, readNumber(part.inputTokens) || 0) +
+              Math.max(0, readNumber(part.outputTokens) || 0)
+        if (tokenCount <= 0 && sessionTurnCostUsd(part, model) <= 0) continue
+        rows.push({
+          createdMs: createdMs,
+          cost: sessionTurnCostUsd(part, model),
+          model: model,
+          tokens: tokenCount,
+        })
+      }
+    }
+    return rows
+  }
 
-      const msg = typeof object.msg === "string" ? object.msg : ""
-      const ctxObj = object.ctx && typeof object.ctx === "object" ? object.ctx : {}
-      const pid = readNumber(object.pid)
-
-      const modelFromEvent = modelIDFromEvent(msg, ctxObj)
-      if (modelFromEvent) {
-        if (pid !== null) modelByPID[pid] = modelFromEvent
+  function collectSessionUpdateFiles(ctx, dir, out, depth) {
+    if (depth > MAX_SESSION_WALK_DEPTH || out.length >= MAX_SESSION_UPDATE_FILES) return
+    if (!ctx.host.fs || typeof ctx.host.fs.listDir !== "function") return
+    let names = []
+    try {
+      names = ctx.host.fs.listDir(dir)
+    } catch (e) {
+      return
+    }
+    if (!Array.isArray(names)) return
+    for (let i = 0; i < names.length; i += 1) {
+      const name = names[i]
+      if (!name) continue
+      const path = dir.replace(/\/+$/, "") + "/" + name
+      if (name === "updates.jsonl") {
+        out.push(path)
+        if (out.length >= MAX_SESSION_UPDATE_FILES) return
         continue
       }
-
-      if (msg !== "shell.turn.inference_done") continue
-
-      const promptTokens = readNumber(ctxObj.prompt_tokens)
-      if (promptTokens === null) continue
-
-      const tsMs = parseTimestamp(object.ts)
-      if (tsMs === null || tsMs < sinceMs) continue
-
-      const completion = readNumber(ctxObj.completion_tokens) || 0
-      const reasoning = readNumber(ctxObj.reasoning_tokens) || 0
-      const cachedRaw = readNumber(ctxObj.cached_prompt_tokens) || 0
-      const cached = Math.min(cachedRaw, promptTokens)
-      const cacheRead = cached
-      const inputNoCache = Math.max(0, promptTokens - cached)
-      const output = completion + reasoning
-      const totalTokens = promptTokens + output
-
-      const model = pid !== null ? modelByPID[pid] : null
-      if (!model) continue
-
-      const cost = estimatedCostDollars(model, inputNoCache, cacheRead, output)
-
-      rows.push({
-        createdMs: tsMs,
-        cost: cost !== null ? cost : 0,
-        model: model,
-        tokens: totalTokens,
-      })
+      collectSessionUpdateFiles(ctx, path, out, depth + 1)
+      if (out.length >= MAX_SESSION_UPDATE_FILES) return
     }
+  }
 
+  function loadSessionUsageRows(ctx, sinceMs) {
+    if (!ctx.host.fs || typeof ctx.host.fs.scanLines !== "function") return []
+    const files = []
+    collectSessionUpdateFiles(ctx, SESSIONS_ROOT, files, 0)
+    const rows = []
+    for (let i = 0; i < files.length; i += 1) {
+      let lines = []
+      try {
+        lines = ctx.host.fs.scanLines(files[i], "turn_completed")
+      } catch (e) {
+        ctx.host.log.warn("grok session scan failed: " + String(e))
+        continue
+      }
+      const part = buildUsageRowsFromSessionLines(lines, sinceMs)
+      for (let r = 0; r < part.length; r += 1) rows.push(part[r])
+    }
     return rows
   }
 
@@ -670,8 +807,9 @@
   }
 
   function prettifyGrokModelName(rawId) {
-    const s = String(rawId || "").trim()
+    let s = String(rawId || "").trim()
     if (!s) return s
+    if (/-build$/i.test(s)) s = s.replace(/-build$/i, "")
     return s
       .split("-")
       .map(function (part, index) {
@@ -792,14 +930,17 @@
   }
 
   function appendSpendHistory(ctx, lines, nowMs) {
+    const sinceMs = nowMs - 31 * 24 * 60 * 60 * 1000
     const text = readLogText(ctx)
-    const cliRows = text !== null ? buildUsageRowsFromLog(ctx, text, nowMs - 31 * 24 * 60 * 60 * 1000) : []
+    const cliRows = text !== null ? buildUsageRowsFromLog(ctx, text, sinceMs) : []
+    const sessionRows = loadSessionUsageRows(ctx, sinceMs)
 
     const openCodeResult = loadOpenCodeXaiHistory(ctx)
     const openCodeRows = openCodeResult.ok ? openCodeResult.rows : []
 
-    // Prefer CLI for UTC days that have CLI inference; otherwise OpenCode xAI.
-    const rows = mergeUsageRowsByDay(cliRows, openCodeRows)
+    // Session turn_completed totals win a UTC day (they keep Grok 4.5 after
+    // unified.jsonl truncates). Else CLI inference; else OpenCode xAI.
+    const rows = mergeUsageRowsByDay(sessionRows, mergeUsageRowsByDay(cliRows, openCodeRows))
     if (rows.length === 0) return
 
     const daily = aggregateDailyFromRows(rows, nowMs)
@@ -872,7 +1013,7 @@
     const usedUnits = unitsValue(config.used)
     const limitUnits = unitsValue(config.monthlyLimit)
     const onDemandCapUnits = unitsValue(config.onDemandCap) ?? 0
-    if (usedUnits === null || limitUnits === null || limitUnits <= 0) {
+    if (usedUnits === null || limitUnits === null) {
       throw "Grok billing response changed."
     }
 
@@ -881,21 +1022,25 @@
       throw "Grok billing response changed."
     }
 
-    const usedPercent = clampPercent((usedUnits / limitUnits) * 100)
-    const lines = [
-      ctx.line.progress({
-        label: "Credits used",
-        used: usedPercent,
-        limit: 100,
-        format: { kind: "percent" },
-        resetsAt,
-      }),
+    const lines = []
+    if (limitUnits > 0) {
+      lines.push(
+        ctx.line.progress({
+          label: "Credits used",
+          used: clampPercent((usedUnits / limitUnits) * 100),
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt,
+        }),
+      )
+    }
+    lines.push(
       ctx.line.badge({
         label: "Pay as you go",
         text: onDemandCapUnits > 0 ? String(onDemandCapUnits) + " cap" : "Disabled",
         color: onDemandCapUnits > 0 ? "#22c55e" : "#a3a3a3",
       }),
-    ]
+    )
 
     appendSpendHistory(ctx, lines, nowMs(ctx))
 
@@ -907,6 +1052,8 @@
     probe,
     __test: {
       logPath,
+      buildUsageRowsFromSessionLines,
+      loadSessionUsageRows,
       resolveModelRates,
       estimatedCostDollars,
       modelIDFromEvent,

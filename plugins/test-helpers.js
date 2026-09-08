@@ -39,6 +39,16 @@ export const makeCtx = () => {
           }
           return Array.from(out).sort()
         },
+        scanLines: (path, needle) => {
+          const text = files.get(path)
+          if (typeof text !== "string" || !needle) return []
+          const out = []
+          const parts = text.split(/\r?\n/)
+          for (let i = 0; i < parts.length; i += 1) {
+            if (parts[i].indexOf(needle) !== -1) out.push(parts[i])
+          }
+          return out
+        },
       },
       env: {
         get: vi.fn(() => null),
