@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
-import { ArrowsClockwise, CaretDown, Robot } from "@phosphor-icons/react"
+import { ArrowsClockwise, CaretDown, FolderOpen, Robot } from "@phosphor-icons/react"
+import { openPath } from "@tauri-apps/plugin-opener"
 import type { AgentSession } from "@/bindings"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -44,53 +45,106 @@ function AgentRow({ session }: { session: AgentSession }) {
   const title = meaningfulTitle(session.title)
   const statusText = isActive ? "Active" : session.status === "idle" ? "Idle" : filterLabel(session.status)
   const activeSubagents = session.subagents.filter((sub) => sub.status === "active")
-  const shownSubagents = session.subagents.slice(0, 3)
-  const subagentNames = shownSubagents
-    .map((sub) => sub.agentType ?? "subagent")
-    .filter((name, index, all) => all.indexOf(name) === index)
-  const hiddenSubagentCount = session.subagents.length - shownSubagents.length
+  const canOpen = Boolean(session.cwd)
+
+  const handleOpen = () => {
+    if (!session.cwd) return
+    openPath(session.cwd).catch((error) => {
+      console.error("Failed to open working directory:", error)
+    })
+  }
+
   return (
-    <div className="flex items-center gap-2.5 px-1 py-2">
-      <span
-        aria-hidden="true"
-        className={cn(
-          "size-2 shrink-0 rounded-full",
-          isActive ? "bg-green-500" : "bg-muted-foreground/40"
-        )}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{session.projectName}</div>
-        {title && (
-          <div className="truncate text-xs text-foreground/80" title={title}>
-            {title}
+    <div className="px-1 py-2">
+      <div className="flex items-center gap-2.5">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "size-2 shrink-0 rounded-full",
+            isActive ? "bg-green-500" : "bg-muted-foreground/40"
+          )}
+        />
+        <button
+          type="button"
+          disabled={!canOpen}
+          onClick={handleOpen}
+          aria-label={
+            canOpen
+              ? `Open working directory for ${session.projectName}`
+              : `${session.projectName} (no working directory)`
+          }
+          title={canOpen ? `Open ${session.cwd} in Finder` : session.cwd ?? undefined}
+          className={cn(
+            "min-w-0 flex-1 text-left rounded-md",
+            canOpen && "hover:bg-muted/60 cursor-pointer"
+          )}
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-medium">{session.projectName}</span>
+            <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+              Main Session
+            </span>
           </div>
-        )}
-        <div className="truncate text-xs text-muted-foreground">
-          {session.providerName} · {shortSessionId(session.sessionId)}
-          {formatLastActive(session.lastActiveMs) ? ` · ${formatLastActive(session.lastActiveMs)}` : ""}
-        </div>
-        {session.cwd && (
-          <div className="truncate text-xs text-muted-foreground/70" title={session.cwd}>
-            {session.cwd}
+          {title && (
+            <div className="truncate text-xs text-foreground/80" title={title}>
+              {title}
+            </div>
+          )}
+          <div className="truncate text-xs text-muted-foreground">
+            {session.providerName} · {shortSessionId(session.sessionId)}
+            {formatLastActive(session.lastActiveMs) ? ` · ${formatLastActive(session.lastActiveMs)}` : ""}
           </div>
-        )}
-        {session.subagents.length > 0 && (
-          <div
-            className="truncate text-xs text-muted-foreground/70"
-            title={session.subagents
-              .map((sub) =>
-                [sub.agentType, sub.description].filter(Boolean).join(" — ")
-              )
-              .join("\n")}
-          >
-            ↳ {session.subagents.length} subagent{session.subagents.length === 1 ? "" : "s"}
-            {activeSubagents.length > 0 ? ` (${activeSubagents.length} active)` : ""} ·{" "}
-            {subagentNames.join(", ")}
-            {hiddenSubagentCount > 0 ? `, +${hiddenSubagentCount} more` : ""}
-          </div>
-        )}
+          {session.cwd && (
+            <div
+              className="flex items-center gap-1 truncate text-xs text-muted-foreground/70"
+              title={session.cwd}
+            >
+              <FolderOpen aria-hidden="true" className="size-3 shrink-0" />
+              <span className="truncate">{session.cwd}</span>
+              <span className="shrink-0 text-[10px]">· Open Folder</span>
+            </div>
+          )}
+        </button>
+        <span className="shrink-0 text-xs text-muted-foreground">{statusText}</span>
       </div>
-      <span className="shrink-0 text-xs text-muted-foreground">{statusText}</span>
+      {session.subagents.length > 0 && (
+        <div className="ml-4 mt-1.5 border-l-2 border-border/60 pl-3">
+          <div className="text-[11px] font-medium text-muted-foreground mb-1">
+            {session.subagents.length} Subagent{session.subagents.length === 1 ? "" : "s"}
+            {activeSubagents.length > 0 ? ` · ${activeSubagents.length} Active` : ""}
+          </div>
+          <div className="space-y-1">
+            {session.subagents.map((sub) => {
+              const subActive = sub.status === "active"
+              const subLabel = [sub.agentType, sub.description].filter(Boolean).join(" — ")
+              return (
+                <div key={sub.id} className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "size-1.5 shrink-0 rounded-full",
+                      subActive ? "bg-green-500" : "bg-muted-foreground/40"
+                    )}
+                  />
+                  <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+                    Subagent
+                  </span>
+                  <span className="min-w-0 truncate text-xs text-muted-foreground" title={subLabel || "Subagent"}>
+                    {subLabel || "Subagent"}
+                    {sub.model ? ` · ${sub.model}` : ""}
+                    {typeof sub.lastActiveMs === "number" && sub.lastActiveMs > 0
+                      ? ` · ${formatLastActive(sub.lastActiveMs)}`
+                      : ""}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                    {subActive ? "Active" : "Done"}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

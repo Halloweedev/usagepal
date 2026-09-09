@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { invoke, isTauri } from "@tauri-apps/api/core"
 import { useShallow } from "zustand/react/shallow"
 import { AddAccountDialogHost } from "@/components/add-account-dialog"
 import { AppShell } from "@/components/app/app-shell"
@@ -126,6 +127,16 @@ export function MainApp() {
   useEffect(() => {
     void hydrateShareSettings()
   }, [hydrateShareSettings])
+
+  // Warm the Agents cache in the background so the Agents tab opens instantly.
+  // `list_agent_sessions` caches for 60s in Rust; a fire-and-forget call here
+  // means the first tab open is usually a cache hit instead of a full rescan.
+  useEffect(() => {
+    if (!isTauri()) return
+    invoke("list_agent_sessions", { refresh: false }).catch((error) => {
+      console.debug("Agents prewarm skipped:", error)
+    })
+  }, [])
 
   const { accountsByProvider, selectedByProvider, defaultLabels, selectAccount } = useAccounts()
 

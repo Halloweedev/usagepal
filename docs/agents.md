@@ -4,15 +4,16 @@ The Agents page shows which AI coding sessions have been active on this Mac — 
 
 ## What you see
 
-- **Project** — the folder the session works in (e.g. `usagepal`).
+- **Project** — the folder the session works in (e.g. `usagepal`), labeled Main Session.
 - **Title** — the session's own title when it has a meaningful one (OpenCode titles show here; generic `New session - …` placeholders are hidden).
 - **Provider and session** — which tool it belongs to, plus a short session id.
 - **Last active** — how long ago the session last did something (`just now`, `5m ago`, `3h ago`).
 - **Status** — Active (the session's process tree is burning CPU, was seen running, or wrote output in the last minute), Idle (alive but quiet — e.g. waiting on an approval), or Closed (no running process; for Claude this is exact, since every session runs as its own process).
+- **Working directory** — the full path with an Open Folder hint. Click a session to open its folder in Finder.
 
 Each provider header shows its count on the right (`6 active`, `3 idle`, `2 closed`).
 
-The page refreshes when you open it and every minute while it stays open. Results are cached for 15 seconds so reopening the tab is instant; the refresh button always recomputes from scratch.
+The page refreshes when you open it and every minute while it stays open. Results are cached for 60 seconds so reopening the tab is instant; the refresh button always recomputes from scratch. The list is also preloaded in the background at startup.
 
 ## Filters
 
@@ -24,7 +25,11 @@ Click a provider's header (e.g. Claude Code) to hide its sessions; click again t
 
 ## Subagents
 
-Claude Code sessions that spawned Task subagents show them nested underneath (`↳ 2 subagents (1 active) · Explore, general-purpose`, hover for task descriptions). A subagent counts as running when its transcript was just written under a live parent session. Codex and OpenCode subagents aren't listed yet.
+Claude Code sessions that spawned Task subagents show each subagent nested underneath the main session, with its own Subagent label, task type, description, model, and Active or Done status. A subagent counts as running when its transcript was just written under a live parent session. Codex and OpenCode subagents aren't listed yet.
+
+## Opening a session's folder
+
+Click a main session row to open its working directory in Finder. Sessions without a known directory are not clickable.
 
 ## Privacy
 

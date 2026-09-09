@@ -3,12 +3,17 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import type { AgentSession } from "@/bindings"
 
-const { useAgentsMock } = vi.hoisted(() => ({
+const { useAgentsMock, openPathMock } = vi.hoisted(() => ({
   useAgentsMock: vi.fn(),
+  openPathMock: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock("@/hooks/app/use-agents", () => ({
   useAgents: useAgentsMock,
+}))
+
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openPath: openPathMock,
 }))
 
 import { AgentsPage } from "@/pages/agents"
@@ -248,8 +253,20 @@ describe("AgentsPage", () => {
       ],
     })
     render(<AgentsPage />)
-    expect(screen.getByText(/2 subagents \(1 active\)/)).toBeInTheDocument()
-    expect(screen.getByText(/Explore, general-purpose/)).toBeInTheDocument()
+    expect(screen.getByText("Main Session")).toBeInTheDocument()
+    expect(screen.getByText(/2 Subagents/)).toBeInTheDocument()
+    expect(screen.getAllByText("Subagent").length).toBe(2)
+    expect(screen.getByTitle(/Map the auth flow/)).toBeInTheDocument()
+  })
+
+  it("opens the working directory when the main session is clicked", async () => {
+    openPathMock.mockClear()
+    mockState({ sessions: [session({ cwd: "/Users/me/usagepal" })] })
+    render(<AgentsPage />)
+    await userEvent.click(
+      screen.getByRole("button", { name: "Open working directory for usagepal" })
+    )
+    expect(openPathMock).toHaveBeenCalledWith("/Users/me/usagepal")
   })
 
   it("shows meaningful titles and hides placeholder titles", () => {

@@ -424,7 +424,7 @@ fn resolve_all(
 /// Served-first cache so opening the Agents tab (and its minute poll) rarely
 /// pays for a full rescan. Statuses go slightly stale within the window —
 /// acceptable for a 60s-polling page, and a manual refresh always recomputes.
-const CACHE_TTL_MS: u128 = 15_000;
+const CACHE_TTL_MS: u128 = 60_000;
 
 static SESSION_CACHE: std::sync::Mutex<Option<(u128, Vec<AgentSession>)>> =
     std::sync::Mutex::new(None);
