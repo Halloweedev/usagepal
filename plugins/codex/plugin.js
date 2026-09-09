@@ -685,6 +685,15 @@
     return ["GPT-" + version].concat(suffixWords).join(" ")
   }
 
+  // `gpt-reserve` is the backend identifier for the user-facing Luna Reserve
+  // fallback allowance (separate pool once regular quota is exhausted).
+  function formatBucketLabel(shortName) {
+    if (typeof shortName !== "string" || !shortName) return "Model"
+    const key = shortName.trim().toLowerCase().replace(/_/g, "-")
+    if (key === "gpt-reserve") return "Luna Reserve"
+    return shortName
+  }
+
   function pushModelUsageLines(lines, ctx, daily, now) {
     const models = collectModelUsage(daily)
     const todayKey = dayKeyFromDate(now)
@@ -1037,6 +1046,7 @@
           const name = typeof entry.limit_name === "string" ? entry.limit_name : ""
           let shortName = name.replace(/^GPT-[\d.]+-Codex-/, "")
           if (!shortName) shortName = name || "Model"
+          shortName = formatBucketLabel(shortName)
           const rl = entry.rate_limit
           if (rl.primary_window && typeof rl.primary_window.used_percent === "number") {
             lines.push(ctx.line.progress({

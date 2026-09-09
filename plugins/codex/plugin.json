@@ -20,6 +20,8 @@
     { "type": "progress", "label": "Weekly", "scope": "overview", "period": "weekly" },
     { "type": "progress", "label": "Spark", "scope": "detail" },
     { "type": "progress", "label": "Spark Weekly", "scope": "detail" },
+    { "type": "progress", "label": "Luna Reserve", "scope": "detail" },
+    { "type": "progress", "label": "Luna Reserve Weekly", "scope": "detail" },
     { "type": "progress", "label": "Reviews", "scope": "detail" },
     { "type": "text", "label": "Rate Limit Resets", "scope": "detail" },
     { "type": "text", "label": "Credits", "scope": "detail" },

@@ -73,6 +73,11 @@ Returns rate limit windows and optional credits.
 
 Both rate_limit windows are enforced simultaneously — hitting either limit throttles the user.
 
+The API may also return `additional_rate_limits` buckets with their own 5h and weekly
+windows. UsagePal shows the `GPT-*-Codex-Spark` bucket as **Spark** / **Spark Weekly**,
+and the backend `gpt-reserve` bucket as **Luna Reserve** / **Luna Reserve Weekly**
+(a separate fallback allowance once regular quota is exhausted).
+
 UsagePal floors the remaining credit balance to a whole number and displays its fixed USD
 equivalent at `$0.04` per credit. For example, `820.6969075` renders as
 `$32.80 · 820 credits`. The credit balance is unbounded; the API does not provide a maximum.

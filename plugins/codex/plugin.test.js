@@ -1859,6 +1859,59 @@ describe("codex plugin", () => {
     nowSpy.mockRestore()
   })
 
+  it("renames gpt-reserve bucket to Luna Reserve", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    const now = 1_700_000_000_000
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now)
+    const nowSec = Math.floor(now / 1000)
+
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 5, reset_after_seconds: 60 },
+        },
+        additional_rate_limits: [
+          {
+            limit_name: "gpt-reserve",
+            rate_limit: {
+              primary_window: {
+                used_percent: 0,
+                limit_window_seconds: 604800,
+                reset_after_seconds: 86400,
+                reset_at: nowSec + 86400,
+              },
+              secondary_window: {
+                used_percent: 10,
+                limit_window_seconds: 604800,
+                reset_after_seconds: 86400,
+                reset_at: nowSec + 86400,
+              },
+            },
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((l) => l.label === "gpt-reserve")).toBeUndefined()
+    const reserve = result.lines.find((l) => l.label === "Luna Reserve")
+    expect(reserve).toBeTruthy()
+    expect(reserve.used).toBe(0)
+    const reserveWeekly = result.lines.find((l) => l.label === "Luna Reserve Weekly")
+    expect(reserveWeekly).toBeTruthy()
+    expect(reserveWeekly.used).toBe(10)
+
+    nowSpy.mockRestore()
+  })
+
   it("handles additional_rate_limits with missing fields and fallback labels", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
