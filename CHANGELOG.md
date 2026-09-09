@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.7.75-beta.2
+
+### New Features
+- List Claude subagents under their sessions by @Halloweedev
+- Faster Agents tab via trimmed process refresh, cache, parallel scans across Claude, Codex, Cursor, OpenCode by @Halloweedev
+- Resolve Active from process-tree work and output freshness across Claude, Codex, Cursor, OpenCode by @Halloweedev
+- Show main sessions and subagents as separate nested rows by @Halloweedev
+- Open a session's working folder by clicking its row by @Halloweedev
+
+### Bug Fixes
+- Rename Codex gpt-reserve bucket to Luna Reserve by @Halloweedev
+
+### Refactor
+- Split Claude scanner into its own module by @Halloweedev
+
+### Chores
+- Preload Agents list at startup and extend session cache to 60 seconds by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.75-beta.1...v0.7.75-beta.2](https://github.com/Halloweedev/usagepal/compare/v0.7.75-beta.1...v0.7.75-beta.2)
+
+- [2cfe727](https://github.com/Halloweedev/usagepal/commit/2cfe72781793b0f4cc6213742c40e39ecd198627) feat(agents): resolve Active from process-tree work and output freshness by @Halloweedev
+- [1094f19](https://github.com/Halloweedev/usagepal/commit/1094f191bcb6a6f71714faac83aab882c5ec83fb) feat(agents): faster tab via trimmed process refresh, cache, parallel scans by @Halloweedev
+- [05ce5db](https://github.com/Halloweedev/usagepal/commit/05ce5dbcdcdd5bba79686275619621be29ff8f78) feat(agents): list Claude subagents under their sessions by @Halloweedev
+- [468e0be](https://github.com/Halloweedev/usagepal/commit/468e0be0ffd372882097aa0261bff45874512cdd) refactor(agents): split Claude scanner into its own module by @Halloweedev
+- [23250ea](https://github.com/Halloweedev/usagepal/commit/23250ead25d60b0506c1326fef1f2526c42696b6) fix(codex): rename gpt-reserve bucket to Luna Reserve by @Halloweedev
+- [c0f03dd](https://github.com/Halloweedev/usagepal/commit/c0f03dde1bc2005f881d6ad4229130ec21798991) feat(agents): clearer main/subagent rows, open folder, faster load by @Halloweedev
+
 ## v0.7.75-beta.1
 
 ### New Features
