@@ -21,19 +21,6 @@
     }
 
     #[test]
-    fn decodes_claude_project_slug() {
-        assert_eq!(
-            decode_claude_project_dir("-Users-halloweed-Coding-Projects-usagepal"),
-            "/Users/halloweed/Coding/Projects/usagepal"
-        );
-    }
-
-    #[test]
-    fn passes_through_slug_without_leading_dash() {
-        assert_eq!(decode_claude_project_dir("usagepal"), "usagepal");
-    }
-
-    #[test]
     fn project_name_uses_last_component() {
         assert_eq!(
             project_name_from_cwd("/Users/halloweed/Coding/Projects/usagepal"),
@@ -90,7 +77,7 @@
         write_file(&root.join(slug).join("notes.txt"), "skip me");
 
         let mut out = Vec::new();
-        scan_claude(&root, &mut out);
+        claude::scan_claude(&root, &mut out);
 
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].provider_id, "claude");

@@ -6,6 +6,7 @@
 //! the folder URI), and OpenCode's session id/directory/title/timestamps from
 //! its local database. Message content is never read.
 
+mod claude;
 mod liveness;
 mod opencode;
 mod subagents;
@@ -92,16 +93,6 @@ fn project_name_from_cwd(cwd: &str) -> String {
         .to_string()
 }
 
-/// Decode a Claude projects-dir slug back to a path. Slugs encode `/` as `-`
-/// with a leading `-` for the root (`-Users-halloweed-proj` → `/Users/halloweed/proj`).
-/// Best-effort: project dirs containing `-` decode ambiguously.
-fn decode_claude_project_dir(slug: &str) -> String {
-    if let Some(rest) = slug.strip_prefix('-') {
-        format!("/{}", rest.replace('-', "/"))
-    } else {
-        slug.to_string()
-    }
-}
 
 /// Session id from a Codex rollout filename
 /// (`rollout-2026-03-19T15-38-57-<uuid>.jsonl` → `<uuid>`).
@@ -207,47 +198,6 @@ fn push_session(
     });
 }
 
-fn scan_claude(projects_dir: &Path, out: &mut Vec<RawSession>) {
-    let entries = match std::fs::read_dir(projects_dir) {
-        Ok(entries) => entries,
-        Err(_) => return,
-    };
-    for project_dir in entries.flatten() {
-        let slug = project_dir.file_name().to_string_lossy().into_owned();
-        let files = match std::fs::read_dir(project_dir.path()) {
-            Ok(files) => files,
-            Err(_) => continue,
-        };
-        let cwd = decode_claude_project_dir(&slug);
-        let project_name = project_name_from_cwd(&cwd);
-        for file in files.flatten() {
-            let path = file.path();
-            if !path.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
-                continue;
-            }
-            let Some(last_active_ms) = file_mtime_ms(&path) else {
-                continue;
-            };
-            let session_id = path
-                .file_stem()
-                .map(|stem| stem.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            if session_id.is_empty() {
-                continue;
-            }
-            out.push(RawSession {
-                provider_id: "claude",
-                provider_name: "Claude Code",
-                project_name: project_name.clone(),
-                session_id: session_id.clone(),
-                cwd: Some(cwd.clone()),
-                title: None,
-                last_active_ms,
-                source_dir: Some(project_dir.path().join(&session_id)),
-            });
-        }
-    }
-}
 
 fn scan_codex_dir(dir: &Path, out: &mut Vec<RawSession>, depth: usize) {
     if depth > 6 {
@@ -335,15 +285,6 @@ fn scan_cursor(storage_dirs: &[PathBuf], out: &mut Vec<RawSession>) {
     }
 }
 
-fn claude_projects_dir(home: &Path) -> PathBuf {
-    if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
-        let trimmed = dir.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed).join("projects");
-        }
-    }
-    home.join(".claude/projects")
-}
 
 fn codex_sessions_dir(home: &Path) -> PathBuf {
     if let Ok(dir) = std::env::var("CODEX_HOME") {
@@ -380,7 +321,7 @@ fn collect_agent_sessions(
         let mut raw = Vec::new();
         let claude_raw = scope.spawn(|| {
             let mut out = Vec::new();
-            scan_claude(claude_dir, &mut out);
+            claude::scan_claude(claude_dir, &mut out);
             out
         });
         let codex_raw = scope.spawn(|| {
@@ -417,7 +358,7 @@ fn collect_with_procs(
     now_ms: u128,
 ) -> Vec<AgentSession> {
     let mut raw = Vec::new();
-    scan_claude(claude_dir, &mut raw);
+    claude::scan_claude(claude_dir, &mut raw);
     scan_codex_dir(codex_dir, &mut raw, 0);
     scan_cursor(cursor_dirs, &mut raw);
     opencode::scan_opencode(home, &mut raw);
@@ -509,7 +450,7 @@ pub fn list_agent_sessions(refresh: Option<bool>) -> Vec<AgentSession> {
     };
     let sessions = collect_agent_sessions(
         &home,
-        &claude_projects_dir(&home),
+        &claude::claude_projects_dir(&home),
         &codex_sessions_dir(&home),
         &cursor_storage_dirs(&home),
         now_ms,
