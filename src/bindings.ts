@@ -110,6 +110,7 @@ export type AgentSession = {
 	cwd: string | null,
 	/**  Session title when the source has one (OpenCode stores titles). */
 	title: string | null,
+	subagents: SubagentInfo[],
 	/**  Unix-ms of the last observed file activity. f64 because specta forbids u64. */
 	lastActiveMs: number | null,
 	/**
@@ -244,6 +245,17 @@ export type ReleaseNotes = {
 export type ReleaseNotesSection = {
 	title: string,
 	items: string[],
+};
+
+export type SubagentInfo = {
+	id: string,
+	agentType: string | null,
+	description: string | null,
+	model: string | null,
+	/**  Unix-ms of the subagent transcript's last write. f64: specta forbids u64. */
+	lastActiveMs: number | null,
+	/**  `"active"` when freshly written under a live parent session, else `"done"`. */
+	status: string,
 };
 
 export type TrayRectInput = {

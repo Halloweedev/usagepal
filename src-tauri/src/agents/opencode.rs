@@ -224,6 +224,7 @@ pub fn scan_opencode(home: &Path, out: &mut Vec<RawSession>) {
                 cwd: Some(row.directory),
                 title: row.title,
                 last_active_ms,
+                source_dir: None,
             });
         }
     }

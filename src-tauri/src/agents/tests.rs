@@ -162,9 +162,11 @@
                 cwd: None,
                 title: None,
                 last_active_ms: ancient,
+                source_dir: None,
             },
             now,
             "closed",
+            false,
         );
         assert!(out.is_empty());
     }
@@ -205,6 +207,14 @@
         write_file(&root.join(slug).join(format!("{busy_id}.jsonl")), "{}\n");
         write_file(&root.join(slug).join(format!("{idle_id}.jsonl")), "{}\n");
         write_file(&root.join(slug).join(format!("{gone_id}.jsonl")), "{}\n");
+        write_file(
+            &root.join(format!("{slug}/{busy_id}/subagents/agent-a1.jsonl")),
+            "{}\n",
+        );
+        write_file(
+            &root.join(format!("{slug}/{busy_id}/subagents/agent-a1.meta.json")),
+            r#"{"agentType":"Explore","description":"Map the auth flow","model":"sonnet"}"#,
+        );
         let now = unix_now_ms();
         let pool = vec![
             LiveProcess {
@@ -241,6 +251,21 @@
         assert_eq!(status_of(idle_id), Some("active"));
         // Recent file but no process: the /new case → closed, not active.
         assert_eq!(status_of(gone_id), Some("closed"));
+
+        // Subagents attach to the live session with meta fields intact.
+        let busy = sessions
+            .iter()
+            .find(|s| s.session_id == busy_id)
+            .expect("busy session");
+        assert_eq!(busy.subagents.len(), 1);
+        assert_eq!(busy.subagents[0].id, "a1");
+        assert_eq!(busy.subagents[0].agent_type.as_deref(), Some("Explore"));
+        assert_eq!(busy.subagents[0].status, "active");
+        let gone = sessions
+            .iter()
+            .find(|s| s.session_id == gone_id)
+            .expect("gone session");
+        assert!(gone.subagents.is_empty());
 
         let _ = std::fs::remove_dir_all(&root);
     }

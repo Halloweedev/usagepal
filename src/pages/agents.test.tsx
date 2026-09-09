@@ -21,6 +21,7 @@ function session(overrides: Partial<AgentSession> = {}): AgentSession {
     sessionId: "abc123def456",
     cwd: "/Users/me/usagepal",
     title: null,
+    subagents: [],
     lastActiveMs: Date.now(),
     status: "active",
     ...overrides,
@@ -219,6 +220,36 @@ describe("AgentsPage", () => {
       screen.getByRole("button", { name: "Show Claude Code sessions" })
     )
     expect(screen.getByText("usagepal")).toBeInTheDocument()
+  })
+
+  it("shows subagents under their session", () => {
+    mockState({
+      sessions: [
+        session({
+          subagents: [
+            {
+              id: "a1",
+              agentType: "Explore",
+              description: "Map the auth flow",
+              model: "sonnet",
+              lastActiveMs: Date.now(),
+              status: "active",
+            },
+            {
+              id: "a2",
+              agentType: "general-purpose",
+              description: null,
+              model: null,
+              lastActiveMs: Date.now() - 3_600_000,
+              status: "done",
+            },
+          ],
+        }),
+      ],
+    })
+    render(<AgentsPage />)
+    expect(screen.getByText(/2 subagents \(1 active\)/)).toBeInTheDocument()
+    expect(screen.getByText(/Explore, general-purpose/)).toBeInTheDocument()
   })
 
   it("shows meaningful titles and hides placeholder titles", () => {

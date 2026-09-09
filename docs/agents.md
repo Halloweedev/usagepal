@@ -22,11 +22,15 @@ The status filter shows All, Active, Idle — each with its count — plus a but
 
 Click a provider's header (e.g. Claude Code) to hide its sessions; click again to bring them back. The chevron points at the current state. This only affects the Agents page and resets when you reopen it — your usage tracking settings are untouched.
 
+## Subagents
+
+Claude Code sessions that spawned Task subagents show them nested underneath (`↳ 2 subagents (1 active) · Explore, general-purpose`, hover for task descriptions). A subagent counts as running when its transcript was just written under a live parent session. Codex and OpenCode subagents aren't listed yet.
+
 ## Privacy
 
 Everything is 100% local. The app only reads file metadata:
 
-- Claude Code: the names and modification times of files in `~/.claude/projects/`.
+- Claude Code: the names and modification times of files in `~/.claude/projects/`, plus each subagent's tiny `agent-*.meta.json` sidecar (agent type, task label, model — never message content).
 - Codex: the names and modification times of rollout files in `~/.codex/sessions/`, plus the working directory from each file's first-line `session_meta` record.
 - Cursor: the modification times of workspace folders plus the folder path in each `workspace.json`.
 - OpenCode / OpenCode2: session id, working directory, title, and timestamps from the `session` / `session_v2` tables in the local `opencode.db` (read-only query via the `sqlite3` CLI — a missing binary or locked database simply shows no sessions).

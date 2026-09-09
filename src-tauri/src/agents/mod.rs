@@ -8,6 +8,7 @@
 
 mod liveness;
 mod opencode;
+mod subagents;
 
 use serde::Serialize;
 use specta::Type;
@@ -34,6 +35,7 @@ pub struct AgentSession {
     pub cwd: Option<String>,
     /// Session title when the source has one (OpenCode stores titles).
     pub title: Option<String>,
+    pub subagents: Vec<subagents::SubagentInfo>,
     /// Unix-ms of the last observed file activity. f64 because specta forbids u64.
     pub last_active_ms: f64,
     /// `"active"` for a tree doing work (or streaming output), `"idle"` for a
@@ -72,6 +74,8 @@ struct RawSession {
     cwd: Option<String>,
     title: Option<String>,
     last_active_ms: u128,
+    /// `<project>/<session-id>` dir for Claude (holds `subagents/`); else None.
+    source_dir: Option<PathBuf>,
 }
 
 /// Last path component of a working directory (`/a/b/foo` → `foo`).
@@ -176,10 +180,20 @@ fn push_session(
     raw: RawSession,
     now_ms: u128,
     status: &str,
+    parent_live: bool,
 ) {
     if now_ms.saturating_sub(raw.last_active_ms) > MAX_IDLE_SECS as u128 * 1000 {
         return;
     }
+    // Subagent sidecars are only worth reading while something might be
+    // running: a live parent or a just-written transcript.
+    let fresh = status_fresh(raw.last_active_ms, now_ms);
+    let subagents = match (&raw.source_dir, raw.provider_id) {
+        (Some(dir), "claude") if parent_live || fresh => {
+            subagents::scan_subagents(dir, parent_live, now_ms, status_fresh)
+        }
+        _ => Vec::new(),
+    };
     out.push(AgentSession {
         provider_id: raw.provider_id.to_string(),
         provider_name: raw.provider_name.to_string(),
@@ -187,6 +201,7 @@ fn push_session(
         session_id: raw.session_id,
         cwd: raw.cwd,
         title: raw.title,
+        subagents,
         last_active_ms: raw.last_active_ms as f64,
         status: status.to_string(),
     });
@@ -224,10 +239,11 @@ fn scan_claude(projects_dir: &Path, out: &mut Vec<RawSession>) {
                 provider_id: "claude",
                 provider_name: "Claude Code",
                 project_name: project_name.clone(),
-                session_id,
+                session_id: session_id.clone(),
                 cwd: Some(cwd.clone()),
                 title: None,
                 last_active_ms,
+                source_dir: Some(project_dir.path().join(&session_id)),
             });
         }
     }
@@ -262,15 +278,16 @@ fn scan_codex_dir(dir: &Path, out: &mut Vec<RawSession>, depth: usize) {
             .as_deref()
             .map(project_name_from_cwd)
             .unwrap_or_else(|| "Codex session".to_string());
-        out.push(RawSession {
-            provider_id: "codex",
-            provider_name: "Codex",
-            project_name,
-            session_id,
-            cwd,
-            title: None,
-            last_active_ms,
-        });
+            out.push(RawSession {
+                provider_id: "codex",
+                provider_name: "Codex",
+                project_name,
+                session_id,
+                cwd,
+                title: None,
+                last_active_ms,
+                source_dir: None,
+            });
     }
 }
 
@@ -312,6 +329,7 @@ fn scan_cursor(storage_dirs: &[PathBuf], out: &mut Vec<RawSession>) {
                 cwd,
                 title: None,
                 last_active_ms,
+                source_dir: None,
             });
         }
     }
@@ -357,7 +375,7 @@ fn collect_agent_sessions(
 ) -> Vec<AgentSession> {
     // The process sample sleeps 500ms between snapshots; run it alongside the
     // file/database scans instead of after them.
-    let (pool, mut raw) = std::thread::scope(|scope| {
+    let (pool, raw) = std::thread::scope(|scope| {
         let sample = scope.spawn(liveness::sample);
         let mut raw = Vec::new();
         let claude_raw = scope.spawn(|| {
@@ -444,13 +462,14 @@ fn resolve_all(
             // Unknown provider: never gate on a host process.
             .map(|provider| liveness::host_alive(&snapshot, provider))
             .unwrap_or(true);
+        let parent_live = matched.is_some();
         let status = liveness::resolve_status(
             matched,
             status_fresh(session.last_active_ms, now_ms),
             host_alive,
             liveness::is_strict(session.provider_id),
         );
-        push_session(&mut sessions, session, now_ms, status);
+        push_session(&mut sessions, session, now_ms, status, parent_live);
     }
     sessions.sort_by(|a, b| {
         b.last_active_ms

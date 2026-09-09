@@ -43,6 +43,12 @@ function AgentRow({ session }: { session: AgentSession }) {
   const isActive = session.status === "active"
   const title = meaningfulTitle(session.title)
   const statusText = isActive ? "Active" : session.status === "idle" ? "Idle" : filterLabel(session.status)
+  const activeSubagents = session.subagents.filter((sub) => sub.status === "active")
+  const shownSubagents = session.subagents.slice(0, 3)
+  const subagentNames = shownSubagents
+    .map((sub) => sub.agentType ?? "subagent")
+    .filter((name, index, all) => all.indexOf(name) === index)
+  const hiddenSubagentCount = session.subagents.length - shownSubagents.length
   return (
     <div className="flex items-center gap-2.5 px-1 py-2">
       <span
@@ -66,6 +72,21 @@ function AgentRow({ session }: { session: AgentSession }) {
         {session.cwd && (
           <div className="truncate text-xs text-muted-foreground/70" title={session.cwd}>
             {session.cwd}
+          </div>
+        )}
+        {session.subagents.length > 0 && (
+          <div
+            className="truncate text-xs text-muted-foreground/70"
+            title={session.subagents
+              .map((sub) =>
+                [sub.agentType, sub.description].filter(Boolean).join(" — ")
+              )
+              .join("\n")}
+          >
+            ↳ {session.subagents.length} subagent{session.subagents.length === 1 ? "" : "s"}
+            {activeSubagents.length > 0 ? ` (${activeSubagents.length} active)` : ""} ·{" "}
+            {subagentNames.join(", ")}
+            {hiddenSubagentCount > 0 ? `, +${hiddenSubagentCount} more` : ""}
           </div>
         )}
       </div>
