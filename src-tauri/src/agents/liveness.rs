@@ -13,19 +13,36 @@
 //!   server, Cursor app), so without an attributable process they fall back to
 //!   recency gated on a live host process.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
-use sysinfo::{ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 /// Gap between the two process samples. 500ms clears macOS's 200ms minimum
 /// CPU interval with margin while keeping the command snappy.
 const SAMPLE_GAP: Duration = Duration::from_millis(500);
 /// Subtree CPU burn (milliseconds) inside the sample gap that counts as work.
-/// Calibrated 2026-09-09: long-idle Claude harnesses burn ~5ms per 500ms
-/// window; a 0.2s tool call burns ~200ms. 50ms (10% of one core) sits 10x
+/// Calibrated 2026-09-09: long-idle Claude harnesses burn ~10ms per 500ms
+/// window; a 0.2s tool call burns ~200ms. 50ms (10% of one core) sits well
 /// above idle noise and far below real tool use.
 const WORK_CPU_MS: u64 = 50;
+
+/// Executable names whose CPU counts toward a session. Agent work flows
+/// through shells, language runtimes, toolchains, and CLIs; everything else
+/// in the tree (language servers, `caffeinate`, desktop helpers adopted from
+/// the launch environment) is noise. The session root itself always counts.
+fn is_worker(token: &str) -> bool {
+    const EXACT: &[&str] = &[
+        "sh", "bash", "zsh", "fish", "dash", "node", "bun", "deno", "npm", "yarn", "pnpm",
+        "npx", "python", "pip", "uv", "uvx", "ruby", "perl", "php", "lua", "java",
+        "cargo", "rustc", "go", "make", "cmake", "ninja", "tsc", "esbuild", "vite",
+        "webpack", "xcodebuild", "swiftc", "clang", "gcc", "git", "hg", "svn", "gh",
+        "docker", "ssh", "kubectl", "rg", "grep", "find", "fd", "jq", "curl", "wget",
+        "ffmpeg", "sqlite3", "psql", "mysql", "codex", "claude", "gemini", "ollama",
+    ];
+    const PREFIX: &[&str] = &["python3", "python2", "node"];
+    EXACT.contains(&token) || PREFIX.iter().any(|prefix| token.starts_with(prefix))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Provider {
@@ -97,15 +114,21 @@ struct RawProc {
     token: String,
     cmd: String,
     cwd: Option<PathBuf>,
-    running: bool,
     cpu_ms: u64,
 }
 
 fn snapshot(system: &mut System) -> Vec<RawProc> {
+    // Only what session matching needs: identity (exe/cmd/cwd), parent links,
+    // and CPU times. Skipping memory/user/environ/disk keeps this fast —
+    // environ reads in particular are brutal per-process on macOS.
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
-        ProcessRefreshKind::everything(),
+        ProcessRefreshKind::nothing()
+            .with_cpu()
+            .with_exe(sysinfo::UpdateKind::Always)
+            .with_cmd(sysinfo::UpdateKind::Always)
+            .with_cwd(sysinfo::UpdateKind::Always),
     );
     system
         .processes()
@@ -121,7 +144,6 @@ fn snapshot(system: &mut System) -> Vec<RawProc> {
                 .collect::<Vec<_>>()
                 .join(" "),
             cwd: process.cwd().map(|cwd| cwd.to_path_buf()),
-            running: process.status() == ProcessStatus::Run,
             cpu_ms: process.accumulated_cpu_time(),
         })
         .collect()
@@ -142,10 +164,11 @@ fn subtree_pids(children: &HashMap<u32, Vec<u32>>, root: u32) -> Vec<u32> {
     pids
 }
 
-/// Sample the process list twice; a session counts as working when its whole
-/// process tree either burned CPU past the work threshold or was observed
-/// running. The tree matters: agents spend most wall time asleep on tool I/O
-/// while their children do the work.
+/// Sample the process list twice; a session counts as working when its root
+/// process plus allowlisted worker children burned CPU past the work
+/// threshold inside the gap. Deliberately not "observed running": a mostly
+/// idle interactive process is caught in Run state by random sampling.
+/// The tree matters because agents sleep on tool I/O while children work.
 pub fn sample() -> Vec<LiveProcess> {
     let mut system = System::new();
     let first = snapshot(&mut system);
@@ -161,23 +184,19 @@ pub fn sample() -> Vec<LiveProcess> {
         .map(|proc| (proc.pid, proc.cpu_ms))
         .collect();
     let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+    let mut tokens: HashMap<u32, String> = HashMap::new();
     for proc in &second {
+        tokens.insert(proc.pid, proc.token.clone());
         if let Some(ppid) = proc.ppid {
             children.entry(ppid).or_default().push(proc.pid);
         }
     }
-    let ran: HashSet<u32> = first
-        .iter()
-        .chain(second.iter())
-        .filter(|proc| proc.running)
-        .map(|proc| proc.pid)
-        .collect();
 
     second
         .into_iter()
         .filter_map(|proc| {
             let provider = classify(&proc.token)?;
-            let members = subtree_pids(&children, proc.pid);
+            let members = countable_members(&children, &tokens, proc.pid);
             let cpu_delta: u64 = members
                 .iter()
                 .filter_map(|pid| {
@@ -185,16 +204,34 @@ pub fn sample() -> Vec<LiveProcess> {
                     Some(now.saturating_sub(baseline.get(pid).copied().unwrap_or(0)))
                 })
                 .sum();
-            let working =
-                cpu_delta >= WORK_CPU_MS || members.iter().any(|pid| ran.contains(pid));
             Some(LiveProcess {
                 provider,
                 cmd: proc.cmd,
                 cwd: proc.cwd,
-                working,
+                working: cpu_delta >= WORK_CPU_MS,
             })
         })
         .collect()
+}
+
+/// Root plus worker-kind descendants. The root always counts; children only
+/// when they look like agent-spawned tools (see `is_worker`).
+fn countable_members(
+    children: &HashMap<u32, Vec<u32>>,
+    tokens: &HashMap<u32, String>,
+    root: u32,
+) -> Vec<u32> {
+    let mut members = vec![root];
+    for pid in subtree_pids(children, root).into_iter().skip(1) {
+        let is_tool = tokens
+            .get(&pid)
+            .map(|token| is_worker(&token.to_lowercase()))
+            .unwrap_or(false);
+        if is_tool {
+            members.push(pid);
+        }
+    }
+    members
 }
 
 pub fn host_alive(procs: &[LiveProcess], provider: &Provider) -> bool {
@@ -358,8 +395,40 @@ mod tests {
     }
 
     #[test]
-    fn subtree_includes_all_descendants() {
-        let children: HashMap<u32, Vec<u32>> =
+    fn workers_cover_shells_runtimes_and_toolchains() {
+        for tool in [
+            "bash", "zsh", "node", "bun", "python3", "python3.13", "cargo", "git", "rg",
+            "docker", "ssh", "codex", "sqlite3",
+        ] {
+            assert!(is_worker(tool), "{tool} should count as worker");
+        }
+    }
+
+    #[test]
+    fn adopted_helpers_do_not_count_as_workers() {
+        for helper in ["sourcekit-lsp", "caffeinate", "safari", "launchd", "Code Helper"] {
+            assert!(
+                !is_worker(&helper.to_lowercase()),
+                "{helper} should not count as worker"
+            );
+        }
+    }
+
+    #[test]
+    fn countable_members_keep_root_and_drop_noise() {
+        let children: HashMap<u32, Vec<u32>> = [(1, vec![2, 3])].into_iter().collect();
+        let tokens: HashMap<u32, String> = [
+            (1, "claude".to_string()),
+            (2, "sourcekit-lsp".to_string()),
+            (3, "bash".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(countable_members(&children, &tokens, 1), vec![1, 3]);
+    }
+
+    #[test]
+    fn subtree_includes_all_descendants() {        let children: HashMap<u32, Vec<u32>> =
             [(1, vec![2, 3]), (2, vec![4])].into_iter().collect();
         let mut members = subtree_pids(&children, 1);
         members.sort_unstable();

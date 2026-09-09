@@ -355,22 +355,47 @@ fn collect_agent_sessions(
     cursor_dirs: &[PathBuf],
     now_ms: u128,
 ) -> Vec<AgentSession> {
-    collect_with_procs(
-        home,
-        claude_dir,
-        codex_dir,
-        cursor_dirs,
-        liveness::sample(),
-        now_ms,
-    )
+    // The process sample sleeps 500ms between snapshots; run it alongside the
+    // file/database scans instead of after them.
+    let (pool, mut raw) = std::thread::scope(|scope| {
+        let sample = scope.spawn(liveness::sample);
+        let mut raw = Vec::new();
+        let claude_raw = scope.spawn(|| {
+            let mut out = Vec::new();
+            scan_claude(claude_dir, &mut out);
+            out
+        });
+        let codex_raw = scope.spawn(|| {
+            let mut out = Vec::new();
+            scan_codex_dir(codex_dir, &mut out, 0);
+            out
+        });
+        let cursor_raw = scope.spawn(|| {
+            let mut out = Vec::new();
+            scan_cursor(cursor_dirs, &mut out);
+            out
+        });
+        let opencode_raw = scope.spawn(|| {
+            let mut out = Vec::new();
+            opencode::scan_opencode(home, &mut out);
+            out
+        });
+        raw.extend(claude_raw.join().unwrap_or_default());
+        raw.extend(codex_raw.join().unwrap_or_default());
+        raw.extend(cursor_raw.join().unwrap_or_default());
+        raw.extend(opencode_raw.join().unwrap_or_default());
+        (sample.join().unwrap_or_default(), raw)
+    });
+    resolve_all(raw, pool, now_ms)
 }
 
+#[cfg(test)]
 fn collect_with_procs(
     home: &Path,
     claude_dir: &Path,
     codex_dir: &Path,
     cursor_dirs: &[PathBuf],
-    mut pool: Vec<liveness::LiveProcess>,
+    pool: Vec<liveness::LiveProcess>,
     now_ms: u128,
 ) -> Vec<AgentSession> {
     let mut raw = Vec::new();
@@ -378,6 +403,14 @@ fn collect_with_procs(
     scan_codex_dir(codex_dir, &mut raw, 0);
     scan_cursor(cursor_dirs, &mut raw);
     opencode::scan_opencode(home, &mut raw);
+    resolve_all(raw, pool, now_ms)
+}
+
+fn resolve_all(
+    mut raw: Vec<RawSession>,
+    mut pool: Vec<liveness::LiveProcess>,
+    now_ms: u128,
+) -> Vec<AgentSession> {
     // Claim most-recent-first so a bare `claude --resume` (which continues the
     // newest session) lands on the right one.
     raw.sort_by(|a, b| b.last_active_ms.cmp(&a.last_active_ms));
@@ -428,23 +461,44 @@ fn collect_with_procs(
     sessions
 }
 
+/// Served-first cache so opening the Agents tab (and its minute poll) rarely
+/// pays for a full rescan. Statuses go slightly stale within the window —
+/// acceptable for a 60s-polling page, and a manual refresh always recomputes.
+const CACHE_TTL_MS: u128 = 15_000;
+
+static SESSION_CACHE: std::sync::Mutex<Option<(u128, Vec<AgentSession>)>> =
+    std::sync::Mutex::new(None);
+
 /// List recent local agent sessions across Claude Code, Codex, Cursor,
 /// OpenCode, and OpenCode2, most recently active first. 100% local: transcript
 /// metadata only, never message content, nothing leaves the machine.
 #[tauri::command]
 #[specta::specta]
-pub fn list_agent_sessions() -> Vec<AgentSession> {
+pub fn list_agent_sessions(refresh: Option<bool>) -> Vec<AgentSession> {
     let now_ms = unix_now_ms();
+    if !refresh.unwrap_or(false) {
+        if let Ok(cache) = SESSION_CACHE.lock() {
+            if let Some((cached_at, sessions)) = cache.as_ref() {
+                if now_ms.saturating_sub(*cached_at) <= CACHE_TTL_MS {
+                    return sessions.clone();
+                }
+            }
+        }
+    }
     let Some(home) = dirs::home_dir() else {
         return Vec::new();
     };
-    collect_agent_sessions(
+    let sessions = collect_agent_sessions(
         &home,
         &claude_projects_dir(&home),
         &codex_sessions_dir(&home),
         &cursor_storage_dirs(&home),
         now_ms,
-    )
+    );
+    if let Ok(mut cache) = SESSION_CACHE.lock() {
+        *cache = Some((now_ms, sessions.clone()));
+    }
+    sessions
 }
 
 #[cfg(test)]

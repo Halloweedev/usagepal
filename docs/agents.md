@@ -12,7 +12,7 @@ The Agents page shows which AI coding sessions have been active on this Mac — 
 
 Each provider header shows its count on the right (`6 active`, `3 idle`, `2 closed`).
 
-The page refreshes when you open it and every minute while it stays open. Use the refresh button for an immediate update.
+The page refreshes when you open it and every minute while it stays open. Results are cached for 15 seconds so reopening the tab is instant; the refresh button always recomputes from scratch.
 
 ## Filters
 

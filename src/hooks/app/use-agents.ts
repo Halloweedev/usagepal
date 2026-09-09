@@ -26,11 +26,13 @@ export function useAgents() {
       }))
     )
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (bypassCache = false) => {
     setLoading(true)
     setError(null)
     try {
-      const data = await invoke<AgentSession[]>("list_agent_sessions")
+      const data = await invoke<AgentSession[]>("list_agent_sessions", {
+        refresh: bypassCache,
+      })
       setSessions(data)
       setLastUpdatedAt(Date.now())
     } catch (error) {
@@ -43,9 +45,9 @@ export function useAgents() {
 
   useEffect(() => {
     if (!isTauri()) return
-    void refresh()
+    void refresh(false)
     const timer = setInterval(() => {
-      void refresh()
+      void refresh(false)
     }, POLL_INTERVAL_MS)
     return () => clearInterval(timer)
   }, [refresh])

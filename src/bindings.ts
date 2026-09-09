@@ -87,7 +87,7 @@ export const commands = {
 	 *  OpenCode, and OpenCode2, most recently active first. 100% local: transcript
 	 *  metadata only, never message content, nothing leaves the machine.
 	 */
-	listAgentSessions: () => __TAURI_INVOKE<AgentSession[]>("list_agent_sessions"),
+	listAgentSessions: (refresh: boolean | null) => __TAURI_INVOKE<AgentSession[]>("list_agent_sessions", { refresh }),
 };
 
 /** Events */

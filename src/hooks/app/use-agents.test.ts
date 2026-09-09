@@ -43,10 +43,26 @@ describe("useAgents", () => {
     await waitFor(() => {
       expect(result.current.loading).toBe(false)
     })
-    expect(invokeMock).toHaveBeenCalledWith("list_agent_sessions")
+    expect(invokeMock).toHaveBeenCalledWith("list_agent_sessions", { refresh: false })
     expect(result.current.sessions).toEqual([session])
     expect(result.current.error).toBeNull()
     expect(result.current.lastUpdatedAt).toEqual(expect.any(Number))
+  })
+
+  it("bypasses the cache on manual refresh", async () => {
+    invokeMock.mockResolvedValue([session])
+
+    const { result } = renderHook(() => useAgents())
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+    })
+    invokeMock.mockClear()
+
+    await act(async () => {
+      await result.current.refresh(true)
+    })
+    expect(invokeMock).toHaveBeenCalledWith("list_agent_sessions", { refresh: true })
   })
 
   it("surfaces load failures without throwing", async () => {

@@ -198,7 +198,7 @@ export function AgentsPage() {
           variant="ghost"
           size="icon-xs"
           aria-label="Refresh Agents"
-          onClick={() => void refresh()}
+          onClick={() => void refresh(true)}
           disabled={loading}
         >
           <ArrowsClockwise className={cn("h-3 w-3", loading && "animate-spin")} />
@@ -220,7 +220,7 @@ export function AgentsPage() {
       ) : error && !hasSessions ? (
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground mb-3">{error}</p>
-          <Button variant="outline" size="sm" onClick={() => void refresh()}>
+          <Button variant="outline" size="sm" onClick={() => void refresh(true)}>
             Try Again
           </Button>
         </div>
