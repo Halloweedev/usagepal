@@ -5,19 +5,27 @@
 //! themselves in the process list (e.g. `claude --resume <session-id>`), so we
 //! match sessions to live processes:
 //!
-//! - Own process, looking busy → `active`
-//! - Own process, not busy → `idle` (alive but waiting, e.g. on approval)
+//! - Own process tree doing work → `active`
+//! - Own process tree quiet and nothing written → `idle` (alive but waiting,
+//!   e.g. on approval)
 //! - No process → `closed` for Claude (foreground CLI: no process means exited)
 //! - Other providers may share one host process across sessions (OpenCode
 //!   server, Cursor app), so without an attributable process they fall back to
 //!   recency gated on a live host process.
 
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
 use sysinfo::{ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System};
 
-/// Pause between the two process samples backing busy detection.
-const SAMPLE_GAP: Duration = Duration::from_millis(120);
+/// Gap between the two process samples. 500ms clears macOS's 200ms minimum
+/// CPU interval with margin while keeping the command snappy.
+const SAMPLE_GAP: Duration = Duration::from_millis(500);
+/// Subtree CPU burn (milliseconds) inside the sample gap that counts as work.
+/// Calibrated 2026-09-09: long-idle Claude harnesses burn ~5ms per 500ms
+/// window; a 0.2s tool call burns ~200ms. 50ms (10% of one core) sits 10x
+/// above idle noise and far below real tool use.
+const WORK_CPU_MS: u64 = 50;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Provider {
@@ -50,7 +58,9 @@ pub struct LiveProcess {
     pub provider: Provider,
     pub cmd: String,
     pub cwd: Option<PathBuf>,
-    pub busy: bool,
+    /// True when the session's process tree burned CPU or was observed running
+    /// inside the sample window — i.e. actually doing work, not just alive.
+    pub working: bool,
 }
 
 /// Classify a process by its executable name, falling back to the display name.
@@ -80,7 +90,18 @@ fn token_for(process: &sysinfo::Process) -> String {
         .unwrap_or_else(|| process.name().to_string_lossy().into_owned())
 }
 
-fn snapshot(system: &mut System) -> Vec<(u32, String, String, Option<PathBuf>, ProcessStatus)> {
+#[derive(Debug, Clone)]
+struct RawProc {
+    pid: u32,
+    ppid: Option<u32>,
+    token: String,
+    cmd: String,
+    cwd: Option<PathBuf>,
+    running: bool,
+    cpu_ms: u64,
+}
+
+fn snapshot(system: &mut System) -> Vec<RawProc> {
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
@@ -89,48 +110,88 @@ fn snapshot(system: &mut System) -> Vec<(u32, String, String, Option<PathBuf>, P
     system
         .processes()
         .iter()
-        .map(|(pid, process)| {
-            (
-                pid.as_u32(),
-                token_for(process),
-                process
-                    .cmd()
-                    .iter()
-                    .map(|arg| arg.to_string_lossy().into_owned())
-                    .collect::<Vec<_>>()
-                    .join(" "),
-                process.cwd().map(|cwd| cwd.to_path_buf()),
-                process.status(),
-            )
+        .map(|(pid, process)| RawProc {
+            pid: pid.as_u32(),
+            ppid: process.parent().map(|parent| parent.as_u32()),
+            token: token_for(process),
+            cmd: process
+                .cmd()
+                .iter()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join(" "),
+            cwd: process.cwd().map(|cwd| cwd.to_path_buf()),
+            running: process.status() == ProcessStatus::Run,
+            cpu_ms: process.accumulated_cpu_time(),
         })
         .collect()
 }
 
-/// Sample the process list twice; a process observed running in either sample
-/// counts as busy. Single-sample status would misread a working agent paused
-/// on tool I/O as idle.
+/// All pids in the subtree rooted at `root` (root included), following
+/// parent links. Children doing the work (shell tools, compilers, scripts)
+/// count toward their session even while the parent sleeps on I/O.
+fn subtree_pids(children: &HashMap<u32, Vec<u32>>, root: u32) -> Vec<u32> {
+    let mut pids = vec![root];
+    let mut index = 0;
+    while index < pids.len() {
+        if let Some(kids) = children.get(&pids[index]) {
+            pids.extend(kids.iter().copied());
+        }
+        index += 1;
+    }
+    pids
+}
+
+/// Sample the process list twice; a session counts as working when its whole
+/// process tree either burned CPU past the work threshold or was observed
+/// running. The tree matters: agents spend most wall time asleep on tool I/O
+/// while their children do the work.
 pub fn sample() -> Vec<LiveProcess> {
     let mut system = System::new();
     let first = snapshot(&mut system);
     std::thread::sleep(SAMPLE_GAP);
     let second = snapshot(&mut system);
 
-    let busy_pids: std::collections::HashSet<u32> = first
+    let baseline: HashMap<u32, u64> = first
+        .iter()
+        .map(|proc| (proc.pid, proc.cpu_ms))
+        .collect();
+    let current: HashMap<u32, u64> = second
+        .iter()
+        .map(|proc| (proc.pid, proc.cpu_ms))
+        .collect();
+    let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+    for proc in &second {
+        if let Some(ppid) = proc.ppid {
+            children.entry(ppid).or_default().push(proc.pid);
+        }
+    }
+    let ran: HashSet<u32> = first
         .iter()
         .chain(second.iter())
-        .filter(|(_, _, _, _, status)| *status == ProcessStatus::Run)
-        .map(|(pid, _, _, _, _)| *pid)
+        .filter(|proc| proc.running)
+        .map(|proc| proc.pid)
         .collect();
 
-    // Classify off the second sample; pids present in both agree on identity.
     second
         .into_iter()
-        .filter_map(|(pid, token, cmd, cwd, _)| {
-            classify(&token).map(|provider| LiveProcess {
+        .filter_map(|proc| {
+            let provider = classify(&proc.token)?;
+            let members = subtree_pids(&children, proc.pid);
+            let cpu_delta: u64 = members
+                .iter()
+                .filter_map(|pid| {
+                    let now = current.get(pid).copied()?;
+                    Some(now.saturating_sub(baseline.get(pid).copied().unwrap_or(0)))
+                })
+                .sum();
+            let working =
+                cpu_delta >= WORK_CPU_MS || members.iter().any(|pid| ran.contains(pid));
+            Some(LiveProcess {
                 provider,
-                cmd,
-                cwd,
-                busy: busy_pids.contains(&pid),
+                cmd: proc.cmd,
+                cwd: proc.cwd,
+                working,
             })
         })
         .collect()
@@ -142,7 +203,7 @@ pub fn host_alive(procs: &[LiveProcess], provider: &Provider) -> bool {
 
 /// Claim the live process belonging to a session by its session id in the
 /// command line, removing it from the pool so concurrent sessions can't share
-/// one process. Returns `Some(busy)` when claimed. Session ids are long unique
+/// one process. Returns `Some(working)` when claimed. Session ids are long unique
 /// tokens (UUIDs, `ses_*`), so a substring match is safe. Run for every
 /// session before `claim_fallback`, so an id-bearing process can never be
 /// stolen by the recency fallback.
@@ -153,7 +214,7 @@ pub fn claim_by_id(
 ) -> Option<bool> {
     pool.iter()
         .position(|proc| &proc.provider == provider && proc.cmd.contains(session_id))
-        .map(|index| pool.remove(index).busy)
+        .map(|index| pool.remove(index).working)
 }
 
 /// Claim an unattributed process for a session (Claude only): first by working
@@ -173,27 +234,30 @@ pub fn claim_fallback(
             &proc.provider == provider
                 && proc.cwd.as_deref().map(|dir| dir.as_os_str()) == Some(std::ffi::OsStr::new(cwd))
         }) {
-            return Some(pool.remove(index).busy);
+            return Some(pool.remove(index).working);
         }
     }
     pool.iter()
         .position(|proc| &proc.provider == provider)
-        .map(|index| pool.remove(index).busy)
+        .map(|index| pool.remove(index).working)
 }
 
-/// Map signals to a status. `matched` is `Some(busy)` when the session owns a
-/// live process; `recent` means activity inside the active window.
+/// Map signals to a status. `matched` is `Some(working)` when the session owns
+/// a live process; `fresh` means the transcript was written inside the fresh
+/// window (streaming output counts as work even when the tree is momentarily
+/// quiet); `host_alive` means a provider process exists for shared-host
+/// providers.
 pub fn resolve_status(
     matched: Option<bool>,
-    recent: bool,
+    fresh: bool,
     host_alive: bool,
     strict: bool,
 ) -> &'static str {
     match matched {
-        Some(true) => "active",
-        Some(false) => "idle",
+        Some(working) if working || fresh => "active",
+        Some(_) => "idle",
         None if strict => "closed",
-        None if recent && host_alive => "active",
+        None if fresh && host_alive => "active",
         None if host_alive => "idle",
         None => "closed",
     }
@@ -203,12 +267,12 @@ pub fn resolve_status(
 mod tests {
     use super::*;
 
-    fn proc(provider: Provider, cmd: &str, cwd: Option<&str>, busy: bool) -> LiveProcess {
+    fn proc(provider: Provider, cmd: &str, cwd: Option<&str>, working: bool) -> LiveProcess {
         LiveProcess {
             provider,
             cmd: cmd.to_string(),
             cwd: cwd.map(PathBuf::from),
-            busy,
+            working,
         }
     }
 
@@ -266,10 +330,17 @@ mod tests {
     }
 
     #[test]
-    fn busy_process_is_active_idle_process_is_idle() {
-        assert_eq!(resolve_status(Some(true), true, true, true), "active");
-        assert_eq!(resolve_status(Some(false), true, true, true), "idle");
+    fn working_process_is_active_quiet_process_is_idle() {
+        assert_eq!(resolve_status(Some(true), false, true, true), "active");
+        assert_eq!(resolve_status(Some(true), true, false, false), "active");
+        assert_eq!(resolve_status(Some(false), false, true, true), "idle");
         assert_eq!(resolve_status(Some(false), false, false, false), "idle");
+    }
+
+    #[test]
+    fn quiet_but_streaming_counts_as_work() {
+        // Tree asleep but the transcript was just written: tokens streaming.
+        assert_eq!(resolve_status(Some(false), true, true, true), "active");
     }
 
     #[test]
@@ -279,11 +350,22 @@ mod tests {
     }
 
     #[test]
-    fn shared_host_uses_recency_gated_on_host() {
+    fn shared_host_uses_freshness_gated_on_host() {
         assert_eq!(resolve_status(None, true, true, false), "active");
         assert_eq!(resolve_status(None, true, false, false), "closed");
         assert_eq!(resolve_status(None, false, true, false), "idle");
         assert_eq!(resolve_status(None, false, false, false), "closed");
+    }
+
+    #[test]
+    fn subtree_includes_all_descendants() {
+        let children: HashMap<u32, Vec<u32>> =
+            [(1, vec![2, 3]), (2, vec![4])].into_iter().collect();
+        let mut members = subtree_pids(&children, 1);
+        members.sort_unstable();
+        assert_eq!(members, vec![1, 2, 3, 4]);
+        assert_eq!(subtree_pids(&children, 3), vec![3]);
+        assert_eq!(subtree_pids(&HashMap::new(), 9), vec![9]);
     }
 
     #[test]

@@ -8,7 +8,7 @@ The Agents page shows which AI coding sessions have been active on this Mac — 
 - **Title** — the session's own title when it has a meaningful one (OpenCode titles show here; generic `New session - …` placeholders are hidden).
 - **Provider and session** — which tool it belongs to, plus a short session id.
 - **Last active** — how long ago the session last did something (`just now`, `5m ago`, `3h ago`).
-- **Status** — Active (a live process is working), Idle (alive but waiting — e.g. on an approval), or Closed (no running process; for Claude this is exact, since every session runs as its own process).
+- **Status** — Active (the session's process tree is burning CPU, was seen running, or wrote output in the last minute), Idle (alive but quiet — e.g. waiting on an approval), or Closed (no running process; for Claude this is exact, since every session runs as its own process).
 
 Each provider header shows its count on the right (`6 active`, `3 idle`, `2 closed`).
 
@@ -35,7 +35,7 @@ Message content and code are never read, and nothing leaves your machine.
 
 ## Limitations
 
-- **Status is observed, not reported.** Active means a matched process looked busy across two quick samples; a hard-thinking agent paused on tool I/O can read as Idle for a sample. Closed for Claude is exact (no process, no session).
+- **Status is observed, not reported.** Active means the process tree burned CPU past a calibrated threshold across two samples 500ms apart, was seen running, or wrote output in the last minute (streaming tokens). A hard-thinking agent paused between tool calls can read as Idle for one poll. Closed for Claude is exact (no process, no session).
 - **Sessions older than 30 days are hidden** to keep the list relevant.
 - **Claude project names are best-effort.** Folder names containing dashes decode ambiguously from the on-disk slug.
 - **Approvals are not here yet.** Approving or denying a waiting permission request from UsagePal needs a new action channel (plugins are read-only today) and is planned separately.

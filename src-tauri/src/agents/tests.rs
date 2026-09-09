@@ -44,15 +44,12 @@
     }
 
     #[test]
-    fn recency_window_flags_recent_activity() {
+    fn fresh_window_flags_recent_writes() {
         let now = 1_000_000_000_000u128;
-        assert!(status_recent(now, now));
-        assert!(status_recent(
-            now - ACTIVE_WINDOW_SECS as u128 * 1000,
-            now
-        ));
-        assert!(!status_recent(
-            now - ACTIVE_WINDOW_SECS as u128 * 1000 - 1,
+        assert!(status_fresh(now, now));
+        assert!(status_fresh(now - FRESH_WINDOW_SECS as u128 * 1000, now));
+        assert!(!status_fresh(
+            now - FRESH_WINDOW_SECS as u128 * 1000 - 1,
             now
         ));
     }
@@ -197,7 +194,7 @@
     }
 
     #[test]
-    fn live_process_decides_active_idle_closed() {
+    fn live_process_decides_active_and_closed() {
         use crate::agents::liveness::{LiveProcess, Provider};
 
         let root = unique_temp_dir("live");
@@ -214,13 +211,13 @@
                 provider: Provider::Claude,
                 cmd: format!("claude --resume {busy_id}"),
                 cwd: None,
-                busy: true,
+                working: true,
             },
             LiveProcess {
                 provider: Provider::Claude,
                 cmd: format!("claude --resume {idle_id}"),
                 cwd: None,
-                busy: false,
+                working: false,
             },
         ];
 
@@ -240,7 +237,8 @@
                 .map(|s| s.status.as_str())
         };
         assert_eq!(status_of(busy_id), Some("active"));
-        assert_eq!(status_of(idle_id), Some("idle"));
+        // Quiet tree but the file was just written (streaming) → active.
+        assert_eq!(status_of(idle_id), Some("active"));
         // Recent file but no process: the /new case → closed, not active.
         assert_eq!(status_of(gone_id), Some("closed"));
 

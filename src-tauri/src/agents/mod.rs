@@ -16,8 +16,10 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// A session counts as active when its backing file changed within this window.
-const ACTIVE_WINDOW_SECS: u64 = 10 * 60;
+/// A session counts as fresh when its backing file was written inside this
+/// window — streaming output counts as work even when the process tree is
+/// momentarily quiet between tool calls.
+const FRESH_WINDOW_SECS: u64 = 60;
 /// Sessions idle longer than this are omitted so the list stays relevant.
 const MAX_IDLE_SECS: u64 = 30 * 24 * 60 * 60;
 const MAX_SESSIONS: usize = 50;
@@ -34,7 +36,8 @@ pub struct AgentSession {
     pub title: Option<String>,
     /// Unix-ms of the last observed file activity. f64 because specta forbids u64.
     pub last_active_ms: f64,
-    /// `"active"` when the last activity is inside the active window, else `"idle"`.
+    /// `"active"` for a tree doing work (or streaming output), `"idle"` for a
+    /// live but quiet worker, `"closed"` with no running process.
     pub status: String,
 }
 
@@ -55,8 +58,8 @@ fn file_mtime_ms(path: &Path) -> Option<u128> {
         .map(|elapsed| elapsed.as_millis())
 }
 
-fn status_recent(last_active_ms: u128, now_ms: u128) -> bool {
-    now_ms.saturating_sub(last_active_ms) <= ACTIVE_WINDOW_SECS as u128 * 1000
+fn status_fresh(last_active_ms: u128, now_ms: u128) -> bool {
+    now_ms.saturating_sub(last_active_ms) <= FRESH_WINDOW_SECS as u128 * 1000
 }
 
 /// A session before liveness resolution. Scans collect these; `collect_*`
@@ -397,7 +400,7 @@ fn collect_with_procs(
     for (session, id_match) in raw.into_iter().zip(id_matches) {
         let provider = liveness::provider_for_id(session.provider_id);
         let matched = match (id_match, &provider) {
-            (Some(busy), _) => Some(busy),
+            (Some(working), _) => Some(working),
             (None, Some(provider)) => {
                 liveness::claim_fallback(&mut pool, provider, session.cwd.as_deref())
             }
@@ -410,7 +413,7 @@ fn collect_with_procs(
             .unwrap_or(true);
         let status = liveness::resolve_status(
             matched,
-            status_recent(session.last_active_ms, now_ms),
+            status_fresh(session.last_active_ms, now_ms),
             host_alive,
             liveness::is_strict(session.provider_id),
         );

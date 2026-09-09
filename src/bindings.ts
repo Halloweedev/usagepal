@@ -112,7 +112,10 @@ export type AgentSession = {
 	title: string | null,
 	/**  Unix-ms of the last observed file activity. f64 because specta forbids u64. */
 	lastActiveMs: number | null,
-	/**  `"active"` when the last activity is inside the active window, else `"idle"`. */
+	/**
+	 *  `"active"` for a tree doing work (or streaming output), `"idle"` for a
+	 *  live but quiet worker, `"closed"` with no running process.
+	 */
 	status: string,
 };
 
