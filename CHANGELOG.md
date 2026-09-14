@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.7.75-beta.3
+
+### New Features
+- Feat/grok usage costs ([#67](https://github.com/Halloweedev/usagepal/pull/67)) by @rmems
+
+### Bug Fixes
+- fix(codex): stop registered accounts falling back to shared keychain credentials by @Halloweedev
+
+### Chores
+- chore(deps): bump jiff from 0.2.32 to 0.2.35 in /src-tauri ([#59](https://github.com/Halloweedev/usagepal/pull/59)) by @app/dependabot
+- chore(deps): bump compact_str from 0.9.1 to 0.10.0 in /src-tauri ([#60](https://github.com/Halloweedev/usagepal/pull/60)) by @app/dependabot
+- chore(deps): bump sysinfo from 0.38.4 to 0.39.6 in /src-tauri ([#61](https://github.com/Halloweedev/usagepal/pull/61)) by @app/dependabot
+- chore(deps): bump rquickjs from 0.12.1 to 0.12.2 in /src-tauri ([#62](https://github.com/Halloweedev/usagepal/pull/62)) by @app/dependabot
+- chore(deps): bump log from 0.4.32 to 0.4.34 in /src-tauri ([#63](https://github.com/Halloweedev/usagepal/pull/63)) by @app/dependabot
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.75-beta.2...v0.7.75-beta.3](https://github.com/Halloweedev/usagepal/compare/v0.7.75-beta.2...v0.7.75-beta.3)
+
+- [f889a4e](https://github.com/Halloweedev/usagepal/commit/f889a4e32f6d4bb060575045103b0e44b2ff8967) fix(codex): stop registered accounts falling back to shared keychain credentials by @Halloweedev
+- [c4d954a](https://github.com/Halloweedev/usagepal/commit/c4d954a2789d6428816b895a380073753cb11243) chore(deps): bump log from 0.4.32 to 0.4.34 in /src-tauri (#63) by @app/dependabot
+- [0b7cde1](https://github.com/Halloweedev/usagepal/commit/0b7cde105aa43b0dcf782f92081de0abeea390d4) chore(deps): bump rquickjs from 0.12.1 to 0.12.2 in /src-tauri (#62) by @app/dependabot
+- [57062a1](https://github.com/Halloweedev/usagepal/commit/57062a13af67ba3a6a92bea3f1f7158e34e1865d) chore(deps): bump sysinfo from 0.38.4 to 0.39.6 in /src-tauri (#61) by @app/dependabot
+- [c66e802](https://github.com/Halloweedev/usagepal/commit/c66e8027a5db5c07f0e515250c6dae439c8f15d4) chore(deps): bump compact_str from 0.9.1 to 0.10.0 in /src-tauri (#60) by @app/dependabot
+- [1515c54](https://github.com/Halloweedev/usagepal/commit/1515c54d87d30e45e271b66b0ad998553ae2cde5) chore(deps): bump jiff from 0.2.32 to 0.2.35 in /src-tauri (#59) by @app/dependabot
+- [cb4b3ba](https://github.com/Halloweedev/usagepal/commit/cb4b3ba93eea48e3bf4f7fc3ef9b3fe0deda070a) Feat/grok usage costs (#67) by @rmems
+
 ## v0.7.75-beta.2
 
 ### New Features
