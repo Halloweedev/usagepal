@@ -842,6 +842,18 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
         )?,
     )?;
 
+    fs_obj.set(
+        "scanLines",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, path: String, needle: String| -> rquickjs::Result<Vec<String>> {
+                let expanded = expand_path(&path);
+                scan_lines_containing(&expanded, &needle, SCAN_LINES_MAX_MATCHES)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e))
+            },
+        )?,
+    )?;
+
     host.set("fs", fs_obj)?;
     Ok(())
 }
@@ -2576,6 +2588,31 @@ fn iso_now() -> String {
         })
 }
 
+const SCAN_LINES_MAX_MATCHES: usize = 20_000;
+
+fn scan_lines_containing(
+    path: &str,
+    needle: &str,
+    max_matches: usize,
+) -> Result<Vec<String>, String> {
+    if needle.is_empty() {
+        return Err("scanLines needle must not be empty".to_string());
+    }
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let reader = std::io::BufReader::new(file);
+    let mut out = Vec::new();
+    for line in std::io::BufRead::lines(reader) {
+        let line = line.map_err(|e| e.to_string())?;
+        if line.contains(needle) {
+            out.push(line);
+            if out.len() >= max_matches {
+                break;
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn expand_path(path: &str) -> String {
     if path == "~" {
         if let Some(home) = dirs::home_dir() {
@@ -3174,6 +3211,23 @@ mod tests {
         let expected = home.join(".claude-custom").to_string_lossy().to_string();
 
         assert_eq!(expand_path("~/.claude-custom"), expected);
+    }
+
+    #[test]
+    fn scan_lines_containing_returns_matching_lines_only() {
+        let dir = std::env::temp_dir().join(format!("usagepal-scan-lines-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("updates.jsonl");
+        std::fs::write(
+            &path,
+            "noise\n{\"sessionUpdate\":\"turn_completed\"}\nstill noise\n{\"sessionUpdate\":\"turn_completed\",\"n\":2}\n",
+        )
+        .expect("write");
+        let matches = scan_lines_containing(path.to_str().expect("utf8"), "turn_completed", 20)
+            .expect("scan");
+        assert_eq!(matches.len(), 2);
+        assert!(matches[0].contains("turn_completed"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

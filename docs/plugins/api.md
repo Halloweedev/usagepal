@@ -59,6 +59,7 @@ host.fs.exists(path: string): boolean
 host.fs.readText(path: string): string   // Throws on error
 host.fs.writeText(path: string, content: string): void  // Throws on error
 host.fs.listDir(path: string): string[]  // Throws if directory cannot be opened; per-entry errors are silently skipped
+host.fs.scanLines(path: string, needle: string): string[]  // Streams a file; returns lines containing needle (cap 20_000). Throws if the file cannot be opened or needle is empty.
 ```
 
 ### Path Expansion
