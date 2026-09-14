@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.7.75
+
+Stable release rolling up the 0.7.75 betas: Grok gains tougher spend estimates and wider subscription-tier support, Codex fixes a cross-account usage mix-up and renames the reserve bucket to Luna Reserve, plus routine dependency updates. The Agents tab is parked on the experiment/agents-ui branch and is not in this release.
+
+### New Features
+- Feat/grok usage costs ([#67](https://github.com/Halloweedev/usagepal/pull/67)) by @rmems
+
+### Bug Fixes
+- fix(codex): stop registered accounts falling back to shared keychain credentials by @Halloweedev
+- fix(codex): rename gpt-reserve bucket to Luna Reserve by @Halloweedev
+- fix(tests): serialize HOME-mutating accounts tests by @Halloweedev
+
+### Chores
+- chore(deps): bump jiff from 0.2.32 to 0.2.35 in /src-tauri by @app/dependabot
+- chore(deps): bump compact_str from 0.9.1 to 0.10.0 in /src-tauri by @app/dependabot
+- chore(deps): bump sysinfo from 0.38.4 to 0.39.6 in /src-tauri by @app/dependabot
+- chore(deps): bump rquickjs from 0.12.1 to 0.12.2 in /src-tauri by @app/dependabot
+- chore(deps): bump log from 0.4.32 to 0.4.34 in /src-tauri by @app/dependabot
+
+---
+
+**Full Changelog**: [v0.7.74...v0.7.75](https://github.com/Halloweedev/usagepal/compare/v0.7.74...v0.7.75)
+
 ## v0.7.75-beta.3
 
 ### New Features
