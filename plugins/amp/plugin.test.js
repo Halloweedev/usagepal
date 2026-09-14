@@ -137,36 +137,44 @@ describe("amp plugin", () => {
 
   // --- Balance parsing ---
 
-  it("parses subscription usage pools", async () => {
+  it("parses the current tier usage pools", async () => {
     var ctx = makeCtx()
     writeSecrets(ctx)
     var text = "Signed in as user@test.com (testuser)\n"
-      + "Subscription Megawatt: 100% other usage and 100% orb usage remaining"
+      + "Amp Megawatt Tier: agent usage $17.28 of $20 remaining (86%), "
+      + "orb usage 728.4h of 750h a1.small orb hours remaining (97%) "
+      + "- period 2026-08-30 to 2026-09-30, ends in 15 days\n"
+      + "Individual credits: $4.99 remaining (set up auto-reload to avoid running out) - https://ampcode.com/settings"
     ctx.host.http.request.mockReturnValue(balanceResponse(text))
     var plugin = await loadPlugin()
     var result = plugin.probe(ctx)
     expect(result.plan).toBe("Megawatt")
-    expect(result.lines).toHaveLength(2)
+    expect(result.lines).toHaveLength(3)
     expect(result.lines[0]).toMatchObject({
       type: "progress",
-      label: "Subscription Usage",
-      used: 0,
+      label: "Agent Usage",
+      used: 14,
       limit: 100,
       format: { kind: "percent" },
     })
     expect(result.lines[1]).toMatchObject({
       type: "progress",
       label: "Orb Usage",
-      used: 0,
+      used: 3,
       limit: 100,
       format: { kind: "percent" },
     })
+    expect(result.lines[2]).toMatchObject({
+      type: "text",
+      label: "Credits",
+      value: "$4.99",
+    })
   })
 
-  it("throws when subscription usage is present but unparseable", async () => {
+  it("throws when tier usage is present but unparseable", async () => {
     var ctx = makeCtx()
     writeSecrets(ctx)
-    var text = "Subscription Megawatt: unparseable data"
+    var text = "Amp Megawatt Tier: unparseable data"
     ctx.host.http.request.mockReturnValue(balanceResponse(text))
     var plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")

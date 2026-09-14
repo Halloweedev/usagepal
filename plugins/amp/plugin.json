@@ -8,7 +8,7 @@
   "brandColor": "#F34E3F",
   "detect": [{ "file": "~/.local/share/amp/secrets.json" }],
   "lines": [
-    { "type": "progress", "label": "Subscription Usage", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Agent Usage", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Orb Usage", "scope": "overview", "primaryOrder": 2 },
     { "type": "text", "label": "Credits", "scope": "overview" }
   ]
