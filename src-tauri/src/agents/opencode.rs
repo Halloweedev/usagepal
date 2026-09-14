@@ -222,6 +222,7 @@ pub fn scan_opencode(home: &Path, out: &mut Vec<RawSession>) {
                 project_name,
                 session_id: row.id,
                 cwd: Some(row.directory),
+                host: None,
                 title: row.title,
                 last_active_ms,
                 source_dir: None,

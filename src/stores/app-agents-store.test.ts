@@ -8,6 +8,7 @@ const session: AgentSession = {
   projectName: "usagepal",
   sessionId: "abc123",
   cwd: "/Users/me/usagepal",
+  host: null,
   title: null,
   subagents: [],
   lastActiveMs: 1_000,

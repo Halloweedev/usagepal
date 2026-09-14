@@ -3,17 +3,18 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import type { AgentSession } from "@/bindings"
 
-const { useAgentsMock, openPathMock } = vi.hoisted(() => ({
+const { useAgentsMock, invokeMock } = vi.hoisted(() => ({
   useAgentsMock: vi.fn(),
-  openPathMock: vi.fn(() => Promise.resolve()),
+  invokeMock: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock("@/hooks/app/use-agents", () => ({
   useAgents: useAgentsMock,
 }))
 
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  openPath: openPathMock,
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
+  isTauri: () => true,
 }))
 
 import { AgentsPage } from "@/pages/agents"
@@ -25,6 +26,7 @@ function session(overrides: Partial<AgentSession> = {}): AgentSession {
     projectName: "usagepal",
     sessionId: "abc123def456",
     cwd: "/Users/me/usagepal",
+    host: null,
     title: null,
     subagents: [],
     lastActiveMs: Date.now(),
@@ -227,7 +229,7 @@ describe("AgentsPage", () => {
     expect(screen.getByText("usagepal")).toBeInTheDocument()
   })
 
-  it("shows subagents under their session", () => {
+  it("shows subagents under their session", async () => {
     mockState({
       sessions: [
         session({
@@ -253,20 +255,57 @@ describe("AgentsPage", () => {
       ],
     })
     render(<AgentsPage />)
-    expect(screen.getByText("Main Session")).toBeInTheDocument()
-    expect(screen.getByText(/2 Subagents/)).toBeInTheDocument()
-    expect(screen.getAllByText("Subagent").length).toBe(2)
+    // Active subagents auto-expand; header uses a quiet count, no badges.
+    expect(screen.getByText(/2 subagents/)).toBeInTheDocument()
+    expect(screen.queryByText("Main Session")).not.toBeInTheDocument()
     expect(screen.getByTitle(/Map the auth flow/)).toBeInTheDocument()
   })
 
-  it("opens the working directory when the main session is clicked", async () => {
-    openPathMock.mockClear()
-    mockState({ sessions: [session({ cwd: "/Users/me/usagepal" })] })
+  it("always shows subagents without badges", () => {
+    mockState({
+      sessions: [
+        session({
+          subagents: [
+            {
+              id: "a1",
+              agentType: "Explore",
+              description: "Map the auth flow",
+              model: null,
+              lastActiveMs: Date.now() - 3_600_000,
+              status: "done",
+            },
+          ],
+        }),
+      ],
+    })
+    render(<AgentsPage />)
+    expect(screen.getByText(/1 subagent/)).toBeInTheDocument()
+    expect(screen.getByTitle(/Map the auth flow/)).toBeInTheDocument()
+    expect(screen.queryByText("Main Session")).not.toBeInTheDocument()
+  })
+
+  it("opens the session in its app when clicked", async () => {
+    invokeMock.mockClear()
+    mockState({
+      sessions: [
+        session({
+          providerId: "cursor",
+          providerName: "Cursor",
+          sessionId: "ws-123",
+          cwd: "/Users/me/usagepal",
+        }),
+      ],
+    })
     render(<AgentsPage />)
     await userEvent.click(
-      screen.getByRole("button", { name: "Open working directory for usagepal" })
+      screen.getByRole("button", { name: "Open usagepal in Cursor" })
     )
-    expect(openPathMock).toHaveBeenCalledWith("/Users/me/usagepal")
+    expect(invokeMock).toHaveBeenCalledWith("open_agent_session", {
+      providerId: "cursor",
+      sessionId: "ws-123",
+      cwd: "/Users/me/usagepal",
+      host: null,
+    })
   })
 
   it("shows meaningful titles and hides placeholder titles", () => {

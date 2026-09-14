@@ -21,6 +21,21 @@
     }
 
     #[test]
+    fn open_agent_folder_rejects_bad_paths() {
+        assert!(open_agent_folder("   ").is_err());
+        assert!(open_agent_folder("/definitely/not/here").is_err());
+        let file = unique_temp_dir("open-file");
+        write_file(&file.join("note.txt"), "hi");
+        assert!(open_agent_folder(&file.join("note.txt").to_string_lossy()).is_err());
+        let _ = std::fs::remove_dir_all(&file);
+    }
+
+    #[test]
+    fn open_agent_session_rejects_unknown_provider_without_cwd() {
+        assert!(open_agent_session("nope".to_string(), "abc".to_string(), None, None).is_err());
+    }
+
+    #[test]
     fn project_name_uses_last_component() {
         assert_eq!(
             project_name_from_cwd("/Users/halloweed/Coding/Projects/usagepal"),
@@ -54,11 +69,29 @@
     }
 
     #[test]
-    fn parses_codex_cwd_from_session_meta_line() {
+    fn parses_codex_meta_from_session_meta_line() {
         let line = r#"{"type":"session_meta","payload":{"id":"abc","cwd":"/Users/me/proj"}}"#;
-        assert_eq!(codex_cwd(line), Some("/Users/me/proj".to_string()));
-        assert_eq!(codex_cwd("not json"), None);
-        assert_eq!(codex_cwd(r#"{"type":"other","payload":{}}"#), None);
+        assert_eq!(
+            codex_meta(line),
+            (Some("/Users/me/proj".to_string()), None)
+        );
+        let cli = r#"{"type":"session_meta","payload":{"id":"abc","cwd":"/p","originator":"codex_cli_rs","source":"cli"}}"#;
+        assert_eq!(
+            codex_meta(cli),
+            (Some("/p".to_string()), Some("cli".to_string()))
+        );
+        let ide = r#"{"type":"session_meta","payload":{"id":"abc","cwd":"/p","originator":"Codex Desktop","source":"vscode"}}"#;
+        assert_eq!(
+            codex_meta(ide),
+            (Some("/p".to_string()), Some("vscode".to_string()))
+        );
+        let app = r#"{"type":"session_meta","payload":{"id":"abc","cwd":"/p","originator":"Codex Desktop","source":{"subagent":{}}}}"#;
+        assert_eq!(
+            codex_meta(app),
+            (Some("/p".to_string()), Some("desktop".to_string()))
+        );
+        assert_eq!(codex_meta("not json"), (None, None));
+        assert_eq!(codex_meta(r#"{"type":"other","payload":{}}"#), (None, None));
     }
 
     #[test]
@@ -147,6 +180,7 @@
                 project_name: "old".to_string(),
                 session_id: "s1".to_string(),
                 cwd: None,
+                host: None,
                 title: None,
                 last_active_ms: ancient,
                 source_dir: None,

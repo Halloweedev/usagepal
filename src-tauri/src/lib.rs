@@ -925,7 +925,8 @@ pub fn run() {
             accounts::begin_codex_login,
             accounts::finish_codex_login,
             accounts::remove_account,
-            agents::list_agent_sessions
+            agents::list_agent_sessions,
+            agents::open_agent_session
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,
@@ -1154,7 +1155,8 @@ fn export_bindings() {
             accounts::begin_codex_login,
             accounts::finish_codex_login,
             accounts::remove_account,
-            agents::list_agent_sessions
+            agents::list_agent_sessions,
+            agents::open_agent_session
         ])
         .events(tauri_specta::collect_events![
             ProbeResult,

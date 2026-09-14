@@ -88,6 +88,15 @@ export const commands = {
 	 *  metadata only, never message content, nothing leaves the machine.
 	 */
 	listAgentSessions: (refresh: boolean | null) => __TAURI_INVOKE<AgentSession[]>("list_agent_sessions", { refresh }),
+	/**
+	 *  Open the window where a session runs, not just its folder. Cursor owns a
+	 *  real window per folder, so it opens focused directly. Codex IDE sessions
+	 *  focus the running editor; terminal and desktop sessions trace the live
+	 *  process to its owning terminal or app and bring that forward. Anything
+	 *  untraceable — a closed session, an unknown provider — falls back to
+	 *  revealing the folder.
+	 */
+	openAgentSession: (providerId: string, sessionId: string, cwd: string | null, host: string | null) => typedError<null, string>(__TAURI_INVOKE("open_agent_session", { providerId, sessionId, cwd, host })),
 };
 
 /** Events */
@@ -108,6 +117,11 @@ export type AgentSession = {
 	projectName: string,
 	sessionId: string,
 	cwd: string | null,
+	/**
+	 *  Where the session runs, when the source records it (`vscode`,
+	 *  `desktop`, `cli` for Codex rollouts). Drives click-to-open.
+	 */
+	host: string | null,
 	/**  Session title when the source has one (OpenCode stores titles). */
 	title: string | null,
 	subagents: SubagentInfo[],

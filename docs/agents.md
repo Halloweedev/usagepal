@@ -4,12 +4,7 @@ The Agents page shows which AI coding sessions have been active on this Mac — 
 
 ## What you see
 
-- **Project** — the folder the session works in (e.g. `usagepal`), labeled Main Session.
-- **Title** — the session's own title when it has a meaningful one (OpenCode titles show here; generic `New session - …` placeholders are hidden).
-- **Provider and session** — which tool it belongs to, plus a short session id.
-- **Last active** — how long ago the session last did something (`just now`, `5m ago`, `3h ago`).
-- **Status** — Active (the session's process tree is burning CPU, was seen running, or wrote output in the last minute), Idle (alive but quiet — e.g. waiting on an approval), or Closed (no running process; for Claude this is exact, since every session runs as its own process).
-- **Working directory** — the full path with an Open Folder hint. Click a session to open its folder in Finder.
+Each row is one session: a status dot, the project folder name, and how long ago it was active (e.g. `usagepal · just now`). A meaningful session title shows underneath when the source has one. Sessions are grouped by provider, with a count on each provider header. Click a session to open its working folder in Finder.
 
 Each provider header shows its count on the right (`6 active`, `3 idle`, `2 closed`).
 
@@ -25,18 +20,18 @@ Click a provider's header (e.g. Claude Code) to hide its sessions; click again t
 
 ## Subagents
 
-Claude Code sessions that spawned Task subagents show each subagent nested underneath the main session, with its own Subagent label, task type, description, model, and Active or Done status. A subagent counts as running when its transcript was just written under a live parent session. Codex and OpenCode subagents aren't listed yet.
+Claude Code sessions that spawned Task subagents list each one underneath with its task type, description, and recency. A subagent counts as running when its transcript was just written under a live parent session. Codex and OpenCode subagents aren't listed yet.
 
-## Opening a session's folder
+## Opening a session
 
-Click a main session row to open its working directory in Finder. Sessions without a known directory are not clickable.
+Click a session row to open it where it runs: Codex Desktop rows open the exact thread, Cursor sessions focus the workspace window, Codex IDE sessions focus the running editor, terminal sessions bring their terminal forward, and other desktop-app sessions bring that app forward. When the session is closed and no window can be traced, the working folder opens in Finder instead. Hover a row to see its session id and full path.
 
 ## Privacy
 
 Everything is 100% local. The app only reads file metadata:
 
 - Claude Code: the names and modification times of files in `~/.claude/projects/`, plus each subagent's tiny `agent-*.meta.json` sidecar (agent type, task label, model — never message content).
-- Codex: the names and modification times of rollout files in `~/.codex/sessions/`, plus the working directory from each file's first-line `session_meta` record.
+- Codex: the names and modification times of rollout files in `~/.codex/sessions/`, plus the working directory and host (`vscode`, `desktop`, or `cli`) from each file's first-line `session_meta` record.
 - Cursor: the modification times of workspace folders plus the folder path in each `workspace.json`.
 - OpenCode / OpenCode2: session id, working directory, title, and timestamps from the `session` / `session_v2` tables in the local `opencode.db` (read-only query via the `sqlite3` CLI — a missing binary or locked database simply shows no sessions).
 

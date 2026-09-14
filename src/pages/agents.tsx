@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
-import { ArrowsClockwise, CaretDown, FolderOpen, Robot } from "@phosphor-icons/react"
-import { openPath } from "@tauri-apps/plugin-opener"
+import { ArrowsClockwise, CaretDown, Robot } from "@phosphor-icons/react"
+import { invoke } from "@tauri-apps/api/core"
 import type { AgentSession } from "@/bindings"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -36,21 +36,20 @@ function formatLastActive(lastActiveMs: number | null): string {
   return `${days}d ago`
 }
 
-function shortSessionId(sessionId: string): string {
-  return sessionId.length > 8 ? sessionId.slice(0, 8) : sessionId
-}
-
 function AgentRow({ session }: { session: AgentSession }) {
   const isActive = session.status === "active"
   const title = meaningfulTitle(session.title)
-  const statusText = isActive ? "Active" : session.status === "idle" ? "Idle" : filterLabel(session.status)
+  const lastActive = formatLastActive(session.lastActiveMs)
   const activeSubagents = session.subagents.filter((sub) => sub.status === "active")
-  const canOpen = Boolean(session.cwd)
 
   const handleOpen = () => {
-    if (!session.cwd) return
-    openPath(session.cwd).catch((error) => {
-      console.error("Failed to open working directory:", error)
+    invoke("open_agent_session", {
+      providerId: session.providerId,
+      sessionId: session.sessionId,
+      cwd: session.cwd,
+      host: session.host,
+    }).catch((error) => {
+      console.error("Failed to open session:", error)
     })
   }
 
@@ -66,57 +65,33 @@ function AgentRow({ session }: { session: AgentSession }) {
         />
         <button
           type="button"
-          disabled={!canOpen}
           onClick={handleOpen}
-          aria-label={
-            canOpen
-              ? `Open working directory for ${session.projectName}`
-              : `${session.projectName} (no working directory)`
-          }
-          title={canOpen ? `Open ${session.cwd} in Finder` : session.cwd ?? undefined}
-          className={cn(
-            "min-w-0 flex-1 text-left rounded-md",
-            canOpen && "hover:bg-muted/60 cursor-pointer"
-          )}
+          aria-label={`Open ${session.projectName} in ${session.providerName}`}
+          title={[`Session ${session.sessionId}`, session.cwd].filter(Boolean).join("\n")}
+          className="min-w-0 flex-1 text-left rounded-md hover:bg-muted/60 cursor-pointer"
         >
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-sm font-medium">{session.projectName}</span>
-            <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-              Main Session
-            </span>
+          <div className="truncate text-sm font-medium">
+            {session.projectName}
+            {lastActive ? <span className="font-normal text-muted-foreground"> · {lastActive}</span> : ""}
           </div>
           {title && (
-            <div className="truncate text-xs text-foreground/80" title={title}>
+            <div className="truncate text-xs text-muted-foreground" title={title}>
               {title}
             </div>
           )}
-          <div className="truncate text-xs text-muted-foreground">
-            {session.providerName} · {shortSessionId(session.sessionId)}
-            {formatLastActive(session.lastActiveMs) ? ` · ${formatLastActive(session.lastActiveMs)}` : ""}
-          </div>
-          {session.cwd && (
-            <div
-              className="flex items-center gap-1 truncate text-xs text-muted-foreground/70"
-              title={session.cwd}
-            >
-              <FolderOpen aria-hidden="true" className="size-3 shrink-0" />
-              <span className="truncate">{session.cwd}</span>
-              <span className="shrink-0 text-[10px]">· Open Folder</span>
-            </div>
-          )}
         </button>
-        <span className="shrink-0 text-xs text-muted-foreground">{statusText}</span>
       </div>
       {session.subagents.length > 0 && (
-        <div className="ml-4 mt-1.5 border-l-2 border-border/60 pl-3">
-          <div className="text-[11px] font-medium text-muted-foreground mb-1">
-            {session.subagents.length} Subagent{session.subagents.length === 1 ? "" : "s"}
-            {activeSubagents.length > 0 ? ` · ${activeSubagents.length} Active` : ""}
+        <div className="ml-4 mt-1 border-l-2 border-border/60 pl-3">
+          <div className="text-[11px] text-muted-foreground mb-1">
+            {session.subagents.length} subagent{session.subagents.length === 1 ? "" : "s"}
+            {activeSubagents.length > 0 ? ` · ${activeSubagents.length} active` : ""}
           </div>
           <div className="space-y-1">
             {session.subagents.map((sub) => {
               const subActive = sub.status === "active"
               const subLabel = [sub.agentType, sub.description].filter(Boolean).join(" — ")
+              const subActive_text = formatLastActive(sub.lastActiveMs)
               return (
                 <div key={sub.id} className="flex items-center gap-1.5">
                   <span
@@ -126,18 +101,12 @@ function AgentRow({ session }: { session: AgentSession }) {
                       subActive ? "bg-green-500" : "bg-muted-foreground/40"
                     )}
                   />
-                  <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-                    Subagent
-                  </span>
-                  <span className="min-w-0 truncate text-xs text-muted-foreground" title={subLabel || "Subagent"}>
+                  <span
+                    className="min-w-0 truncate text-xs text-muted-foreground"
+                    title={subLabel || "Subagent"}
+                  >
                     {subLabel || "Subagent"}
-                    {sub.model ? ` · ${sub.model}` : ""}
-                    {typeof sub.lastActiveMs === "number" && sub.lastActiveMs > 0
-                      ? ` · ${formatLastActive(sub.lastActiveMs)}`
-                      : ""}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {subActive ? "Active" : "Done"}
+                    {subActive_text ? ` · ${subActive_text}` : ""}
                   </span>
                 </div>
               )

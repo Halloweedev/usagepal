@@ -13,8 +13,8 @@
 //!   server, Cursor app), so without an attributable process they fall back to
 //!   recency gated on a live host process.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
@@ -112,6 +112,7 @@ struct RawProc {
     pid: u32,
     ppid: Option<u32>,
     token: String,
+    exe: Option<PathBuf>,
     cmd: String,
     cwd: Option<PathBuf>,
     cpu_ms: u64,
@@ -137,6 +138,7 @@ fn snapshot(system: &mut System) -> Vec<RawProc> {
             pid: pid.as_u32(),
             ppid: process.parent().map(|parent| parent.as_u32()),
             token: token_for(process),
+            exe: process.exe().map(|exe| exe.to_path_buf()),
             cmd: process
                 .cmd()
                 .iter()
@@ -236,6 +238,134 @@ fn countable_members(
 
 pub fn host_alive(procs: &[LiveProcess], provider: &Provider) -> bool {
     procs.iter().any(|proc्| &proc्.provider == provider)
+}
+
+/// GUI apps that can own a session window, keyed by lowercase exe token to the
+/// `open -a` name. Fallback for processes whose executable path is unreadable;
+/// the primary signal is the `.app` bundle in the exe path (see `bundle_name`),
+/// which needs no per-terminal table — Warp, Terminal, and future terminals
+/// all resolve through their bundle.
+fn gui_app_for_token(token: &str) -> Option<&'static str> {
+    match token {
+        "terminal" => Some("Terminal"),
+        "iterm2" => Some("iTerm"),
+        "ghostty" => Some("Ghostty"),
+        "alacritty" => Some("Alacritty"),
+        "wezterm" => Some("WezTerm"),
+        "kitty" => Some("kitty"),
+        "code" => Some("Visual Studio Code"),
+        "cursor" => Some("Cursor"),
+        "zed" => Some("Zed"),
+        "windsurf" => Some("Windsurf"),
+        "chatgpt" => Some("ChatGPT"),
+        _ => None,
+    }
+}
+
+/// Outermost `.app` bundle in an executable path:
+/// `/Applications/Warp.app/Contents/MacOS/stable` → `Warp`. Outermost wins so
+/// helper processes (`Code Helper.app` inside `Visual Studio Code.app`)
+/// resolve to the app the user sees.
+fn bundle_name(exe: &Path) -> Option<String> {
+    exe.components()
+        .filter_map(|comp| {
+            comp.as_os_str()
+                .to_str()?
+                .strip_suffix(".app")
+                .map(str::to_string)
+        })
+        .next_back()
+}
+
+/// Walk parent links from `pid` to the session window's owning app. Every
+/// ancestor contributes its bundle (or token fallback) as a candidate and the
+/// outermost wins, so helpers resolve to the visible app. Bounded so a
+/// pathological parent cycle can never hang a click.
+fn gui_owner(by_pid: &HashMap<u32, &RawProc>, mut pid: u32) -> Option<String> {
+    let mut candidate = None;
+    for _ in 0..64 {
+        let proc = by_pid.get(&pid)?;
+        let found = proc
+            .exe
+            .as_deref()
+            .and_then(bundle_name)
+            .or_else(|| gui_app_for_token(&proc.token.to_lowercase()).map(str::to_string));
+        if found.is_some() {
+            candidate = found;
+        }
+        pid = proc.ppid?;
+        if pid <= 1 {
+            break;
+        }
+    }
+    candidate
+}
+
+/// Find the GUI app owning a session's window: match a live process to the
+/// session (id in the command line, or cwd for a bare `claude --resume`),
+/// then walk to its GUI ancestor. Shared-host providers (anything but Claude)
+/// fall back to any live process of their own kind — one running app owns all
+/// their windows, so focusing it is still the closest possible action.
+/// Single snapshot, no sampling sleep — this runs on click. Returns the
+/// `open -a` app name, if any.
+pub fn owner_app_for_session(
+    provider: &Provider,
+    session_id: &str,
+    cwd: Option<&str>,
+) -> Option<String> {
+    let mut system = System::new();
+    let procs = snapshot(&mut system);
+    let trimmed_id = session_id.trim();
+    let trimmed_cwd = cwd.map(str::trim).filter(|dir| !dir.is_empty());
+    let by_pid: HashMap<u32, &RawProc> = procs.iter().map(|proc| (proc.pid, proc)).collect();
+    let attributed = procs.iter().find(|proc| {
+        if classify(&proc.token).as_ref() != Some(provider) {
+            return false;
+        }
+        if !trimmed_id.is_empty() && proc.cmd.contains(trimmed_id) {
+            return true;
+        }
+        // Bare `claude --resume` carries no id: attribute by working
+        // directory, mirroring claim_fallback (Claude only).
+        *provider == Provider::Claude
+            && trimmed_cwd.is_some_and(|dir| {
+                proc.cwd.as_deref().map(|path| path.as_os_str())
+                    == Some(std::ffi::OsStr::new(dir))
+            })
+    });
+    let root_ppid = if let Some(root) = attributed {
+        root.ppid?
+    } else if *provider != Provider::Claude {
+        // No attributable process (e.g. Codex app-server never carries the
+        // session id): any live process of the provider leads to the same app.
+        procs
+            .iter()
+            .find(|proc| classify(&proc.token).as_ref() == Some(provider))?
+            .ppid?
+    } else {
+        return None;
+    };
+    gui_owner(&by_pid, root_ppid)
+}
+
+/// Which code editor is running, if any. Resolves `vscode`-hosted Codex
+/// sessions to the editor window instead of a terminal. Cursor first: it
+/// sorts first in the provider list and is the daily driver here.
+pub fn running_editor() -> Option<String> {
+    let mut system = System::new();
+    let procs = snapshot(&mut system);
+    let mut bundles = HashSet::new();
+    for proc in &procs {
+        if let Some(exe) = proc.exe.as_deref() {
+            if let Some(bundle) = bundle_name(exe) {
+                bundles.insert(bundle);
+            }
+        }
+    }
+    ["Cursor", "Visual Studio Code", "Windsurf", "Zed"]
+        .into_iter()
+        .find(|editor| bundles.contains(*editor))
+        .map(str::to_string)
 }
 
 /// Claim the live process belonging to a session by its session id in the
@@ -442,5 +572,100 @@ mod tests {
         let procs = vec![proc(Provider::OpenCode, "opencode serve", None, false)];
         assert!(host_alive(&procs, &Provider::OpenCode));
         assert!(!host_alive(&procs, &Provider::OpenCode2));
+    }
+
+    #[test]
+    fn gui_app_matches_known_terminals_and_editors() {
+        assert_eq!(gui_app_for_token("terminal"), Some("Terminal"));
+        assert_eq!(gui_app_for_token("iterm2"), Some("iTerm"));
+        assert_eq!(gui_app_for_token("ghostty"), Some("Ghostty"));
+        assert_eq!(gui_app_for_token("code"), Some("Visual Studio Code"));
+        assert_eq!(gui_app_for_token("cursor"), Some("Cursor"));
+        assert_eq!(gui_app_for_token("bash"), None);
+        assert_eq!(gui_app_for_token("claude"), None);
+    }
+
+    #[test]
+    fn gui_owner_walks_past_workers_to_terminal() {
+        fn raw(pid: u32, ppid: Option<u32>, token: &str, exe: Option<&str>) -> RawProc {
+            RawProc {
+                pid,
+                ppid,
+                token: token.to_string(),
+                exe: exe.map(PathBuf::from),
+                cmd: token.to_string(),
+                cwd: None,
+                cpu_ms: 0,
+            }
+        }
+        let procs = vec![
+            raw(100, Some(1), "launchd", Some("/sbin/launchd")),
+            raw(
+                200,
+                Some(100),
+                "stable",
+                Some("/Applications/Warp.app/Contents/MacOS/stable"),
+            ),
+            raw(300, Some(200), "zsh", Some("/bin/zsh")),
+            raw(400, Some(300), "claude", Some("/opt/homebrew/bin/claude")),
+        ];
+        let by_pid: HashMap<u32, &RawProc> = procs.iter().map(|proc| (proc.pid, proc)).collect();
+        // Bundle path wins over any table: Warp isn't in the token table.
+        assert_eq!(gui_owner(&by_pid, 400), Some("Warp".to_string()));
+        assert_eq!(gui_owner(&by_pid, 100), None);
+        assert_eq!(gui_owner(&by_pid, 999), None);
+    }
+
+    #[test]
+    fn gui_owner_prefers_outermost_bundle_for_helpers() {
+        fn raw(pid: u32, ppid: Option<u32>, token: &str, exe: &str) -> RawProc {
+            RawProc {
+                pid,
+                ppid,
+                token: token.to_string(),
+                exe: Some(PathBuf::from(exe)),
+                cmd: token.to_string(),
+                cwd: None,
+                cpu_ms: 0,
+            }
+        }
+        let procs = vec![
+            raw(
+                10,
+                Some(1),
+                "code",
+                "/Applications/Visual Studio Code.app/Contents/MacOS/Electron",
+            ),
+            raw(
+                20,
+                Some(10),
+                "Code Helper",
+                "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper",
+            ),
+            raw(30, Some(20), "zsh", "/bin/zsh"),
+            raw(40, Some(30), "claude", "/opt/homebrew/bin/claude"),
+        ];
+        let by_pid: HashMap<u32, &RawProc> = procs.iter().map(|proc| (proc.pid, proc)).collect();
+        // The helper bundle must not win over the visible app.
+        assert_eq!(
+            gui_owner(&by_pid, 40),
+            Some("Visual Studio Code".to_string())
+        );
+    }
+
+    #[test]
+    fn bundle_name_reads_the_app_package() {
+        use std::path::Path;
+        assert_eq!(
+            bundle_name(Path::new("/Applications/Warp.app/Contents/MacOS/stable")),
+            Some("Warp".to_string())
+        );
+        assert_eq!(
+            bundle_name(Path::new(
+                "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper"
+            )),
+            Some("Code Helper".to_string())
+        );
+        assert_eq!(bundle_name(Path::new("/opt/homebrew/bin/claude")), None);
     }
 }

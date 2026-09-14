@@ -34,6 +34,9 @@ pub struct AgentSession {
     pub project_name: String,
     pub session_id: String,
     pub cwd: Option<String>,
+    /// Where the session runs, when the source records it (`vscode`,
+    /// `desktop`, `cli` for Codex rollouts). Drives click-to-open.
+    pub host: Option<String>,
     /// Session title when the source has one (OpenCode stores titles).
     pub title: Option<String>,
     pub subagents: Vec<subagents::SubagentInfo>,
@@ -73,6 +76,7 @@ struct RawSession {
     project_name: String,
     session_id: String,
     cwd: Option<String>,
+    host: Option<String>,
     title: Option<String>,
     last_active_ms: u128,
     /// `<project>/<session-id>` dir for Claude (holds `subagents/`); else None.
@@ -116,15 +120,34 @@ fn codex_session_id(file_stem: &str) -> Option<String> {
     Some(tail.join("-"))
 }
 
-/// Working directory from the first line of a Codex rollout, whose
-/// `session_meta` record carries it. Anything unparseable yields `None`.
-fn codex_cwd(first_line: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(first_line).ok()?;
-    value
-        .get("payload")?
-        .get("cwd")?
-        .as_str()
-        .map(str::to_string)
+/// Working directory and host from the first line of a Codex rollout, whose
+/// `session_meta` record carries both. Anything unparseable yields `None`s.
+/// The host names where the session runs: `vscode` (IDE extension), `desktop`
+/// (Codex Desktop app threads), `cli` (terminal).
+fn codex_meta(first_line: &str) -> (Option<String>, Option<String>) {
+    let value: serde_json::Value = match serde_json::from_str(first_line) {
+        Ok(value) => value,
+        Err(_) => return (None, None),
+    };
+    let payload = match value.get("payload") {
+        Some(payload) => payload,
+        None => return (None, None),
+    };
+    let cwd = payload.get("cwd").and_then(|cwd| cwd.as_str()).map(str::to_string);
+    let originator = payload.get("originator").and_then(|origin| origin.as_str());
+    let source = payload.get("source").and_then(|source| source.as_str());
+    let host = if source == Some("vscode") {
+        Some("vscode".to_string())
+    } else if originator == Some("Codex Desktop") {
+        Some("desktop".to_string())
+    } else if source == Some("cli")
+        || originator.is_some_and(|origin| origin.to_lowercase().contains("cli"))
+    {
+        Some("cli".to_string())
+    } else {
+        None
+    };
+    (cwd, host)
 }
 
 fn read_first_line(path: &Path) -> Option<String> {
@@ -191,6 +214,7 @@ fn push_session(
         project_name: raw.project_name,
         session_id: raw.session_id,
         cwd: raw.cwd,
+        host: raw.host,
         title: raw.title,
         subagents,
         last_active_ms: raw.last_active_ms as f64,
@@ -223,7 +247,9 @@ fn scan_codex_dir(dir: &Path, out: &mut Vec<RawSession>, depth: usize) {
         let Some(last_active_ms) = file_mtime_ms(&path) else {
             continue;
         };
-        let cwd = read_first_line(&path).and_then(|line| codex_cwd(&line));
+        let (cwd, host) = read_first_line(&path)
+            .map(|line| codex_meta(&line))
+            .unwrap_or((None, None));
         let project_name = cwd
             .as_deref()
             .map(project_name_from_cwd)
@@ -234,6 +260,7 @@ fn scan_codex_dir(dir: &Path, out: &mut Vec<RawSession>, depth: usize) {
                 project_name,
                 session_id,
                 cwd,
+                host,
                 title: None,
                 last_active_ms,
                 source_dir: None,
@@ -277,6 +304,7 @@ fn scan_cursor(storage_dirs: &[PathBuf], out: &mut Vec<RawSession>) {
                 project_name,
                 session_id,
                 cwd,
+                host: None,
                 title: None,
                 last_active_ms,
                 source_dir: None,
@@ -459,6 +487,103 @@ pub fn list_agent_sessions(refresh: Option<bool>) -> Vec<AgentSession> {
         *cache = Some((now_ms, sessions.clone()));
     }
     sessions
+}
+
+/// Open a session working directory in the system file manager. Fallback for
+/// `open_agent_session` when no running window can be traced. The path must be
+/// an existing directory; anything else is rejected without spawning a process.
+fn open_agent_folder(path: &str) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("No working directory to open.".to_string());
+    }
+    let dir = Path::new(trimmed);
+    if !dir.is_dir() {
+        return Err("Working directory no longer exists.".to_string());
+    }
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(target_os = "windows")]
+    let program = "explorer";
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let program = "xdg-open";
+    std::process::Command::new(program)
+        .arg(dir)
+        .spawn()
+        .map_err(|e| format!("Couldn't open folder: {e}"))?;
+    Ok(())
+}
+
+/// Open the window where a session runs, not just its folder. Cursor owns a
+/// real window per folder, so it opens focused directly. Codex IDE sessions
+/// focus the running editor; terminal and desktop sessions trace the live
+/// process to its owning terminal or app and bring that forward. Anything
+/// untraceable — a closed session, an unknown provider — falls back to
+/// revealing the folder.
+#[tauri::command]
+#[specta::specta]
+pub fn open_agent_session(
+    provider_id: String,
+    session_id: String,
+    cwd: Option<String>,
+    host: Option<String>,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // Codex Desktop threads support deep links: point at the exact
+        // session instead of just focusing the app.
+        if provider_id == "codex" && host.as_deref() == Some("desktop") && !session_id.trim().is_empty() {
+            let link = format!("codex://threads/{}", session_id.trim());
+            if std::process::Command::new("open").arg(&link).spawn().is_ok() {
+                log::info!("open_agent_session: opening Codex thread for codex session");
+                return Ok(());
+            }
+        }
+        if provider_id == "cursor" {
+            let mut cmd = std::process::Command::new("open");
+            cmd.arg("-a").arg("Cursor");
+            if let Some(dir) = cwd.as_deref().map(str::trim).filter(|dir| !dir.is_empty()) {
+                cmd.arg(dir);
+            }
+            cmd.spawn()
+                .map_err(|e| format!("Couldn't open Cursor: {e}"))?;
+            return Ok(());
+        }
+        let trimmed_cwd = cwd.as_deref().map(str::trim).filter(|dir| !dir.is_empty());
+        // Each step only fills the target when it resolves; anything
+        // untraceable keeps falling through to the folder fallback below.
+        let mut target: Option<(String, Option<String>)> = None;
+        if host.as_deref() == Some("vscode") {
+            if let Some(editor) = liveness::running_editor() {
+                target = Some((editor, trimmed_cwd.map(str::to_string)));
+            }
+        }
+        if target.is_none() {
+            if let Some(provider) = liveness::provider_for_id(&provider_id) {
+                if let Some(app) =
+                    liveness::owner_app_for_session(&provider, session_id.trim(), trimmed_cwd)
+                {
+                    target = Some((app, None));
+                }
+            }
+        }
+        if let Some((app, dir)) = target {
+            log::info!("open_agent_session: focusing {app} for {provider_id} session");
+            let mut cmd = std::process::Command::new("open");
+            cmd.arg("-a").arg(&app);
+            if let Some(dir) = dir {
+                cmd.arg(dir);
+            }
+            cmd.spawn()
+                .map_err(|e| format!("Couldn't open {app}: {e}"))?;
+            return Ok(());
+        }
+        log::info!(
+            "open_agent_session: no app traced for {provider_id} session (host={:?}), opening folder",
+            host.as_deref()
+        );
+    }
+    open_agent_folder(cwd.as_deref().unwrap_or_default())
 }
 
 #[cfg(test)]

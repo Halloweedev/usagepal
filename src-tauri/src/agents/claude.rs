@@ -62,6 +62,7 @@ pub(crate) fn scan_claude(projects_dir: &Path, out: &mut Vec<RawSession>) {
                 project_name: project_name.clone(),
                 session_id: session_id.clone(),
                 cwd: Some(cwd.clone()),
+                host: None,
                 title: None,
                 last_active_ms,
                 source_dir: Some(project_dir.path().join(&session_id)),
