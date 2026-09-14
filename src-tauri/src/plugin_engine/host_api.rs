@@ -17,10 +17,11 @@ use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
-const WHITELISTED_ENV_VARS: [&str; 24] = [
+const WHITELISTED_ENV_VARS: [&str; 25] = [
     "CODEX_HOME",
     "CODEX_CCUSAGE_HOME",
     "USAGEPAL_LOCAL_LOGS_UNAVAILABLE",
+    "USAGEPAL_MANAGED_ACCOUNT",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
     "USER_TYPE",

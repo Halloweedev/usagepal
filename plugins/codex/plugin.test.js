@@ -1282,6 +1282,54 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
   })
 
+  it("managed account never falls back to keychain when refresh fails", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "CODEX_HOME") return "/tmp/managed-codex"
+      if (name === "USAGEPAL_MANAGED_ACCOUNT") return "1"
+      return null
+    })
+    ctx.host.fs.writeText("/tmp/managed-codex/auth.json", JSON.stringify({
+      tokens: { access_token: "old-managed-token", refresh_token: "old-managed-refresh" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("oauth/token")) {
+        return {
+          status: 400,
+          headers: {},
+          bodyText: JSON.stringify({ error: { code: "refresh_token_reused" } }),
+        }
+      }
+      return { status: 401, headers: {}, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Token conflict")
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
+  it("managed account throws instead of keychain fallback when auth file is missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "CODEX_HOME") return "/tmp/managed-codex"
+      if (name === "USAGEPAL_MANAGED_ACCOUNT") return "1"
+      return null
+    })
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
   it("falls back to keychain when file usage auth still fails after refresh", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({

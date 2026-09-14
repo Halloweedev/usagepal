@@ -140,6 +140,8 @@ UsagePal Codex plugin auth lookup order:
 
 If file-based OAuth credentials are missing, invalid, or fail with an auth/session error during refresh or usage lookup, UsagePal tries the macOS keychain fallback. Non-auth usage failures, such as server errors or invalid responses, are shown directly.
 
+Registered (multi-account) Codex accounts skip the keychain fallback: the keychain entry belongs to the local CLI login, so falling back would render another account's usage. A stale registered account shows its own auth error instead.
+
 Keychain fallback is available on macOS only.
 
 Expected auth payload shape (file or keychain JSON value):

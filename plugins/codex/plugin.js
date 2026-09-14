@@ -100,6 +100,15 @@
     return !!(auth && auth.tokens && auth.tokens.access_token)
   }
 
+  // Registered (multi-account) probes run with USAGEPAL_MANAGED_ACCOUNT=1 and
+  // CODEX_HOME pointed at their own profile dir. The macOS keychain entry is
+  // machine-wide — it holds the local CLI login's credentials — so a managed
+  // probe must never fall back to it: a stale profile would silently render
+  // another account's usage instead of its own auth error.
+  function isManagedAccount(ctx) {
+    return readEnvString(ctx, "USAGEPAL_MANAGED_ACCOUNT") === "1"
+  }
+
   function isAuthFallbackError(e) {
     if (typeof e !== "string") return false
     return (
@@ -1219,7 +1228,7 @@
       }
     }
 
-    const keychainAuth = loadAuthFromKeychain(ctx)
+    const keychainAuth = isManagedAccount(ctx) ? null : loadAuthFromKeychain(ctx)
     if (keychainAuth) {
       try {
         return probeWithAuthState(ctx, keychainAuth)

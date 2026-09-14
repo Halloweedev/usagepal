@@ -115,6 +115,10 @@ fn resolve_env_overrides(
             }
             // Auth/API probe reads the managed profile.
             env.insert("CODEX_HOME".to_string(), dir.to_string_lossy().to_string());
+            // Mark this as a registered (managed) account so the plugin never
+            // falls back to the machine-wide keychain: that entry belongs to
+            // the local CLI login and would render another account's usage.
+            env.insert("USAGEPAL_MANAGED_ACCOUNT".to_string(), "1".to_string());
             // Spend (ccusage) reads the *real* local home, but only for the
             // account that is the current local CLI login — its session logs live
             // there, not in the managed profile. Others get no local logs.
@@ -695,6 +699,24 @@ mod tests {
     fn extract_codex_account_id_none_when_absent() {
         assert_eq!(extract_codex_account_id(r#"{"tokens":{}}"#), None);
         assert_eq!(extract_codex_account_id("garbage"), None);
+    }
+
+    #[test]
+    fn codex_account_env_marks_managed_account_and_points_at_profile() {
+        let app_data = tmp_dir("codex-managed");
+        let dir = codex_profile_dir(&app_data, "acct_1");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("auth.json"), r#"{"tokens":{"access_token":"x"}}"#).unwrap();
+        let env = resolve_env_overrides("codex", "acct_1", &app_data).unwrap();
+        assert_eq!(
+            env.get("USAGEPAL_MANAGED_ACCOUNT").map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            env.get("CODEX_HOME").map(String::as_str),
+            Some(dir.to_string_lossy().as_ref())
+        );
+        let _ = fs::remove_dir_all(&app_data);
     }
 
     #[test]
