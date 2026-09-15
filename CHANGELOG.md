@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.7.76-beta.1
+
+### New Features
+- feat(share): per-provider account switcher and no-local-data hint by @Halloweedev
+
+### Bug Fixes
+- fix(codex): show Luna Reserve model spend at $0 instead of borrowed dollars by @Halloweedev
+- fix(opencode-go): friendly model names that merge with Codex rows by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.75...v0.7.76-beta.1](https://github.com/Halloweedev/usagepal/compare/v0.7.75...v0.7.76-beta.1)
+
+- [f1eaf6f](https://github.com/Halloweedev/usagepal/commit/f1eaf6f5cebf4c652a78e40a66ce35d64e2d03bb) feat(share): per-provider account switcher and no-local-data hint by @Halloweedev
+- [8335d0e](https://github.com/Halloweedev/usagepal/commit/8335d0ea0b423ebb7a911a5b49d0f3a54f5c739f) fix(opencode-go): friendly model names that merge with Codex rows by @Halloweedev
+- [6849753](https://github.com/Halloweedev/usagepal/commit/68497536799be976eb943abafecbb7d1c8c1a493) fix(codex): show Luna Reserve model spend at $0 instead of borrowed dollars by @Halloweedev
+
 ## v0.7.75
 
 Stable release rolling up the 0.7.75 betas: Grok gains tougher spend estimates and wider subscription-tier support, Codex fixes a cross-account usage mix-up and renames the reserve bucket to Luna Reserve, plus routine dependency updates. The Agents tab is parked on the experiment/agents-ui branch and is not in this release.
