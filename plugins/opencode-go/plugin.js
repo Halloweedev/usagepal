@@ -209,6 +209,45 @@
     return "$" + Math.round(amount).toLocaleString("en-US");
   }
 
+  // First-word display casing for known model families; anything else falls
+  // back to Title Case so unfamiliar ids still read cleanly.
+  const MODEL_FAMILY_NAMES = {
+    gpt: "GPT",
+    glm: "GLM",
+    kimi: "Kimi",
+    deepseek: "DeepSeek",
+    minimax: "MiniMax",
+    grok: "Grok",
+    claude: "Claude",
+  };
+
+  function titleCaseWord(word) {
+    if (!word) return word;
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }
+
+  // Turns raw local-history model ids into the names Overview and Share show.
+  // GPT-family ids reuse Codex's "GPT-5.6 Luna" shape so the same model merges
+  // across providers downstream instead of rendering twice.
+  function prettifyModelName(rawId) {
+    if (typeof rawId !== "string") return rawId;
+    if (rawId.startsWith("gpt-")) {
+      const parts = rawId.slice("gpt-".length).split("-");
+      const version = parts[0];
+      if (/^\d+(\.\d+)?$/.test(version)) {
+        const suffixWords = parts.slice(1).map(titleCaseWord);
+        return ["GPT-" + version].concat(suffixWords).join(" ");
+      }
+      return rawId;
+    }
+    const parts = rawId.split("-");
+    const head = MODEL_FAMILY_NAMES[parts[0].toLowerCase()] || titleCaseWord(parts[0]);
+    const tail = parts.slice(1).map((segment) =>
+      /\d/.test(segment) ? segment.toUpperCase() : titleCaseWord(segment)
+    );
+    return [head].concat(tail).join(" ");
+  }
+
   function dayKeyFromDate(date) {
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
@@ -347,7 +386,7 @@
         if (value) value += " · ";
         value += "30d " + fmtModelCost(model.cost);
       }
-      lines.push(ctx.line.text({ label: name, value: value }));
+      lines.push(ctx.line.text({ label: prettifyModelName(name), value: value }));
     }
   }
 
@@ -405,6 +444,6 @@
   globalThis.__usagepal_plugin = {
     id: PROVIDER_ID,
     probe,
-    __test: { keyFromObject, loadApiKey, parseUsage, buildLines },
+    __test: { keyFromObject, loadApiKey, parseUsage, buildLines, prettifyModelName },
   };
 })();

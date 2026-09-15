@@ -58,7 +58,10 @@ current local CLI login:
 - **Today / Yesterday:** tokens and cost for those days (for example, "$0.50 · 1K")
 - **Last 30 Days:** the 31-day window total
 - **Usage Trend:** a daily token bar chart of the same window
-- **Per-model lines:** each model's share of the window (for example, "88.2% · 30d $0.75")
+- **Per-model lines:** each model's share of the window (for example, "88.2% · 30d $0.75").
+  Raw database ids are shown with friendly names ("deepseek-v4-pro" becomes DeepSeek V4 Pro).
+  GPT-family ids reuse Codex's naming ("GPT-5.6 Luna"), so the same model used in both
+  tools merges into one row on the Overview and Share graphs instead of appearing twice.
 
 Costs come from the values OpenCode stored with each message — UsagePal does not price tokens
 itself. The database query runs only after the web quota fetch, with a 15-second timeout; a slow

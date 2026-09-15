@@ -210,8 +210,8 @@ describe("opencode-go plugin", () => {
           expect.objectContaining({ label: "2/1", value: 500, valueLabel: "500" }),
         ]),
       }),
-      expect.objectContaining({ label: "deepseek-v4-pro", value: "88.2% · 30d $0.75" }),
-      expect.objectContaining({ label: "gpt-5.2", value: "11.8% · 30d $0.10" }),
+      expect.objectContaining({ label: "DeepSeek V4 Pro", value: "88.2% · 30d $0.75" }),
+      expect.objectContaining({ label: "GPT-5.2", value: "11.8% · 30d $0.10" }),
     ]);
   });
 
@@ -252,5 +252,22 @@ describe("opencode-go plugin", () => {
       expect.objectContaining({ label: "Monthly" }),
     ]);
     expect(ctx.host.log.warn).toHaveBeenCalled();
+  });
+
+  it("prettifies raw local-history model ids into friendly display names", async () => {
+    const plugin = await loadPlugin();
+    const prettify = plugin.__test.prettifyModelName;
+    // GPT-family ids reuse Codex's shape so the same model merges across
+    // providers downstream (e.g. no separate "gpt-5.6-luna" row).
+    expect(prettify("gpt-5.6-luna")).toBe("GPT-5.6 Luna");
+    expect(prettify("gpt-5.2")).toBe("GPT-5.2");
+    expect(prettify("deepseek-v4-pro")).toBe("DeepSeek V4 Pro");
+    expect(prettify("deepseek-v4-flash")).toBe("DeepSeek V4 Flash");
+    expect(prettify("kimi-k3")).toBe("Kimi K3");
+    expect(prettify("kimi-k2.6")).toBe("Kimi K2.6");
+    expect(prettify("kimi-k2.7-code")).toBe("Kimi K2.7 Code");
+    expect(prettify("glm-5.1")).toBe("GLM 5.1");
+    expect(prettify("minimax-m3")).toBe("MiniMax M3");
+    expect(prettify("some-unknown-model")).toBe("Some Unknown Model");
   });
 });
