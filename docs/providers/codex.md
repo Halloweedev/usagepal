@@ -169,6 +169,10 @@ Local Codex logs drive the Share graph (Today, Yesterday, Last 30 Days, and per-
 
 Codex runs its own approval reviewer as a separate model, `codex-auto-review`, so its turns show up in the usage logs alongside the models you picked. It has no published price, which means ccusage values it at $0 and it is held out of the day-spend split above — otherwise it would take a share of the dollars the other models actually earned. It still appears in the model list, shown as **Codex Auto Review** with its token percentage and $0.00, so its usage stays visible without distorting spend.
 
+### Luna Reserve Model Row
+
+Turns that run on the Luna Reserve fallback allowance are logged under the raw model id `gpt-reserve`. Like the reviewer above, reserve turns have no published price, so they are held out of the day-spend split and shown as **Luna Reserve** with $0.00 — otherwise they would absorb dollars the other models on those days actually earned. The Luna Reserve quota bars above show how much of the fallback allowance is used; the model row only covers spend, which is $0.
+
 ### Token Refresh
 
 Access tokens are short-lived JWTs. Refreshed when `last_refresh` is older than 8 days, or on 401/403.

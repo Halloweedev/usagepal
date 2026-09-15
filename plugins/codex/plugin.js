@@ -673,11 +673,13 @@
     return "$" + Math.round(amount).toLocaleString("en-US")
   }
 
-  // Codex runs its approval reviewer as its own model, so its turns land in
-  // ccusage's token map like any other. It carries no published price, so
-  // ccusage costs it at $0 and it must be held out of the day-cost split below
-  // — otherwise it siphons dollars off the models that actually earned them.
-  const ZERO_COST_MODELS = { "codex-auto-review": "Codex Auto Review" }
+  // Models with no published price are costed at $0 by ccusage and must be
+  // held out of the day-cost split below — otherwise they siphon dollars off
+  // the models that actually earned them. `codex-auto-review` is the approval
+  // reviewer's own model; `gpt-reserve` is the backend identifier for turns
+  // that ran on the user-facing Luna Reserve fallback allowance (a separate
+  // quota pool once regular quota is exhausted).
+  const ZERO_COST_MODELS = { "codex-auto-review": "Codex Auto Review", "gpt-reserve": "Luna Reserve" }
 
   function isZeroCostModel(name) {
     return Object.prototype.hasOwnProperty.call(ZERO_COST_MODELS, name)
@@ -751,6 +753,21 @@
     if (inToday) totals.Today[name] = totals.Today[name] || 0
   }
 
+  // Marks every zero-price model on a day with a $0 presence, before the
+  // dollar split below. Days whose total is $0 (or missing) are skipped by
+  // the split, but without this their lines would render percent-only and
+  // downstream would back-fill them with borrowed dollars.
+  function markZeroCostModels(totals, models, inToday, in7d) {
+    if (!models || typeof models !== "object") return
+    const names = Object.keys(models)
+    for (let j = 0; j < names.length; j++) {
+      const name = names[j]
+      if (!isZeroCostModel(name)) continue
+      if (modelTokenCount(models[name]) <= 0) continue
+      markZeroCost(totals, name, inToday, in7d)
+    }
+  }
+
   // Per-model $ for Today/7d/30d. Prefers Claude-style modelBreakdowns[].cost;
   // Codex days only expose costUSD + a models token map, so split the day total
   // by that day's token share when breakdowns are absent.
@@ -763,6 +780,8 @@
       const inToday = dayKey === todayKey
       const in7d = recentSet.has(dayKey)
       const breakdowns = day && day.modelBreakdowns
+      const models = day && day.models
+      markZeroCostModels(totals, models, inToday, in7d)
       let usedBreakdownCosts = false
       if (Array.isArray(breakdowns)) {
         for (let j = 0; j < breakdowns.length; j++) {
@@ -781,7 +800,6 @@
 
       const dayCost = usageCostUsd(day)
       if (dayCost == null || dayCost <= 0) continue
-      const models = day && day.models
       if (!models || typeof models !== "object") continue
       const names = Object.keys(models)
       let dayTokens = 0

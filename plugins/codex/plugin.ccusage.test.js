@@ -190,6 +190,95 @@ describe("codex plugin ccusage usage trend", () => {
     expect(result.lines.find((line) => line.label === "codex-auto-review")).toBeUndefined()
   })
 
+  it("holds gpt-reserve out of the cost split and shows it as Luna Reserve at $0", async () => {
+    // gpt-reserve turns run on the Luna Reserve fallback allowance and have no
+    // published price, so ccusage values them at $0 — splitting the day total
+    // by raw token share would hand them dollars gpt-5.6-sol earned.
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({
+      status: "ok",
+      data: {
+        daily: [
+          {
+            date: dayKey(0),
+            totalTokens: 100,
+            costUSD: 10,
+            models: {
+              "gpt-5.6-sol": { totalTokens: 80 },
+              "gpt-reserve": { totalTokens: 20 },
+            },
+          },
+        ],
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // Sol keeps its 80% token share but collects the whole $10 — the reserve
+    // turns generated none of it. The reserve keeps its 20% share at $0.
+    const sol = result.lines.find((line) => line.label === "GPT-5.6 Sol")
+    const reserve = result.lines.find((line) => line.label === "Luna Reserve")
+    expect(sol).toMatchObject({
+      type: "text",
+      value: "80% · Today $10.00 · 7d $10.00 · 30d $10.00",
+    })
+    expect(reserve).toMatchObject({
+      type: "text",
+      value: "20% · Today $0.00 · 7d $0.00 · 30d $0.00",
+    })
+    expect(result.lines.find((line) => line.label === "gpt-reserve")).toBeUndefined()
+  })
+
+  it("values a reserve-only day at $0 instead of a borrowable percent-only line", async () => {
+    // A day with only reserve turns totals $0. Without an explicit $0 segment
+    // the line would render percent-only and downstream would back-fill it
+    // with dollars from the provider total.
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({
+      status: "ok",
+      data: {
+        daily: [
+          {
+            date: dayKey(0),
+            totalTokens: 50,
+            costUSD: 0,
+            models: {
+              "gpt-reserve": { totalTokens: 50 },
+            },
+          },
+        ],
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const reserve = result.lines.find((line) => line.label === "Luna Reserve")
+    expect(reserve).toMatchObject({
+      type: "text",
+      value: "100% · Today $0.00 · 7d $0.00 · 30d $0.00",
+    })
+  })
+
   it("merges Today/7d/30d cost into each model's existing % line", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
