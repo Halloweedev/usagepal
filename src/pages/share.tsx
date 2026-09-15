@@ -7,6 +7,7 @@ import { ProviderIconMask } from "@/components/provider-icon-mask"
 import { Logo } from "@/components/logo"
 import { ModelsGraphCard, type GraphStyle } from "@/components/models-graph-card"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
+import type { GroupedProviderView } from "@/hooks/app/group-provider-views"
 import { buildShareableLines, type ShareableLine, type ShareLineScope } from "@/lib/share-lines"
 import { copyCardImage } from "@/lib/share-image"
 import type { ModelDisplayOptions } from "@/lib/model-breakdown-format"
@@ -81,11 +82,18 @@ export type SharePageProps = {
    * sources). Defaults to `plugins`, which only carries each provider's shown
    * account. */
   sources?: TodayModelsSource[]
+  /** Per-provider account snapshots — drives the account switcher on single
+   * provider tabs, so a provider whose shown account has no local data can be
+   * flipped to the account that does. Absent in tests and single-account use. */
+  groupedPlugins?: GroupedProviderView[]
+  /** Persist the account a provider shows (mirrors the Overview card pager —
+   * Share and Overview stay on the same account). */
+  onSelectAccount?: (providerId: string, accountId: string | null) => void
 }
 
 type CopyState = "idle" | "copying" | "success" | "error"
 
-export function SharePage({ plugins, sources }: SharePageProps) {
+export function SharePage({ plugins, sources, groupedPlugins, onSelectAccount }: SharePageProps) {
   const shareSnapshot = useAppShareStore.getState().settings
   const patchShare = useAppShareStore((s) => s.patch)
 
@@ -115,7 +123,19 @@ export function SharePage({ plugins, sources }: SharePageProps) {
   const [previewWidthPx, setPreviewWidthPx] = useState<number | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
-  const seededForRef = useRef<string | null>(shareSnapshot.selectedId)
+  // Seed guard matches the seedKey shape below so a reopened Share with a
+  // persisted selection does not reseed (and wipe the persisted checklist).
+  // Fresh opens start unseeded and reseed on mount, as before.
+  const seededForRef = useRef<string | null>(
+    (() => {
+      if (shareSnapshot.selectedId == null) return null
+      const initialGroup =
+        groupedPlugins?.find((group) => group.meta.id === shareSnapshot.selectedId) ?? null
+      const initialAccountId =
+        initialGroup?.accounts[initialGroup.activeIndex]?.accountId ?? null
+      return `${shareSnapshot.selectedId}::${initialAccountId ?? ""}`
+    })()
+  )
 
   useEffect(() => {
     if (selectedId === ALL_SHARE_TAB_ID) return
@@ -127,6 +147,15 @@ export function SharePage({ plugins, sources }: SharePageProps) {
     () => plugins.find((plugin) => plugin.meta.id === selectedId) ?? null,
     [plugins, selectedId]
   )
+
+  const selectedGroup = useMemo(
+    () => groupedPlugins?.find((group) => group.meta.id === selectedId) ?? null,
+    [groupedPlugins, selectedId]
+  )
+  const selectedAccountId = selectedGroup?.accounts[selectedGroup.activeIndex]?.accountId ?? null
+  // Reseed when the provider or its shown account changes — but not on
+  // background probe refreshes, which must not wipe line customization.
+  const seedKey = `${selectedId ?? ""}::${selectedAccountId ?? ""}`
 
   const isAllTab = selectedId === ALL_SHARE_TAB_ID
   // Seeded from a one-shot "share this view" handoff (Overview strip) when
@@ -185,11 +214,12 @@ export function SharePage({ plugins, sources }: SharePageProps) {
     })).filter((group) => group.entries.length > 0)
   }, [shareableLines])
 
-  // Re-seed the selection when switching providers: re-apply the active preset
-  // (or Summary if the user had customized) against the new provider's lines.
+  // Re-seed the selection when switching providers or accounts: re-apply the
+  // active preset (or Summary if the user had customized) against the new
+  // account's lines.
   useEffect(() => {
-    if (seededForRef.current === selectedId) return
-    seededForRef.current = selectedId
+    if (seededForRef.current === seedKey) return
+    seededForRef.current = seedKey
     if (selectedId === ALL_SHARE_TAB_ID) {
       setCopyState("idle")
       setCopyError(null)
@@ -200,7 +230,7 @@ export function SharePage({ plugins, sources }: SharePageProps) {
     setCheckedLabels(presetLabels(shareableLines, activePreset))
     setCopyState("idle")
     setCopyError(null)
-  }, [selectedId, shareableLines, preset])
+  }, [seedKey, shareableLines, preset])
 
   const didMountPersistRef = useRef(false)
   useEffect(() => {
@@ -410,6 +440,36 @@ export function SharePage({ plugins, sources }: SharePageProps) {
           </div>
         </div>
       </section>
+
+      {!isAllTab && onSelectAccount && selectedGroup && selectedGroup.accounts.length > 1 && (
+        <section role="radiogroup" aria-label="Account" data-testid="share-account-radiogroup">
+          <div className="bg-muted/50 rounded-lg p-1">
+            <div className="flex gap-1">
+              {selectedGroup.accounts.map((account, index) => {
+                const isActive = index === selectedGroup.activeIndex
+                const label =
+                  account.label ?? (account.accountId == null ? "Default" : `Account ${index + 1}`)
+                return (
+                  <Button
+                    key={account.accountId ?? `default-${index}`}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    aria-label={label}
+                    variant={isActive ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    disabled={copying}
+                    onClick={() => onSelectAccount(selectedGroup.meta.id, account.accountId)}
+                  >
+                    {label}
+                  </Button>
+                )
+              })}
+            </div>
+          </div>
+        </section>
+      )}
 
       {isAllTab ? (
         !firstGraphPeriod ? (

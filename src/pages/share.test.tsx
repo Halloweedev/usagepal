@@ -755,3 +755,116 @@ describe("SharePage — multi-account aggregation", () => {
     expect(props.entries.find((entry) => entry.name === "Claude")?.todayCost).toBeCloseTo(12.4)
   })
 })
+
+describe("SharePage — account switcher", () => {
+  beforeEach(() => {
+    shareCardMock.mockReset()
+    graphCardMock.mockReset()
+    copyCardImageMock.mockReset()
+    useAppShareStore.getState().resetState()
+  })
+
+  const codexMeta = {
+    id: "codex",
+    name: "Codex",
+    iconUrl: "/codex.svg",
+    brandColor: "#74AA9C",
+    lines: [
+      { type: "progress", label: "Session", scope: "overview" },
+      { type: "text", label: "Today", scope: "detail" },
+    ] as ManifestLine[],
+    primaryCandidates: ["Session"],
+    detected: true,
+  }
+
+  function codexData(lines: MetricLine[]) {
+    return { providerId: "codex", displayName: "Codex", iconUrl: "/codex.svg", lines }
+  }
+
+  function progress(used: number): MetricLine {
+    return { type: "progress", label: "Session", used, limit: 100, format: { kind: "percent" } }
+  }
+
+  function text(label: string, value: string, subtitle?: string): MetricLine {
+    return { type: "text", label, value, subtitle: subtitle ?? null } as MetricLine
+  }
+
+  function codexGroup(activeIndex: number) {
+    const defaultData = codexData([
+      progress(80),
+      text("Today", "$9.00 · 12M"),
+      text("GPT-5.6 Sol", "65% · 30d $13.00"),
+    ])
+    const proData = codexData([
+      progress(100),
+      text("Today", "—", "No local Codex CLI usage for this account"),
+    ])
+    return {
+      meta: codexMeta,
+      accounts: [
+        {
+          accountId: null,
+          label: "Default",
+          data: defaultData,
+          loading: false,
+          error: null,
+          lastManualRefreshAt: null,
+          lastUpdatedAt: null,
+        },
+        {
+          accountId: "acct-1",
+          label: "Pro 5x",
+          data: proData,
+          loading: false,
+          error: null,
+          lastManualRefreshAt: null,
+          lastUpdatedAt: null,
+        },
+      ],
+      activeIndex,
+    }
+  }
+
+  function cardLines(): { label: string; value?: string }[] {
+    return lastCardProps<{ lines: { label: string; value?: string }[] }>().lines
+  }
+
+  it("switches the shown account and reseeds its lines", async () => {
+    const user = userEvent.setup()
+    const onSelectAccount = vi.fn()
+    const group = codexGroup(1)
+    const shown = makePlugin({ meta: { ...codexMeta }, data: group.accounts[1].data })
+    const { rerender } = render(
+      <SharePage plugins={[shown]} groupedPlugins={[group]} onSelectAccount={onSelectAccount} />
+    )
+
+    // Pro 5x is shown: no model rows, Today is a dash.
+    expect(screen.getByRole("radio", { name: "Pro 5x" })).toHaveAttribute("aria-checked", "true")
+    expect(cardLines().map((line) => line.label)).toEqual(["Session"])
+
+    await user.click(screen.getByRole("radio", { name: "Detailed" }))
+    expect(cardLines().map((line) => line.label)).toEqual(["Session", "Today"])
+
+    // Flipping to Default notifies the parent, which persists the selection.
+    await user.click(screen.getByRole("radio", { name: "Default" }))
+    expect(onSelectAccount).toHaveBeenCalledWith("codex", null)
+
+    // Parent flips activeIndex: Share reseeds Detailed on Default's lines.
+    const flipped = codexGroup(0)
+    rerender(
+      <SharePage
+        plugins={[makePlugin({ meta: { ...codexMeta }, data: flipped.accounts[0].data })]}
+        groupedPlugins={[flipped]}
+        onSelectAccount={onSelectAccount}
+      />
+    )
+    expect(screen.getByRole("radio", { name: "Default" })).toHaveAttribute("aria-checked", "true")
+    expect(cardLines().map((line) => line.label)).toEqual(["Session", "Today"])
+    expect(cardLines().find((line) => line.label === "Today")?.value).toBe("$9.00 · 12M")
+  })
+
+  it("hides the switcher for single-account providers", () => {
+    render(<SharePage plugins={[makePlugin()]} />)
+    expect(screen.queryByTestId("share-account-radiogroup")).toBeNull()
+  })
+})

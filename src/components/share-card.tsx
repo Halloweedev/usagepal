@@ -85,15 +85,22 @@ function TextRow({
 }) {
   const costTokenMatch = COST_TOKEN_VALUE_RE.exec(line.value)
   return (
-    <div data-testid="share-card-line-text" className="flex items-center justify-between">
-      <span className="text-sm">{line.label}</span>
-      {costTokenMatch ? (
-        <span className="flex items-baseline text-xs tabular-nums">
-          {showTokens && <span className={styles.subtext}>{costTokenMatch[2]}</span>}
-          <span className="min-w-16 text-right">{costTokenMatch[1]}</span>
-        </span>
-      ) : (
-        <span className="text-xs">{line.value}</span>
+    <div data-testid="share-card-line-text" className="flex flex-col gap-0.5">
+      <div className="flex items-center justify-between">
+        <span className="text-sm">{line.label}</span>
+        {costTokenMatch ? (
+          <span className="flex items-baseline text-xs tabular-nums">
+            {showTokens && <span className={styles.subtext}>{costTokenMatch[2]}</span>}
+            <span className="min-w-16 text-right">{costTokenMatch[1]}</span>
+          </span>
+        ) : (
+          <span className="text-xs">{line.value}</span>
+        )}
+      </div>
+      {/* Explains placeholder rows (e.g. an account with no local logs shows
+          "—" with why) on the exported image, not just in the app. */}
+      {line.subtitle && (
+        <span className={cn("text-xs", styles.subtext)}>{line.subtitle}</span>
       )}
     </div>
   )

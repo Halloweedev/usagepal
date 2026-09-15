@@ -186,7 +186,14 @@ export function AppContent({
   }
 
   if (activeView === "share") {
-    return <SharePage plugins={displayPlugins} sources={shareSources} />
+    return (
+      <SharePage
+        plugins={displayPlugins}
+        sources={shareSources}
+        groupedPlugins={groupedPlugins}
+        onSelectAccount={onSelectAccount}
+      />
+    )
   }
 
   const handleRetry = selectedPlugin

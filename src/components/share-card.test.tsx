@@ -49,6 +49,24 @@ describe("ShareCard", () => {
     expect(screen.queryByText("Usage Trend")).not.toBeInTheDocument()
   })
 
+  it("renders a text line's subtitle hint when present", () => {
+    render(
+      <ShareCard
+        providerName="Codex"
+        providerIconUrl="/codex.svg"
+        lines={[
+          { type: "text", label: "Today", value: "—", subtitle: "No local Codex CLI usage for this account" },
+          TEXT_LINE,
+        ]}
+        theme="dark"
+        showWatermark={false}
+      />
+    )
+
+    expect(screen.getByText("No local Codex CLI usage for this account")).toBeInTheDocument()
+    expect(screen.getByText("Today")).toBeInTheDocument()
+  })
+
   it("flips a near-black brand color to white for dark themes so bars stay visible", () => {
     render(
       <ShareCard
