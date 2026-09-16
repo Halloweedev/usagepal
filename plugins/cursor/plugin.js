@@ -43,6 +43,9 @@
       "claude-4.6-sonnet":    { input: 3.0,  cache_write: 3.75,  cache_read: 0.3,   output: 15.0,  apply_max_mode_uplift: true },
       "claude-4.7-opus":      { input: 5.0,  cache_write: 6.25,  cache_read: 0.5,   output: 25.0,  apply_max_mode_uplift: true },
       "claude-fable-5":       { input: 10.0, cache_write: 12.5,  cache_read: 1.0,   output: 50.0,  apply_max_mode_uplift: true },
+      // Fable 5.1 matches Fable 5 on input/output but cache reads are $0.25/M
+      // (platform.claude.com pricing; upstream openusage #1197).
+      "claude-fable-5.1":     { input: 10.0, cache_write: 12.5,  cache_read: 0.25,  output: 50.0,  apply_max_mode_uplift: true },
       "claude-opus-4.7-fast": { input: 30.0, cache_write: 37.5,  cache_read: 3.0,   output: 150.0, apply_max_mode_uplift: true },
       "claude-opus-4.8":      { input: 5.0,  cache_write: 6.25,  cache_read: 0.5,   output: 25.0,  apply_max_mode_uplift: true },
       "claude-sonnet-5":      { input: 3.0,  cache_write: 3.75,  cache_read: 0.3,   output: 15.0,  apply_max_mode_uplift: true },
@@ -55,6 +58,12 @@
       "gemini-3-pro":         { input: 2.0,  cache_write: null,  cache_read: 0.2,   output: 12.0,  apply_max_mode_uplift: true },
       "gemini-3.1-pro":       { input: 2.0,  cache_write: null,  cache_read: 0.2,   output: 12.0,  apply_max_mode_uplift: true },
       "gemini-3.5-flash":     { input: 1.5,  cache_write: null,  cache_read: 0.15,  output: 9.0,   apply_max_mode_uplift: true },
+      // Gemini 3.6/3.7/3.8 Flash use Google's API rates (cache write unpublished,
+      // priced at input). 3.7/3.8 output is $3.75 despite Cursor's table listing
+      // $3.50 (upstream openusage #1112, #1211).
+      "gemini-3.6-flash":     { input: 1.5,  cache_write: 1.5,   cache_read: 0.15,  output: 7.5,   apply_max_mode_uplift: true },
+      "gemini-3.7-flash":     { input: 0.75, cache_write: 0.75,  cache_read: 0.075, output: 3.75,  apply_max_mode_uplift: true },
+      "gemini-3.8-flash":     { input: 0.75, cache_write: 0.75,  cache_read: 0.075, output: 3.75,  apply_max_mode_uplift: true },
       "gpt-5":                { input: 1.25, cache_write: null,  cache_read: 0.125, output: 10.0,  apply_max_mode_uplift: true },
       "gpt-5-fast":           { input: 2.5,  cache_write: null,  cache_read: 0.25,  output: 20.0,  apply_max_mode_uplift: true },
       "gpt-5-mini":           { input: 0.25, cache_write: null,  cache_read: 0.025, output: 2.0,   apply_max_mode_uplift: true },
@@ -65,9 +74,15 @@
       "gpt-5.4-nano":         { input: 0.2,  cache_write: null,  cache_read: 0.02,  output: 1.25,  apply_max_mode_uplift: true },
       "gpt-5.5":              { input: 5.0,  cache_write: null,  cache_read: 0.5,   output: 30.0,  apply_max_mode_uplift: true },
       // GPT-5.6 (Sol/Terra/Luna) bills cache writes at 1.25x input and cache reads at 10% of input.
-      "gpt-5.6-luna":         { input: 1.0,  cache_write: 1.25,  cache_read: 0.1,   output: 6.0,   apply_max_mode_uplift: true },
+      // Terra/Luna use OpenAI's official rates, refreshed in upstream openusage #1112
+      // (preview numbers were ~25% high for Terra and 5x high for Luna).
+      "gpt-5.6-luna":         { input: 0.2,  cache_write: 0.25,  cache_read: 0.02,  output: 1.2,   apply_max_mode_uplift: true },
       "gpt-5.6-sol":          { input: 5.0,  cache_write: 6.25,  cache_read: 0.5,   output: 30.0,  apply_max_mode_uplift: true },
-      "gpt-5.6-terra":        { input: 2.5,  cache_write: 3.125, cache_read: 0.25,  output: 15.0,  apply_max_mode_uplift: true },
+      "gpt-5.6-terra":        { input: 2.0,  cache_write: 2.5,   cache_read: 0.2,   output: 12.0,  apply_max_mode_uplift: true },
+      // GPT-6 Astra official rates (developers.openai.com); fast mode is 2x
+      // (upstream openusage #1208). Cache write is 1.25x input, read 0.1x.
+      "gpt-6-astra":          { input: 10.0, cache_write: 12.5,  cache_read: 1.0,   output: 50.0,  apply_max_mode_uplift: true },
+      "gpt-6-astra-fast":     { input: 20.0, cache_write: 25.0,  cache_read: 2.0,   output: 100.0, apply_max_mode_uplift: true },
       "grok-4.20":            { input: 2.0,  cache_write: null,  cache_read: 0.2,   output: 6.0,   apply_max_mode_uplift: true },
       "grok-4.3":             { input: 1.25, cache_write: null,  cache_read: 0.2,   output: 2.5,   apply_max_mode_uplift: true },
       // Grok 4.5 list rates (cache read $0.5/M as of 2026-07-22 docs). Fast keeps 2x.
@@ -78,12 +93,19 @@
       "grok-4.6-fast":        { input: 4.0,  cache_write: null,  cache_read: 1.0,   output: 12.0,  apply_max_mode_uplift: true },
       "grok-build-0.1":       { input: 1.0,  cache_write: null,  cache_read: 0.2,   output: 2.0,   apply_max_mode_uplift: true },
       "kimi-k2.5":            { input: 0.6,  cache_write: null,  cache_read: 0.1,   output: 3.0,   apply_max_mode_uplift: true },
+      // Muse Spark 1.3: one rate set for every effort level, no cache-write
+      // surcharge (cache writes bill at input). Contributor variants have
+      // separate pricing and must not resolve here (upstream openusage #1244).
+      "muse-spark-1.3":       { input: 1.25, cache_write: 1.25,  cache_read: 0.15,  output: 4.25,  apply_max_mode_uplift: true },
     },
     // Ordered regex rules mapping CSV model slugs -> canonical id. First match wins;
     // put more specific patterns first. Extend as new slugs are observed in the CSV.
     // resolveModelRates strips a leading `cursor-` before matching.
     alias_rules: [
       { pattern: "^auto(-cost)?$", canonical: "auto-cost" },
+      // Muse Spark effort variants share one rate set; contributor and -fast
+      // slugs have separate (or unknown) pricing and must not match.
+      { pattern: "^muse-spark-1\\.3(?:-(?:minimal|low|medium|high|xhigh|extra-high|max))?$", canonical: "muse-spark-1.3" },
       { pattern: "^composer-2\\.5", canonical: "composer-2.5" },
       { pattern: "^composer-2(?![\\d.])", canonical: "composer-2" },
       { pattern: "^composer-1\\.5", canonical: "composer-1.5" },
@@ -99,7 +121,10 @@
       { pattern: "^claude-4\\.5-sonnet", canonical: "claude-4.5-sonnet" },
       { pattern: "^claude-4-sonnet-1m", canonical: "claude-4-sonnet-1m" },
       { pattern: "^claude-4-sonnet", canonical: "claude-4-sonnet" },
+      { pattern: "^claude-fable-5[.-]1", canonical: "claude-fable-5.1" },
       { pattern: "^claude-fable-5", canonical: "claude-fable-5" },
+      { pattern: "^gpt-6-astra(?:-(?:none|low|medium|high|xhigh|max|ultra))?-fast$", canonical: "gpt-6-astra-fast" },
+      { pattern: "^gpt-6-astra(?:-(?:none|low|medium|high|xhigh|max|ultra))?$", canonical: "gpt-6-astra" },
       { pattern: "^gpt-5\\.6-sol", canonical: "gpt-5.6-sol" },
       { pattern: "^gpt-5\\.6-terra", canonical: "gpt-5.6-terra" },
       { pattern: "^gpt-5\\.6-luna", canonical: "gpt-5.6-luna" },
@@ -116,11 +141,18 @@
       // negative lookahead keeps "gpt-5" matching while letting a versioned
       // slug fall through to the unknown-model path instead of a wrong price.
       { pattern: "^gpt-5(?![\\d.])", canonical: "gpt-5" },
+      { pattern: "^gemini-3\\.8-flash", canonical: "gemini-3.8-flash" },
+      { pattern: "^gemini-3\\.7-flash", canonical: "gemini-3.7-flash" },
+      { pattern: "^gemini-3\\.6-flash", canonical: "gemini-3.6-flash" },
       { pattern: "^gemini-3\\.5-flash", canonical: "gemini-3.5-flash" },
       { pattern: "^gemini-3\\.1-pro", canonical: "gemini-3.1-pro" },
       { pattern: "^gemini-3-pro", canonical: "gemini-3-pro" },
       { pattern: "^gemini-3-flash", canonical: "gemini-3-flash" },
       { pattern: "^gemini-2\\.5-flash", canonical: "gemini-2.5-flash" },
+      // Grok Bot modes bill separately: default at Fast rates, automation at base
+      // rates; cua has no confirmed rates and stays unpriced (upstream #1246).
+      { pattern: "^grok-bot-default$", canonical: "grok-4.6-fast" },
+      { pattern: "^grok-bot-automation$", canonical: "grok-4.6" },
       { pattern: "^grok-4\\.20", canonical: "grok-4.20" },
       { pattern: "^grok-4\\.3", canonical: "grok-4.3" },
       // High / High Fast are reasoning-effort suffixes on Cursor Grok CSV slugs.
@@ -130,6 +162,8 @@
       // reasoning-effort ("high") and Auto-mode suffixes; `.*fast` catches Fast.
       { pattern: "^grok-4[-.]6.*(?:high-)?fast", canonical: "grok-4.6-fast" },
       { pattern: "^grok-4[-.]6", canonical: "grok-4.6" },
+      // grok-proxy is the Grok Build CLI log slug for the same model (upstream #1123).
+      { pattern: "^grok-proxy$", canonical: "grok-build-0.1" },
       { pattern: "^grok-build-0\\.1", canonical: "grok-build-0.1" },
       { pattern: "^kimi-k2\\.5", canonical: "kimi-k2.5" },
     ],

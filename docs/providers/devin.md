@@ -93,7 +93,7 @@ Response fields used:
 | `userStatus.planStatus.planStart` / `planEnd` | Plan period for ACU/credit reset timers |
 | `userStatus.planStatus.planInfo.hideDailyQuota` | Hide daily quota line when `true` |
 
-When `weeklyQuotaRemainingPercent` is missing and `hideDailyQuota` is `true`, the plugin maps `dailyQuotaRemainingPercent` onto the weekly line as a last resort. This fallback is logged.
+When `weeklyQuotaRemainingPercent` is missing but a weekly reset is present, the weekly window exists and is exhausted (100% used). Only when both are missing and `hideDailyQuota` is `true` does the plugin map `dailyQuotaRemainingPercent` onto the weekly line as a last resort. Both fallbacks are logged. A present-but-unparsable weekly percentage throws instead of guessing.
 
 A credit value of `-1` is treated as unlimited.
 

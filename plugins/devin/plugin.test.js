@@ -388,7 +388,7 @@ describe("devin plugin", () => {
     )
   })
 
-  it("uses Devin's hidden daily quota field as weekly usage when weekly percentage is absent", async () => {
+  it("treats an omitted weekly percentage with a weekly reset as exhausted", async () => {
     const ctx = makeCtx()
     writeCredentials(ctx)
     ctx.host.http.request.mockReturnValue({
@@ -420,6 +420,52 @@ describe("devin plugin", () => {
       expect.stringContaining("hasWeeklyQuotaPercent=false")
     )
     expect(result.lines.find((line) => line.label === "Extra usage balance")?.value).toBe("$964.22")
+  })
+
+  it("maps the hidden daily quota onto weekly only when the whole weekly window is absent", async () => {
+    const ctx = makeCtx()
+    writeCredentials(ctx)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeQuotaResponse({
+          planInfo: { hideDailyQuota: true },
+          dailyQuotaRemainingPercent: 30,
+          weeklyQuotaRemainingPercent: undefined,
+          weeklyQuotaResetAtUnix: undefined,
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Daily quota")).toBeUndefined()
+    // Remaining flips to used, like every other quota row.
+    expect(result.lines.find((line) => line.label === "Weekly quota")).toMatchObject({
+      type: "progress",
+      used: 70,
+      limit: 100,
+      format: { kind: "percent" },
+      periodDurationMs: WEEK_MS,
+    })
+  })
+
+  it("throws instead of reporting exhausted when the weekly percentage is malformed", async () => {
+    for (const malformed of ["abc", true]) {
+      const ctx = makeCtx()
+      writeCredentials(ctx)
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        bodyText: JSON.stringify(
+          makeQuotaResponse({ weeklyQuotaRemainingPercent: malformed })
+        ),
+      })
+
+      const plugin = await loadPlugin()
+      // Present but unparsable is schema drift — never a credible 100% used.
+      expect(() => plugin.probe(ctx)).toThrow("Devin sent an invalid weekly quota. Try again later.")
+    }
   })
 
   it("renders quota percentages when reset timestamps are absent", async () => {
@@ -467,6 +513,7 @@ describe("devin plugin", () => {
         makeQuotaResponse({
           dailyQuotaRemainingPercent: undefined,
           weeklyQuotaRemainingPercent: undefined,
+          weeklyQuotaResetAtUnix: undefined,
           overageBalanceMicros: undefined,
         })
       ),

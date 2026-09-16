@@ -310,6 +310,8 @@
     },
     alias_rules: [
       { pattern: "^grok-build\\b", canonical: "grok-build-0.1" },
+      // grok-proxy is the recent Grok Build CLI log slug for the same model (upstream #1123).
+      { pattern: "^grok-proxy$", canonical: "grok-build-0.1" },
       { pattern: "^grok-composer-2\\.5-fast", canonical: "composer-2.5-fast" },
       { pattern: "^grok-4\\.20", canonical: "grok-4.20" },
       { pattern: "^grok-4\\.3", canonical: "grok-4.3" },

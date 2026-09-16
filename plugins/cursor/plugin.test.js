@@ -1830,14 +1830,105 @@ describe("cursor pricing", () => {
     expect(plugin.__test.resolveModelRates("gpt-5.6-sol")).toEqual({
       input: 5.0, cache_write: 6.25, cache_read: 0.5, output: 30.0, apply_max_mode_uplift: true,
     })
+    // Official OpenAI rates (upstream #1112): the preview numbers were ~25% high
+    // for Terra and 5x high for Luna.
     expect(plugin.__test.resolveModelRates("gpt-5.6-terra")).toEqual({
-      input: 2.5, cache_write: 3.125, cache_read: 0.25, output: 15.0, apply_max_mode_uplift: true,
+      input: 2.0, cache_write: 2.5, cache_read: 0.2, output: 12.0, apply_max_mode_uplift: true,
     })
     expect(plugin.__test.resolveModelRates("gpt-5.6-luna")).toEqual({
-      input: 1.0, cache_write: 1.25, cache_read: 0.1, output: 6.0, apply_max_mode_uplift: true,
+      input: 0.2, cache_write: 0.25, cache_read: 0.02, output: 1.2, apply_max_mode_uplift: true,
     })
     // A tiered slug must not fall through to the generic gpt-5 rule.
     expect(plugin.__test.resolveModelRates("gpt-5.6-sol-thinking").output).toBe(30.0)
+  })
+
+  it("resolves GPT-6 Astra base and fast effort variants", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.resolveModelRates("gpt-6-astra")).toEqual({
+      input: 10.0, cache_write: 12.5, cache_read: 1.0, output: 50.0, apply_max_mode_uplift: true,
+    })
+    expect(plugin.__test.resolveModelRates("gpt-6-astra-high")).toEqual(
+      plugin.__test.resolveModelRates("gpt-6-astra")
+    )
+    expect(plugin.__test.resolveModelRates("gpt-6-astra-fast")).toEqual({
+      input: 20.0, cache_write: 25.0, cache_read: 2.0, output: 100.0, apply_max_mode_uplift: true,
+    })
+    expect(plugin.__test.resolveModelRates("gpt-6-astra-high-fast")).toEqual(
+      plugin.__test.resolveModelRates("gpt-6-astra-fast")
+    )
+    // Unlisted suffixes stay unknown instead of inheriting base rates.
+    expect(plugin.__test.resolveModelRates("gpt-6-astra-turbo")).toBeNull()
+  })
+
+  it("resolves Gemini 3.6/3.7/3.8 Flash slugs and effort variants", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.resolveModelRates("gemini-3.6-flash")).toEqual({
+      input: 1.5, cache_write: 1.5, cache_read: 0.15, output: 7.5, apply_max_mode_uplift: true,
+    })
+    expect(plugin.__test.resolveModelRates("gemini-3.7-flash")).toEqual({
+      input: 0.75, cache_write: 0.75, cache_read: 0.075, output: 3.75, apply_max_mode_uplift: true,
+    })
+    expect(plugin.__test.resolveModelRates("gemini-3.8-flash")).toEqual({
+      input: 0.75, cache_write: 0.75, cache_read: 0.075, output: 3.75, apply_max_mode_uplift: true,
+    })
+    expect(plugin.__test.resolveModelRates("gemini-3.8-flash-high")).toEqual(
+      plugin.__test.resolveModelRates("gemini-3.8-flash")
+    )
+    expect(plugin.__test.resolveModelRates("gemini-3.7-flash-preview")).toEqual(
+      plugin.__test.resolveModelRates("gemini-3.7-flash")
+    )
+    // 3.6 must not collapse into 3.8: different input/output rates.
+    expect(plugin.__test.resolveModelRates("gemini-3.6-flash-high").input).toBe(1.5)
+  })
+
+  it("resolves Fable 5.1 without collapsing into Fable 5", async () => {
+    const plugin = await loadPlugin()
+    const fable51 = {
+      input: 10.0, cache_write: 12.5, cache_read: 0.25, output: 50.0, apply_max_mode_uplift: true,
+    }
+    expect(plugin.__test.resolveModelRates("claude-fable-5-1")).toEqual(fable51)
+    expect(plugin.__test.resolveModelRates("claude-fable-5.1")).toEqual(fable51)
+    expect(plugin.__test.resolveModelRates("claude-fable-5-1-thinking-high")).toEqual(fable51)
+    // Same input/output as Fable 5, but cache reads differ — the 5.1 rule must win.
+    const fable5 = plugin.__test.resolveModelRates("claude-fable-5-thinking-high")
+    expect(fable5.cache_read).toBe(1.0)
+    expect(fable51.cache_read).toBe(0.25)
+  })
+
+  it("resolves Muse Spark 1.3 effort variants and rejects contributor slugs", async () => {
+    const plugin = await loadPlugin()
+    const spark = {
+      input: 1.25, cache_write: 1.25, cache_read: 0.15, output: 4.25, apply_max_mode_uplift: true,
+    }
+    expect(plugin.__test.resolveModelRates("muse-spark-1.3")).toEqual(spark)
+    for (const effort of ["minimal", "low", "medium", "high", "xhigh", "extra-high", "max"]) {
+      expect(plugin.__test.resolveModelRates(`muse-spark-1.3-${effort}`)).toEqual(spark)
+    }
+    // Contributor variants have separate pricing; -fast and unknown versions stay unknown.
+    expect(plugin.__test.resolveModelRates("muse-spark-1.3-contributor")).toBeNull()
+    expect(plugin.__test.resolveModelRates("muse-spark-1.3-high-fast")).toBeNull()
+    expect(plugin.__test.resolveModelRates("muse-spark-1.4-high")).toBeNull()
+  })
+
+  it("prices Grok Bot modes separately and leaves cua unpriced", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.resolveModelRates("grok-bot-default")).toEqual(
+      plugin.__test.resolveModelRates("grok-4.6-fast")
+    )
+    expect(plugin.__test.resolveModelRates("grok-bot-default").input).toBe(4.0)
+    expect(plugin.__test.resolveModelRates("grok-bot-automation")).toEqual(
+      plugin.__test.resolveModelRates("grok-4.6")
+    )
+    expect(plugin.__test.resolveModelRates("grok-bot-automation").input).toBe(2.0)
+    expect(plugin.__test.resolveModelRates("grok-bot-cua")).toBeNull()
+  })
+
+  it("resolves grok-proxy to Grok Build rates", async () => {
+    const plugin = await loadPlugin()
+    expect(plugin.__test.resolveModelRates("grok-proxy")).toEqual(
+      plugin.__test.resolveModelRates("grok-build-0.1")
+    )
+    expect(plugin.__test.resolveModelRates("grok-proxy").input).toBe(1.0)
   })
 
   it("resolves Auto Cost and Cursor-prefixed Grok High variants", async () => {

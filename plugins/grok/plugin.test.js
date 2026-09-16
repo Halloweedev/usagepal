@@ -600,6 +600,10 @@ describe("grok spend aggregation", () => {
     expect(plugin.__test.resolveModelRates("grok-build")).toEqual(
       plugin.__test.GROK_PRICING.models["grok-build-0.1"],
     )
+    // grok-proxy is the recent Grok Build CLI log slug for the same model.
+    expect(plugin.__test.resolveModelRates("grok-proxy")).toEqual(
+      plugin.__test.GROK_PRICING.models["grok-build-0.1"],
+    )
   })
 
   it("resolves grok-4.5-build onto grok-4.5 rates", async () => {

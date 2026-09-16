@@ -409,7 +409,14 @@
 
     const hideDailyQuota = planInfo.hideDailyQuota === true
     const dailyRemaining = readFiniteNumber(planStatus.dailyQuotaRemainingPercent)
+    const weeklyPercentPresent = hasOwn(planStatus, "weeklyQuotaRemainingPercent")
     const weeklyRemaining = readFiniteNumber(planStatus.weeklyQuotaRemainingPercent)
+    // A present-but-unparsable percentage is schema drift, not an omitted zero:
+    // fail loudly instead of letting the exhausted fallback below turn it into
+    // a credible 100% used.
+    if (weeklyPercentPresent && weeklyRemaining === null) {
+      throw "Devin sent an invalid weekly quota. Try again later."
+    }
     const dailyReset = !hideDailyQuota ? unixSecondsToIso(ctx, planStatus.dailyQuotaResetAtUnix) : null
     const weeklyReset = unixSecondsToIso(ctx, planStatus.weeklyQuotaResetAtUnix)
 
@@ -423,9 +430,14 @@
     let weeklyLine = null
     if (weeklyRemaining !== null) {
       weeklyLine = buildQuotaLine(ctx, "Weekly quota", weeklyRemaining, weeklyReset, WEEK_MS)
+    } else if (weeklyReset !== null) {
+      // Proto3 JSON omits zero values: a weekly reset with no percentage means the
+      // weekly window exists and is exhausted.
+      ctx.host.log.info("Devin weekly quota exhausted: weeklyQuotaRemainingPercent omitted with weeklyQuotaResetAtUnix present")
+      weeklyLine = buildQuotaLine(ctx, "Weekly quota", 0, weeklyReset, WEEK_MS)
     } else if (hideDailyQuota && dailyRemaining !== null) {
-      ctx.host.log.info("Devin weekly quota mapped from daily because weeklyQuotaRemainingPercent is missing")
-      weeklyLine = buildUsedQuotaLine(ctx, "Weekly quota", dailyRemaining, weeklyReset, WEEK_MS)
+      ctx.host.log.info("Devin weekly quota mapped from daily because weekly quota is absent")
+      weeklyLine = buildQuotaLine(ctx, "Weekly quota", dailyRemaining, weeklyReset, WEEK_MS)
     }
 
     const acuLine = buildAcuLine(ctx, planStatus, planEnd, planPeriod)
