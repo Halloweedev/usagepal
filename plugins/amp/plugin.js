@@ -41,7 +41,7 @@
     var result = {
       credits: null,
       subscriptionPlan: null,
-      otherRemainingPct: null,
+      agentRemainingPct: null,
       orbRemainingPct: null,
     }
 
@@ -51,13 +51,15 @@
       if (Number.isFinite(credits)) result.credits = credits
     }
 
-    var subscriptionMatch = text.match(/Subscription ([^:\r\n]+): ([0-9]+(?:\.[0-9]+)?)% other usage and ([0-9]+(?:\.[0-9]+)?)% orb usage remaining/)
-    if (subscriptionMatch) {
-      var otherRemainingPct = Number(subscriptionMatch[2])
-      var orbRemainingPct = Number(subscriptionMatch[3])
-      if (Number.isFinite(otherRemainingPct) && Number.isFinite(orbRemainingPct)) {
-        result.subscriptionPlan = subscriptionMatch[1].trim()
-        result.otherRemainingPct = otherRemainingPct
+    var tierMatch = text.match(/^Amp ([^:\r\n]+?) Tier:\s*([^\r\n]*)/m)
+    if (tierMatch) {
+      var agentMatch = tierMatch[2].match(/\bagent usage\b.*?\(([0-9]+(?:\.[0-9]+)?)%\)/)
+      var orbMatch = tierMatch[2].match(/\borb usage\b.*?\(([0-9]+(?:\.[0-9]+)?)%\)/)
+      var agentRemainingPct = agentMatch ? Number(agentMatch[1]) : NaN
+      var orbRemainingPct = orbMatch ? Number(orbMatch[1]) : NaN
+      if (Number.isFinite(agentRemainingPct) && Number.isFinite(orbRemainingPct)) {
+        result.subscriptionPlan = tierMatch[1].trim()
+        result.agentRemainingPct = agentRemainingPct
         result.orbRemainingPct = orbRemainingPct
       }
     }
@@ -104,13 +106,13 @@
 
     var balance = parseBalanceText(json.result.displayText)
     if (!balance) {
-      if (/Subscription /.test(json.result.displayText)) {
+      if (/Amp [^:\r\n]+ Tier:/.test(json.result.displayText)) {
         ctx.host.log.error("failed to parse Amp usage display text")
         throw "Could not parse usage data."
       }
       ctx.host.log.warn("no balance data found, assuming credits-only")
-      balance = { credits: 0, subscriptionPlan: null, otherRemainingPct: null, orbRemainingPct: null }
-    } else if (/Subscription /.test(json.result.displayText) && balance.subscriptionPlan === null) {
+      balance = { credits: 0, subscriptionPlan: null, agentRemainingPct: null, orbRemainingPct: null }
+    } else if (/Amp [^:\r\n]+ Tier:/.test(json.result.displayText) && balance.subscriptionPlan === null) {
       ctx.host.log.error("failed to parse Amp subscription display text")
       throw "Could not parse usage data."
     }
@@ -120,8 +122,8 @@
 
     if (balance.subscriptionPlan !== null) {
       lines.push(ctx.line.progress({
-        label: "Subscription Usage",
-        used: Math.min(100, Math.max(0, 100 - balance.otherRemainingPct)),
+        label: "Agent Usage",
+        used: Math.min(100, Math.max(0, 100 - balance.agentRemainingPct)),
         limit: 100,
         format: { kind: "percent" },
       }))

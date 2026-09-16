@@ -37,10 +37,10 @@ Content-Type: application/json
 
 The response contains a `displayText` string whose contents vary by user tier:
 
-**Subscription:**
+**Paid tier:**
 ```
 Signed in as <user>
-Subscription <plan>: <percent>% other usage and <percent>% orb usage remaining
+Amp <plan> Tier: agent usage $<remaining> of $<total> remaining (<percent>%), orb usage <remaining>h of <total>h <size> orb hours remaining (<percent>%) - period <start> to <end>, ends in <duration>
 ```
 
 **Paid credits only:**
@@ -50,22 +50,22 @@ Individual credits: $<credits> remaining - https://ampcode.com/settings
 ```
 
 The plugin parses the display text with regex to extract:
-- **Subscription:** plan name, other usage remaining, and orb usage remaining
+- **Paid tier:** plan name, agent usage remaining, and orb usage remaining. Amounts, orb size, and period wording are ignored so presentation changes there do not break parsing.
 - **Credits:** `Individual credits: $N remaining` → paid credits balance
 
 ## Plan Detection
 
 | Condition | Plan |
 |-----------|------|
-| Subscription present | Subscription plan name, such as `"Megawatt"` |
-| No subscription | `"Credits"` |
+| Paid tier present | Tier name, such as `"Megawatt"` |
+| No paid tier | `"Credits"` |
 
 ## Displayed Lines
 
 | Line        | Scope    | Condition                   | Description                            |
 |-------------|----------|-----------------------------|----------------------------------------|
-| Subscription Usage | overview | Subscription enabled        | Included non-orb subscription usage consumed |
-| Orb Usage   | overview | Subscription enabled        | Included orb usage consumed            |
+| Agent Usage | overview | Paid tier enabled            | Included agent usage consumed           |
+| Orb Usage   | overview | Paid tier enabled            | Included orb usage consumed             |
 | Credits     | overview | Credits > $0, or credits-only accounts | Individual credits balance      |
 
 ## Errors

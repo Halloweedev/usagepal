@@ -3708,14 +3708,15 @@ mod tests {
 
     #[test]
     fn redact_body_redacts_display_text() {
-        let body = r#"{"ok":true,"result":{"displayText":"Signed in as person@example.com (nickname)\nAmp Free: 48% remaining today"}}"#;
+        let body = r#"{"ok":true,"result":{"displayText":"Signed in as person@example.com (nickname)\nAmp Megawatt Tier: agent usage $17.28 of $20 remaining (86%), orb usage 728.4h of 750h a1.small orb hours remaining (97%) - period 2026-08-30 to 2026-09-30, ends in 15 days\nIndividual credits: $4.99 remaining - https://ampcode.com/settings"}}"#;
         let redacted = redact_body(body);
         assert!(
             !redacted.contains("person@example.com") && !redacted.contains("nickname"),
             "displayText should be redacted, got: {}",
             redacted
         );
-        assert!(redacted.contains("\"displayText\": \"Sign...oday\""));
+        assert!(!redacted.contains("$17.28") && !redacted.contains("728.4h"));
+        assert!(redacted.contains("\"displayText\": \"Sign...ings\""));
     }
 
     /// AGENTS.md requires a redaction-list audit on every plugin-API change.
