@@ -5,6 +5,8 @@ import {
   evaluate,
   initialNotificationState,
   metricKey,
+  sanitizeBudgetMap,
+  sanitizeBudgetPercent,
   transitions,
   type MetricObservation,
   type NotificationState,
@@ -16,6 +18,7 @@ const ALL_ON: PaceToggles = {
   healthyToClose: true,
   closeToRunningOut: true,
   sessionReset: true,
+  budgetExceeded: true,
 }
 
 const obs = (
@@ -196,7 +199,7 @@ describe("evaluate", () => {
     const { fired } = evaluate(
       providersAt(95),
       new Map(),
-      { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false },
+      { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false, budgetExceeded: false },
       1
     )
     expect(fired).toEqual([])
@@ -295,5 +298,143 @@ describe("evaluate", () => {
     expect(first.fired).toEqual([])
     expect(first.nextStates.has(metricKey("codex", "work", "Session"))).toBe(true)
     expect(first.nextStates.has(metricKey("codex", "home", "Session"))).toBe(true)
+  })
+})
+
+describe("budgetExceeded", () => {
+  // Note: remainingFraction is fixed at a neutral 0.5 so the under-10% edge never
+  // interferes — each test drives the budget axis via usedFraction only.
+  const budgeted = (
+    usedFraction: number,
+    budgetPercent: number | null | undefined = 20,
+    resetsAtMs: number | null = 1000
+  ): MetricObservation => ({
+    bucket: "healthy",
+    remainingFraction: 0.5,
+    usedFraction,
+    resetsAtMs,
+    budgetPercent,
+  })
+
+  it("primes the first observation without firing, even when already over budget", () => {
+    const { fires } = run([budgeted(0.5)])
+    expect(fires[0]).toEqual([])
+  })
+
+  it("fires Over Budget when usage crosses the budget percent", () => {
+    const { fires } = run([budgeted(0.1), budgeted(0.2), budgeted(0.35)])
+    expect(fires[1]).toEqual(["budgetExceeded"])
+    expect(fires[2]).toEqual([])
+  })
+
+  it("does not fire without a budget set", () => {
+    const { fires } = run([budgeted(0.1, null), budgeted(0.5, null)])
+    expect(fires.flat()).toEqual([])
+  })
+
+  it("does not fire when the trigger is off", () => {
+    const OFF: PaceToggles = { ...ALL_ON, budgetExceeded: false }
+    const { fires } = run([budgeted(0.1), budgeted(0.5)], OFF)
+    expect(fires.flat()).toEqual([])
+  })
+
+  it("re-fires after recovering below the budget and crossing again", () => {
+    const { fires } = run([
+      budgeted(0.1),
+      budgeted(0.25), // fires
+      budgeted(0.15), // recovers, re-arms
+      budgeted(0.3), // fires again
+    ])
+    expect(fires[1]).toEqual(["budgetExceeded"])
+    expect(fires[2]).toEqual([])
+    expect(fires[3]).toEqual(["budgetExceeded"])
+  })
+
+  it("re-fires in a new reset window", () => {
+    const { fires } = run([
+      budgeted(0.1, 20, 1000),
+      budgeted(0.25, 20, 1000), // fires
+      budgeted(0.3, 20, 2000), // new window re-arms and fires
+    ])
+    expect(fires[1]).toEqual(["budgetExceeded"])
+    expect(fires[2]).toEqual(["budgetExceeded"])
+  })
+
+  it("fires when usage jumps past the budget straight to exhaustion", () => {
+    const { fires } = run([budgeted(0.1, 90), budgeted(1, 90)])
+    expect(fires[1]).toEqual(["budgetExceeded"])
+  })
+
+  it("does not consume the edge when the trigger is off, so re-enabling fires", () => {
+    const OFF: PaceToggles = { ...ALL_ON, budgetExceeded: false }
+    let state: NotificationState = initialNotificationState()
+    ;({ newState: state } = transitions(budgeted(0.1), state, OFF))
+    const off = transitions(budgeted(0.3), state, OFF)
+    expect(off.fire).toEqual([])
+    const on = transitions(budgeted(0.3), off.newState, ALL_ON)
+    expect(on.fire).toEqual(["budgetExceeded"])
+  })
+
+  it("evaluates budgets per provider from the budget map", () => {
+    const lines = (used: number) => [
+      { type: "progress", label: "Weekly", used, limit: 100, format: { kind: "percent" } } as MetricLine,
+    ]
+    const providers = [
+      { providerId: "claude", displayName: "Claude", lines: lines(10) },
+      { providerId: "codex", displayName: "Codex", lines: lines(10) },
+    ]
+    const budgets = { claude: 20 }
+
+    const first = evaluate(providers, new Map(), ALL_ON, 1, budgets)
+    expect(first.fired).toEqual([])
+
+    const over = [
+      { providerId: "claude", displayName: "Claude", lines: lines(25) },
+      { providerId: "codex", displayName: "Codex", lines: lines(25) },
+    ]
+    const second = evaluate(over, first.nextStates, ALL_ON, 2, budgets)
+    expect(second.fired).toHaveLength(1)
+    expect(second.fired[0]).toMatchObject({
+      milestone: "budgetExceeded",
+      providerId: "claude",
+      displayName: "Claude",
+      metricLabel: "Weekly",
+      budgetPercent: 20,
+      usedPercent: 25,
+    })
+  })
+})
+
+describe("sanitizeBudgetPercent", () => {
+  it("accepts integers 1–100", () => {
+    expect(sanitizeBudgetPercent(1)).toBe(1)
+    expect(sanitizeBudgetPercent(20)).toBe(20)
+    expect(sanitizeBudgetPercent(100)).toBe(100)
+  })
+
+  it("rounds fractional input", () => {
+    expect(sanitizeBudgetPercent(19.6)).toBe(20)
+  })
+
+  it("rejects out-of-range and non-numeric input", () => {
+    expect(sanitizeBudgetPercent(0)).toBeNull()
+    expect(sanitizeBudgetPercent(101)).toBeNull()
+    expect(sanitizeBudgetPercent(NaN)).toBeNull()
+    expect(sanitizeBudgetPercent("20")).toBeNull()
+    expect(sanitizeBudgetPercent(null)).toBeNull()
+    expect(sanitizeBudgetPercent(undefined)).toBeNull()
+  })
+})
+
+describe("sanitizeBudgetMap", () => {
+  it("keeps valid entries and drops the rest", () => {
+    expect(sanitizeBudgetMap({ claude: 20, codex: 0, cursor: "50", grok: 150 })).toEqual({
+      claude: 20,
+    })
+  })
+
+  it("returns empty for non-objects", () => {
+    expect(sanitizeBudgetMap(null)).toEqual({})
+    expect(sanitizeBudgetMap("20")).toEqual({})
   })
 })

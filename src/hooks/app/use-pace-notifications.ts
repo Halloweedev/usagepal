@@ -5,9 +5,11 @@ import {
   anyEnabled,
   evaluate,
   MILESTONE_META,
+  type FiredNotification,
   type NotificationState,
   type ProviderMetrics,
 } from "@/lib/pace-notifications"
+import { useAppBudgetsStore } from "@/stores/app-budgets-store"
 import { useAppNotificationsStore } from "@/stores/app-notifications-store"
 
 export type PaceNotificationDelivery = {
@@ -17,6 +19,24 @@ export type PaceNotificationDelivery = {
 
 export async function deliverPaceNotification(notification: PaceNotificationDelivery): Promise<void> {
   await invoke("send_pace_notification", notification)
+}
+
+function notificationCopy(item: FiredNotification): PaceNotificationDelivery {
+  if (
+    item.milestone === "budgetExceeded" &&
+    item.budgetPercent != null &&
+    item.usedPercent != null
+  ) {
+    return {
+      title: MILESTONE_META.budgetExceeded.title,
+      body: `${item.displayName} ${item.metricLabel} — over your ${item.budgetPercent}% budget (${item.usedPercent}% used).`,
+    }
+  }
+  const meta = MILESTONE_META[item.milestone]
+  return {
+    title: meta.title,
+    body: `${item.displayName} ${item.metricLabel} — ${meta.body}`,
+  }
 }
 
 /**
@@ -32,11 +52,17 @@ export async function deliverPaceNotification(notification: PaceNotificationDeli
 export function usePaceNotifications(pluginStates: Record<string, PluginState>) {
   const settings = useAppNotificationsStore((s) => s.settings)
   const hydrate = useAppNotificationsStore((s) => s.hydrate)
+  const budgets = useAppBudgetsStore((s) => s.budgets)
+  const hydrateBudgets = useAppBudgetsStore((s) => s.hydrate)
   const statesRef = useRef<Map<string, NotificationState>>(new Map())
 
   useEffect(() => {
     void hydrate()
   }, [hydrate])
+
+  useEffect(() => {
+    void hydrateBudgets()
+  }, [hydrateBudgets])
 
   useEffect(() => {
     if (!isTauri() || !anyEnabled(settings)) return
@@ -53,7 +79,7 @@ export function usePaceNotifications(pluginStates: Record<string, PluginState>) 
 
     if (providers.length === 0) return
 
-    const { fired, nextStates } = evaluate(providers, statesRef.current, settings, Date.now())
+    const { fired, nextStates } = evaluate(providers, statesRef.current, settings, Date.now(), budgets)
     statesRef.current = nextStates
     if (fired.length === 0) return
 
@@ -62,12 +88,8 @@ export function usePaceNotifications(pluginStates: Record<string, PluginState>) 
       if (cancelled) return
 
       for (const item of fired) {
-        const meta = MILESTONE_META[item.milestone]
         try {
-          await deliverPaceNotification({
-            title: meta.title,
-            body: `${item.displayName} ${item.metricLabel} — ${meta.body}`,
-          })
+          await deliverPaceNotification(notificationCopy(item))
           // Commit the dedup mark only after a successful send.
           statesRef.current.get(item.key)?.firedMilestones.add(item.milestone)
         } catch (error) {
@@ -79,5 +101,5 @@ export function usePaceNotifications(pluginStates: Record<string, PluginState>) 
     return () => {
       cancelled = true
     }
-  }, [pluginStates, settings])
+  }, [pluginStates, settings, budgets])
 }

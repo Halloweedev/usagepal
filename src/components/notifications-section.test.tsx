@@ -6,10 +6,19 @@ const state = vi.hoisted(() => ({
   invokeMock: vi.fn().mockResolvedValue(undefined),
   setToggleMock: vi.fn(),
   store: {
-    settings: { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false },
+    settings: { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false, budgetExceeded: false },
     setToggle: (...args: unknown[]) => state.setToggleMock(...args),
     hydrate: vi.fn().mockResolvedValue(undefined),
   },
+}))
+
+vi.mock("@/stores/app-budgets-store", () => ({
+  useAppBudgetsStore: (selector: (s: { budgets: Record<string, number> }) => unknown) =>
+    selector({ budgets: {} }),
+}))
+vi.mock("@/stores/app-plugin-store", () => ({
+  useAppPluginStore: (selector: (s: { pluginsMeta: unknown[]; pluginSettings: null }) => unknown) =>
+    selector({ pluginsMeta: [], pluginSettings: null }),
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: state.invokeMock }))
@@ -36,12 +45,12 @@ describe("NotificationsSection", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
   })
 
-  it("opens a modal with the 4 alert checkboxes on button click", async () => {
+  it("opens a modal with the 5 alert checkboxes on button click", async () => {
     render(<NotificationsSection />)
     await openNotificationsDialog()
 
     expect(screen.getByRole("dialog", { name: "Notifications" })).toHaveAttribute("aria-modal", "true")
-    expect(screen.getAllByRole("checkbox")).toHaveLength(4)
+    expect(screen.getAllByRole("checkbox")).toHaveLength(5)
   })
 
   it("closes the notifications dialog on Escape", async () => {

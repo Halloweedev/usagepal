@@ -10,13 +10,19 @@ import { calculatePaceStatus } from "@/lib/pace-status"
  */
 
 /** One of the quota milestones a user can be alerted about. */
-export type PaceMilestone = "underTenPercent" | "healthyToClose" | "closeToRunningOut" | "sessionReset"
+export type PaceMilestone =
+  | "underTenPercent"
+  | "healthyToClose"
+  | "closeToRunningOut"
+  | "sessionReset"
+  | "budgetExceeded"
 
 export const PACE_MILESTONES: PaceMilestone[] = [
   "underTenPercent",
   "healthyToClose",
   "closeToRunningOut",
   "sessionReset",
+  "budgetExceeded",
 ]
 
 /** The pace-severity bucket a metric is in. `untracked` carries no trustworthy pace. */
@@ -51,6 +57,12 @@ export const MILESTONE_META: Record<
     body: "Back to 0% used.",
     tooltip: "Alert when a session returns to 0% used.",
   },
+  budgetExceeded: {
+    label: "Over Budget",
+    title: "Over Budget",
+    body: "Over your set budget for this window.",
+    tooltip: "Alert when usage crosses the budget percent you set per provider.",
+  },
 }
 
 /** Which per-milestone toggles are currently on. */
@@ -59,10 +71,38 @@ export type PaceToggles = {
   healthyToClose: boolean
   closeToRunningOut: boolean
   sessionReset: boolean
+  budgetExceeded: boolean
 }
 
 export const anyEnabled = (t: PaceToggles): boolean =>
-  t.underTenPercent || t.healthyToClose || t.closeToRunningOut || t.sessionReset
+  t.underTenPercent ||
+  t.healthyToClose ||
+  t.closeToRunningOut ||
+  t.sessionReset ||
+  t.budgetExceeded
+
+/** Per-provider usage budgets as a percent of the limit (1–100). A provider
+ * with no entry has no budget and never fires the Over Budget milestone. */
+export type BudgetMap = Record<string, number>
+
+/** Sanitize a persisted budget percent: integers 1–100, anything else → null. */
+export function sanitizeBudgetPercent(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null
+  const rounded = Math.round(value)
+  if (rounded < 1 || rounded > 100) return null
+  return rounded
+}
+
+/** Sanitize a persisted budget map, dropping invalid entries. */
+export function sanitizeBudgetMap(value: unknown): BudgetMap {
+  if (!value || typeof value !== "object") return {}
+  const out: BudgetMap = {}
+  for (const [providerId, percent] of Object.entries(value as Record<string, unknown>)) {
+    const clean = sanitizeBudgetPercent(percent)
+    if (clean != null) out[providerId] = clean
+  }
+  return out
+}
 
 /** Deduplication state for one metric, persisted across refresh passes. */
 export type NotificationState = {
@@ -76,6 +116,8 @@ export type NotificationState = {
   wasUnderTenPercent: boolean
   /** Whether this metric previously had non-zero usage, so a reset to 0% is an edge. */
   wasAboveZeroUsed: boolean
+  /** Whether usage was at or above the provider's budget, so crossing it is an edge. */
+  wasOverBudget: boolean
   /** True once the first real observation is recorded as the baseline (no firing before then). */
   primed: boolean
 }
@@ -86,6 +128,7 @@ export const initialNotificationState = (): NotificationState => ({
   previousBucket: "untracked",
   wasUnderTenPercent: false,
   wasAboveZeroUsed: false,
+  wasOverBudget: false,
   primed: false,
 })
 
@@ -99,6 +142,8 @@ export type MetricObservation = {
   resetsAtMs: number | null
   /** True for the provider's rolling session meter. */
   isSession?: boolean
+  /** The provider's budget as a percent of the limit (1–100); null/undefined = no budget. */
+  budgetPercent?: number | null
 }
 
 export type PaceTransition = {
@@ -119,6 +164,7 @@ const clone = (state: NotificationState): NotificationState => ({
   previousBucket: state.previousBucket,
   wasUnderTenPercent: state.wasUnderTenPercent,
   wasAboveZeroUsed: state.wasAboveZeroUsed,
+  wasOverBudget: state.wasOverBudget,
   primed: state.primed,
 })
 
@@ -139,11 +185,21 @@ function maybeFire(
 }
 
 /**
+ * Whether usage has reached the provider's budget. `budgetPercent` is 1–100;
+ * null/undefined means the provider has no budget and never fires.
+ */
+function isOverBudget(budgetPercent: number | null | undefined, usedFraction: number): boolean {
+  if (budgetPercent == null) return false
+  return usedFraction >= budgetPercent / 100
+}
+
+/**
  * Decide which milestones to fire for one metric this pass, and the state to persist. Rules mirror
  * the reference logic: a later reset clears dedup; the two pace edges fire only on a worsening step
  * between adjacent buckets; under-10% fires the first time remaining crosses under 10% and re-arms on
- * recovery; `noData` suppresses everything without disturbing recorded signals; and the first real
- * observation is recorded as a baseline without firing.
+ * recovery; the budget edge fires the first time usage reaches the provider's budget percent and
+ * re-arms on recovery below it or a new window; `noData` suppresses everything without disturbing
+ * recorded signals; and the first real observation is recorded as a baseline without firing.
  */
 export function transitions(
   obs: MetricObservation,
@@ -159,6 +215,7 @@ export function transitions(
   if (resetsAtMs != null && (previous.resetsAtMs == null || resetsAtMs > previous.resetsAtMs)) {
     next.firedMilestones = new Set()
     next.wasUnderTenPercent = false
+    next.wasOverBudget = false
     next.previousBucket = "untracked"
     // Keep wasAboveZeroUsed: a session reset is detected by seeing a used session return to 0% in
     // the next window.
@@ -179,6 +236,7 @@ export function transitions(
     next.previousBucket = currentBucket
     next.wasUnderTenPercent = remainingFraction < 0.1
     next.wasAboveZeroUsed = usedFraction > 0
+    next.wasOverBudget = isOverBudget(obs.budgetPercent, usedFraction)
     next.firedMilestones = new Set()
     return { fire: [], newState: next }
   }
@@ -194,12 +252,28 @@ export function transitions(
   }
   next.wasAboveZeroUsed = usedFraction > 0
 
+  // Budget edge, tracked independently of the pace verdict and evaluated before the exhausted
+  // suppression: blowing past the budget straight to exhaustion is still worth one alert.
+  const overNow = isOverBudget(obs.budgetPercent, usedFraction)
+  const overCrossed = overNow && !next.wasOverBudget
+  let overFired = false
+  if (overCrossed && maybeFire("budgetExceeded", fire, next, toggles)) {
+    overFired = true
+  }
+  if (!overNow) {
+    next.firedMilestones.delete("budgetExceeded")
+  }
+  if (!overCrossed || overFired) {
+    next.wasOverBudget = overNow
+  }
+
   // Once a metric is effectively exhausted, pace alerts are no longer useful and read as stale noise.
   // Record the exhausted state so the same crossing is not replayed later, then suppress all milestones.
+  // (The budget edge above already ran: blowing past the budget straight to exhaustion keeps its alert.)
   if (usedFraction >= 0.99) {
     next.previousBucket = currentBucket
     next.wasUnderTenPercent = true
-    return { fire: [], newState: next }
+    return { fire, newState: next }
   }
 
   // Pace-verdict edges — only for live-pace states. "Cutting It Close" fires when the metric is
@@ -304,6 +378,9 @@ export type FiredNotification = {
   providerId: string
   displayName: string
   metricLabel: string
+  /** Set for the Over Budget milestone: the budget percent crossed and current used percent. */
+  budgetPercent: number | null
+  usedPercent: number | null
 }
 
 /**
@@ -311,12 +388,16 @@ export type FiredNotification = {
  * now and the next state map. Fired candidates are NOT yet marked in the returned state — the caller
  * marks each one only after its notification is delivered, so a failed/blocked delivery re-fires next
  * pass. States for metrics not seen this pass are carried forward unchanged.
+ *
+ * `budgets` maps provider ids to a budget percent of the limit (1–100). A metric whose provider has
+ * no entry is never evaluated for the Over Budget milestone.
  */
 export function evaluate(
   providers: ProviderMetrics[],
   states: Map<string, NotificationState>,
   toggles: PaceToggles,
-  nowMs: number
+  nowMs: number,
+  budgets?: BudgetMap
 ): { fired: FiredNotification[]; nextStates: Map<string, NotificationState> } {
   const nextStates = new Map(states)
   const fired: FiredNotification[] = []
@@ -324,13 +405,18 @@ export function evaluate(
   if (!anyEnabled(toggles)) return { fired, nextStates }
 
   for (const provider of providers) {
+    const budgetPercent = sanitizeBudgetPercent(budgets?.[provider.providerId])
     for (const line of provider.lines) {
       const obs = deriveObservation(line, nowMs)
       if (!obs) continue
 
       const key = metricKey(provider.providerId, provider.accountId, line.label)
       const previous = nextStates.get(key) ?? initialNotificationState()
-      const { fire, newState } = transitions({ ...obs, isSession: line.label === "Session" }, previous, toggles)
+      const { fire, newState } = transitions(
+        { ...obs, isSession: line.label === "Session", budgetPercent },
+        previous,
+        toggles
+      )
       nextStates.set(key, newState)
 
       for (const milestone of fire) {
@@ -340,6 +426,11 @@ export function evaluate(
           providerId: provider.providerId,
           displayName: provider.displayName,
           metricLabel: line.label,
+          budgetPercent: milestone === "budgetExceeded" ? budgetPercent : null,
+          usedPercent:
+            milestone === "budgetExceeded" && obs.usedFraction != null
+              ? Math.round(obs.usedFraction * 100)
+              : null,
         })
       }
     }

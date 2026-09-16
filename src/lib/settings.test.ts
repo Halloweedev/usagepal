@@ -24,6 +24,7 @@ import {
   getEnabledPluginIds,
   loadAutoUpdateInterval,
   loadBetaUpdatesEnabled,
+  loadBudgetMap,
   loadDisplayMode,
   loadGlobalShortcut,
   loadMenubarIconStyle,
@@ -51,6 +52,7 @@ import {
   resetOnboardingCompleted,
   saveAutoUpdateInterval,
   saveBetaUpdatesEnabled,
+  saveBudgetMap,
   saveDisplayMode,
   saveGlobalShortcut,
   saveMenubarIconStyle,
@@ -541,6 +543,7 @@ describe("settings", () => {
       healthyToClose: false,
       closeToRunningOut: true,
       sessionReset: false,
+      budgetExceeded: false,
     })
   })
 
@@ -550,6 +553,7 @@ describe("settings", () => {
       healthyToClose: false,
       closeToRunningOut: false,
       sessionReset: true,
+      budgetExceeded: false,
     }
 
     await savePaceNotificationSettings(settings)
@@ -675,7 +679,18 @@ describe("settings", () => {
       healthyToClose: false,
       closeToRunningOut: true,
       sessionReset: true,
+      budgetExceeded: false,
     })
+  })
+
+  it("loads empty budgets when missing", async () => {
+    await expect(loadBudgetMap()).resolves.toEqual({})
+  })
+
+  it("saves and loads budgets, sanitizing invalid entries", async () => {
+    await saveBudgetMap({ claude: 20, codex: 150 } as Record<string, number>)
+
+    await expect(loadBudgetMap()).resolves.toEqual({ claude: 20 })
   })
 
   it("loads default share settings when missing", async () => {

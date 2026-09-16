@@ -1,5 +1,6 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import type { PluginMeta } from "@/lib/plugin-types";
+import { sanitizeBudgetMap, type BudgetMap } from "@/lib/pace-notifications";
 
 // Refresh cooldown duration in milliseconds (5 minutes)
 export const REFRESH_COOLDOWN_MS = 300_000;
@@ -37,6 +38,7 @@ export type PaceNotificationSettings = {
   healthyToClose: boolean;
   closeToRunningOut: boolean;
   sessionReset: boolean;
+  budgetExceeded: boolean;
 };
 
 export const DEFAULT_PACE_NOTIFICATION_SETTINGS: PaceNotificationSettings = {
@@ -44,6 +46,7 @@ export const DEFAULT_PACE_NOTIFICATION_SETTINGS: PaceNotificationSettings = {
   healthyToClose: false,
   closeToRunningOut: false,
   sessionReset: false,
+  budgetExceeded: false,
 };
 
 export const DEFAULT_ONBOARDING_COMPLETED = false;
@@ -53,6 +56,7 @@ export const ONBOARDING_PACE_NOTIFICATION_SETTINGS: PaceNotificationSettings = {
   healthyToClose: false,
   closeToRunningOut: true,
   sessionReset: true,
+  budgetExceeded: false,
 };
 
 export type SharePreset = "summary" | "detailed" | "models";
@@ -632,6 +636,7 @@ function normalizePaceNotifications(value: unknown): PaceNotificationSettings {
     healthyToClose: readBool("healthyToClose"),
     closeToRunningOut: readBool("closeToRunningOut"),
     sessionReset: readBool("sessionReset"),
+    budgetExceeded: readBool("budgetExceeded"),
   };
 }
 
@@ -644,6 +649,22 @@ export async function savePaceNotificationSettings(
   settings: PaceNotificationSettings
 ): Promise<void> {
   await store.set(PACE_NOTIFICATIONS_KEY, settings);
+  await store.save();
+}
+
+/** Per-provider usage budgets as a percent of the limit (1–100). Providers without an entry have
+ * no budget. Evaluated per reset window: crossing the budget fires one Over Budget alert. */
+export type { BudgetMap };
+
+const BUDGETS_KEY = "budgets";
+
+export async function loadBudgetMap(): Promise<BudgetMap> {
+  const stored = await store.get<unknown>(BUDGETS_KEY);
+  return sanitizeBudgetMap(stored);
+}
+
+export async function saveBudgetMap(budgets: BudgetMap): Promise<void> {
+  await store.set(BUDGETS_KEY, sanitizeBudgetMap(budgets));
   await store.save();
 }
 

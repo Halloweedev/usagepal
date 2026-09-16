@@ -86,6 +86,7 @@ describe("app notifications store", () => {
       healthyToClose: false,
       closeToRunningOut: true,
       sessionReset: true,
+      budgetExceeded: false,
     }
 
     useAppNotificationsStore.getState().setSettings(settings)

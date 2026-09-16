@@ -180,6 +180,7 @@ describe("OnboardingApp", () => {
         healthyToClose: false,
         closeToRunningOut: true,
         sessionReset: false,
+        budgetExceeded: false,
       })
     )
     expect(screen.getByRole("heading", { name: "Start when you sign in" })).toBeInTheDocument()
