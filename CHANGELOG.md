@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.7.77-beta.1
+
+### New Features
+- feat(notifications): per-provider usage budgets with Over Budget alerts by @Halloweedev
+
+### Bug Fixes
+- fix(amp): parse paid tier usage ([#73](https://github.com/Halloweedev/usagepal/pull/73)) by @divaltor
+- fix(pricing): upstream parity for Cursor, Grok and Devin by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.76-beta.1...v0.7.77-beta.1](https://github.com/Halloweedev/usagepal/compare/v0.7.76-beta.1...v0.7.77-beta.1)
+
+- [f5388ac](https://github.com/Halloweedev/usagepal/commit/f5388ac98ceca12aabb8f79b323f13ac96ea1840) fix(amp): parse paid tier usage by @divaltor
+- [d784408](https://github.com/Halloweedev/usagepal/commit/d784408727960ba5def44b95970a5595c390465a) feat(notifications): per-provider usage budgets with Over Budget alerts by @Halloweedev
+- [99f5be6](https://github.com/Halloweedev/usagepal/commit/99f5be6a9ae23abb1eb845d9c4fd96767eebed6f) fix(pricing): upstream parity for Cursor, Grok and Devin by @Halloweedev
+
 ## v0.7.76-beta.1
 
 ### New Features
