@@ -6,7 +6,7 @@ import { FocusTrapDialog } from "@/components/ui/focus-trap-dialog"
 import { MILESTONE_META, PACE_MILESTONES } from "@/lib/pace-notifications"
 import type { PaceNotificationSettings } from "@/lib/settings"
 import { useAppNotificationsStore } from "@/stores/app-notifications-store"
-import { BudgetEditors } from "@/components/budgets-section"
+import { useAppUiStore } from "@/stores/app-ui-store"
 
 // The toggles map 1:1 onto the milestone keys, in urgency order.
 const MILESTONE_KEYS: (keyof PaceNotificationSettings)[] = PACE_MILESTONES
@@ -15,6 +15,7 @@ export function NotificationsSection() {
   const settings = useAppNotificationsStore((s) => s.settings)
   const setToggle = useAppNotificationsStore((s) => s.setToggle)
   const hydrate = useAppNotificationsStore((s) => s.hydrate)
+  const setActiveView = useAppUiStore((s) => s.setActiveView)
   const [showNotificationsDialog, setShowNotificationsDialog] = useState(false)
   const [showPermissionModal, setShowPermissionModal] = useState(false)
 
@@ -69,7 +70,20 @@ export function NotificationsSection() {
               )
             })}
           </div>
-          {settings.budgetExceeded && <BudgetEditors />}
+          {settings.budgetExceeded && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-4 w-full"
+              onClick={() => {
+                setShowNotificationsDialog(false)
+                setActiveView("budgets")
+              }}
+            >
+              Set Budgets
+            </Button>
+          )}
         </FocusTrapDialog>
       )}
 

@@ -15,7 +15,7 @@ const MILESTONE_DESCRIPTIONS: Record<PaceMilestone, string> = {
   healthyToClose: "When you're on pace to finish close to a limit.",
   closeToRunningOut: "When you're on pace to run out before the reset.",
   sessionReset: "When a session limit is back to 0% used.",
-  budgetExceeded: "When usage crosses a budget you set per provider.",
+  budgetExceeded: "When today's usage crosses a budget you set per provider.",
 }
 
 type NotificationsStepProps = {

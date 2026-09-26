@@ -60,8 +60,8 @@ export const MILESTONE_META: Record<
   budgetExceeded: {
     label: "Over Budget",
     title: "Over Budget",
-    body: "Over your set budget for this window.",
-    tooltip: "Alert when usage crosses the budget percent you set per provider.",
+    body: "Over your daily budget.",
+    tooltip: "Alert when today's usage crosses the budget you set per provider.",
   },
 }
 
@@ -81,10 +81,6 @@ export const anyEnabled = (t: PaceToggles): boolean =>
   t.sessionReset ||
   t.budgetExceeded
 
-/** Per-provider usage budgets as a percent of the limit (1–100). A provider
- * with no entry has no budget and never fires the Over Budget milestone. */
-export type BudgetMap = Record<string, number>
-
 /** Sanitize a persisted budget percent: integers 1–100, anything else → null. */
 export function sanitizeBudgetPercent(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null
@@ -93,15 +89,102 @@ export function sanitizeBudgetPercent(value: unknown): number | null {
   return rounded
 }
 
-/** Sanitize a persisted budget map, dropping invalid entries. */
-export function sanitizeBudgetMap(value: unknown): BudgetMap {
-  if (!value || typeof value !== "object") return {}
-  const out: BudgetMap = {}
-  for (const [providerId, percent] of Object.entries(value as Record<string, unknown>)) {
-    const clean = sanitizeBudgetPercent(percent)
-    if (clean != null) out[providerId] = clean
+/** Local calendar day as `YYYY-MM-DD`, used to scope budgets to a single day. */
+export function localDayKey(date: Date = new Date()): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+/** Local day key shifted forward by `offsetDays` (0 = today). */
+export function addDaysKey(base: Date, offsetDays: number): string {
+  const next = new Date(base.getFullYear(), base.getMonth(), base.getDate() + offsetDays)
+  return localDayKey(next)
+}
+
+/** Parse a `YYYY-MM-DD` key back to a local date (avoids the UTC-midnight shift of `new Date(key)`). */
+export function dayKeyToDate(key: string): Date {
+  const [year, month, day] = key.split("-").map(Number)
+  return new Date(year, (month || 1) - 1, day || 1)
+}
+
+/**
+ * One provider's budget for one day. `day` is the local day the budget was set;
+ * entries from a previous day are expired and ignored. `baselines` snapshots each
+ * meter's used fraction at set time (keyed by `metricKey`), so the budget measures
+ * what you use *from when you set it* — Monday's 20% and Tuesday's 10% each count
+ * fresh, no matter where the provider's own reset window stands.
+ */
+export type ProviderBudget = {
+  percent: number
+  day: string
+  baselines: Record<string, number>
+  /** Unix-ms timestamp of when the budget was set, for display ("Set today at 9:41 AM"). */
+  setAt: number
+}
+
+/** Per-provider daily budgets, keyed by provider then local day. Only the entry
+ * matching today ever fires; past entries are pruned on load, future entries wait
+ * their turn. */
+export type DailyBudgetMap = Record<string, Record<string, ProviderBudget>>
+
+/** Drop entries older than `today` (defaults to the local day). */
+export function prunePastBudgets(value: DailyBudgetMap, today: string = localDayKey()): DailyBudgetMap {
+  const out: DailyBudgetMap = {}
+  for (const [providerId, days] of Object.entries(value)) {
+    if (!days || typeof days !== "object") continue
+    const kept: Record<string, ProviderBudget> = {}
+    for (const [day, entry] of Object.entries(days)) {
+      if (day >= today) kept[day] = entry
+    }
+    if (Object.keys(kept).length > 0) out[providerId] = kept
   }
   return out
+}
+
+const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+/** Sanitize one persisted provider budget; anything malformed → null. */
+export function sanitizeProviderBudget(value: unknown): ProviderBudget | null {
+  if (!value || typeof value !== "object") return null
+  const record = value as Record<string, unknown>
+  const percent = sanitizeBudgetPercent(record.percent)
+  if (percent == null) return null
+  if (typeof record.day !== "string" || !DAY_KEY_PATTERN.test(record.day)) return null
+  if (typeof record.setAt !== "number" || !Number.isFinite(record.setAt) || record.setAt < 0) {
+    return null
+  }
+  const baselines: Record<string, number> = {}
+  const raw = record.baselines
+  if (raw && typeof raw === "object") {
+    for (const [key, used] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof used === "number" && Number.isFinite(used) && used >= 0) {
+        baselines[key] = used
+      }
+    }
+  }
+  return { percent, day: record.day, baselines, setAt: record.setAt }
+}
+
+/** Sanitize a persisted daily-budget map, dropping invalid and expired entries. */
+export function sanitizeDailyBudgetMap(value: unknown): DailyBudgetMap {
+  if (!value || typeof value !== "object") return {}
+  const out: DailyBudgetMap = {}
+  for (const [providerId, days] of Object.entries(value as Record<string, unknown>)) {
+    if (!days || typeof days !== "object") continue
+    const kept: Record<string, ProviderBudget> = {}
+    for (const [day, entry] of Object.entries(days as Record<string, unknown>)) {
+      const clean = sanitizeProviderBudget(entry)
+      if (clean != null && clean.day === day) kept[day] = clean
+    }
+    if (Object.keys(kept).length > 0) out[providerId] = kept
+  }
+  return prunePastBudgets(out)
+}
+
+/** Whether a stored budget entry is live for `today` (defaults to the local day). */
+export function isBudgetCurrent(entry: ProviderBudget | undefined, today: string = localDayKey()): boolean {
+  return entry != null && entry.day === today
 }
 
 /** Deduplication state for one metric, persisted across refresh passes. */
@@ -116,8 +199,13 @@ export type NotificationState = {
   wasUnderTenPercent: boolean
   /** Whether this metric previously had non-zero usage, so a reset to 0% is an edge. */
   wasAboveZeroUsed: boolean
-  /** Whether usage was at or above the provider's budget, so crossing it is an edge. */
+  /** Whether usage since the budget baseline was at or above the budget, so crossing it is an edge. */
   wasOverBudget: boolean
+  /** Local day the budget baseline belongs to; a new day recaptures the baseline. */
+  budgetDay: string | null
+  /** Used fraction snapshotted when the budget was set (or first seen); the budget
+   * measures growth from here, not from zero. Null until a budget applies. */
+  budgetBaseline: number | null
   /** True once the first real observation is recorded as the baseline (no firing before then). */
   primed: boolean
 }
@@ -129,6 +217,8 @@ export const initialNotificationState = (): NotificationState => ({
   wasUnderTenPercent: false,
   wasAboveZeroUsed: false,
   wasOverBudget: false,
+  budgetDay: null,
+  budgetBaseline: null,
   primed: false,
 })
 
@@ -144,6 +234,10 @@ export type MetricObservation = {
   isSession?: boolean
   /** The provider's budget as a percent of the limit (1–100); null/undefined = no budget. */
   budgetPercent?: number | null
+  /** Local day the budget was set; a budget from another day is expired. */
+  budgetDay?: string | null
+  /** Used fraction when the budget was set; null captures the current reading. */
+  budgetBaseline?: number | null
 }
 
 export type PaceTransition = {
@@ -165,6 +259,8 @@ const clone = (state: NotificationState): NotificationState => ({
   wasUnderTenPercent: state.wasUnderTenPercent,
   wasAboveZeroUsed: state.wasAboveZeroUsed,
   wasOverBudget: state.wasOverBudget,
+  budgetDay: state.budgetDay,
+  budgetBaseline: state.budgetBaseline,
   primed: state.primed,
 })
 
@@ -185,12 +281,20 @@ function maybeFire(
 }
 
 /**
- * Whether usage has reached the provider's budget. `budgetPercent` is 1–100;
- * null/undefined means the provider has no budget and never fires.
+ * Whether usage since the budget baseline has reached the provider's daily budget.
+ * `budgetPercent` is 1–100; null/undefined means the provider has no budget today
+ * and never fires. `baseline` is the used fraction when the budget was set; a null
+ * baseline captures the current reading without firing.
  */
-function isOverBudget(budgetPercent: number | null | undefined, usedFraction: number): boolean {
-  if (budgetPercent == null) return false
-  return usedFraction >= budgetPercent / 100
+function isOverBudget(
+  budgetPercent: number | null | undefined,
+  baseline: number | null | undefined,
+  usedFraction: number
+): boolean {
+  if (budgetPercent == null || baseline == null) return false
+  // Epsilon: binary floating point can land a true 20.0% delta at 19.9999999%,
+  // which would read as a missed budget to the user watching the same numbers.
+  return usedFraction - baseline + 1e-9 >= budgetPercent / 100
 }
 
 /**
@@ -217,6 +321,9 @@ export function transitions(
     next.wasUnderTenPercent = false
     next.wasOverBudget = false
     next.previousBucket = "untracked"
+    // The set-time budget snapshot stands across window restarts within the day: a
+    // usage drop reads as recovery (re-arming the edge), and regrowing past the
+    // snapshot plus budget fires again for the new window.
     // Keep wasAboveZeroUsed: a session reset is detected by seeing a used session return to 0% in
     // the next window.
   }
@@ -236,7 +343,9 @@ export function transitions(
     next.previousBucket = currentBucket
     next.wasUnderTenPercent = remainingFraction < 0.1
     next.wasAboveZeroUsed = usedFraction > 0
-    next.wasOverBudget = isOverBudget(obs.budgetPercent, usedFraction)
+    next.wasOverBudget = false
+    next.budgetDay = obs.budgetDay ?? null
+    next.budgetBaseline = obs.budgetBaseline ?? null
     next.firedMilestones = new Set()
     return { fire: [], newState: next }
   }
@@ -254,17 +363,38 @@ export function transitions(
 
   // Budget edge, tracked independently of the pace verdict and evaluated before the exhausted
   // suppression: blowing past the budget straight to exhaustion is still worth one alert.
-  const overNow = isOverBudget(obs.budgetPercent, usedFraction)
-  const overCrossed = overNow && !next.wasOverBudget
-  let overFired = false
-  if (overCrossed && maybeFire("budgetExceeded", fire, next, toggles)) {
-    overFired = true
-  }
-  if (!overNow) {
+  // The budget measures growth since it was set (snapshot baseline), not from zero — a
+  // new day or a changed snapshot re-arms with a fresh baseline.
+  const budgetPercent = obs.budgetPercent
+  const budgetDay = obs.budgetDay
+  const hasBudget = budgetPercent != null && budgetDay != null
+  if (!hasBudget) {
+    next.wasOverBudget = false
+    next.budgetDay = null
+    next.budgetBaseline = null
     next.firedMilestones.delete("budgetExceeded")
-  }
-  if (!overCrossed || overFired) {
-    next.wasOverBudget = overNow
+  } else {
+    // Prefer the set-time snapshot, then the recorded baseline (a meter unseen at
+    // set time keeps the reading captured on its first sighting).
+    const baseline = obs.budgetBaseline ?? next.budgetBaseline ?? usedFraction
+    if (next.budgetDay !== budgetDay || next.budgetBaseline !== baseline) {
+      next.budgetDay = budgetDay
+      next.budgetBaseline = baseline
+      next.wasOverBudget = false
+      next.firedMilestones.delete("budgetExceeded")
+    }
+    const overNow = isOverBudget(budgetPercent, next.budgetBaseline, usedFraction)
+    const overCrossed = overNow && !next.wasOverBudget
+    let overFired = false
+    if (overCrossed && maybeFire("budgetExceeded", fire, next, toggles)) {
+      overFired = true
+    }
+    if (!overNow) {
+      next.firedMilestones.delete("budgetExceeded")
+    }
+    if (!overCrossed || overFired) {
+      next.wasOverBudget = overNow
+    }
   }
 
   // Once a metric is effectively exhausted, pace alerts are no longer useful and read as stale noise.
@@ -389,15 +519,17 @@ export type FiredNotification = {
  * marks each one only after its notification is delivered, so a failed/blocked delivery re-fires next
  * pass. States for metrics not seen this pass are carried forward unchanged.
  *
- * `budgets` maps provider ids to a budget percent of the limit (1–100). A metric whose provider has
- * no entry is never evaluated for the Over Budget milestone.
+ * `budgets` holds each provider's budget for one local day; only the entry matching `today`
+ * applies. A budget measures growth since it was set (per-meter snapshot baselines), so every
+ * morning starts fresh.
  */
 export function evaluate(
   providers: ProviderMetrics[],
   states: Map<string, NotificationState>,
   toggles: PaceToggles,
   nowMs: number,
-  budgets?: BudgetMap
+  budgets?: DailyBudgetMap,
+  today: string = localDayKey(new Date(nowMs))
 ): { fired: FiredNotification[]; nextStates: Map<string, NotificationState> } {
   const nextStates = new Map(states)
   const fired: FiredNotification[] = []
@@ -405,21 +537,36 @@ export function evaluate(
   if (!anyEnabled(toggles)) return { fired, nextStates }
 
   for (const provider of providers) {
-    const budgetPercent = sanitizeBudgetPercent(budgets?.[provider.providerId])
+    const entry = budgets?.[provider.providerId]?.[today] ?? null
+    const live = entry && entry.day === today ? entry : null
+    const budgetPercent = live ? sanitizeBudgetPercent(live.percent) : null
     for (const line of provider.lines) {
       const obs = deriveObservation(line, nowMs)
       if (!obs) continue
 
       const key = metricKey(provider.providerId, provider.accountId, line.label)
+      const rawBaseline = live?.baselines[key]
+      const budgetBaseline =
+        typeof rawBaseline === "number" && Number.isFinite(rawBaseline) && rawBaseline >= 0
+          ? rawBaseline
+          : null
       const previous = nextStates.get(key) ?? initialNotificationState()
       const { fire, newState } = transitions(
-        { ...obs, isSession: line.label === "Session", budgetPercent },
+        {
+          ...obs,
+          isSession: line.label === "Session",
+          budgetPercent,
+          budgetDay: live?.day ?? null,
+          budgetBaseline,
+        },
         previous,
         toggles
       )
       nextStates.set(key, newState)
 
       for (const milestone of fire) {
+        const used = obs.usedFraction ?? 0
+        const delta = milestone === "budgetExceeded" ? Math.max(0, used - (budgetBaseline ?? used)) : null
         fired.push({
           key,
           milestone,
@@ -427,10 +574,7 @@ export function evaluate(
           displayName: provider.displayName,
           metricLabel: line.label,
           budgetPercent: milestone === "budgetExceeded" ? budgetPercent : null,
-          usedPercent:
-            milestone === "budgetExceeded" && obs.usedFraction != null
-              ? Math.round(obs.usedFraction * 100)
-              : null,
+          usedPercent: delta == null ? null : Math.round(delta * 100),
         })
       }
     }

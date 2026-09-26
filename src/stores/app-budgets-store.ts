@@ -1,28 +1,53 @@
 import { create } from "zustand"
 import { loadBudgetMap, saveBudgetMap } from "@/lib/settings"
-import { sanitizeBudgetPercent, type BudgetMap } from "@/lib/pace-notifications"
+import {
+  localDayKey,
+  sanitizeBudgetPercent,
+  type DailyBudgetMap,
+} from "@/lib/pace-notifications"
 
 type AppBudgetsStore = {
-  budgets: BudgetMap
+  budgets: DailyBudgetMap
   hydrated: boolean
   /** Load persisted budgets once on startup. Safe to call repeatedly. */
   hydrate: () => Promise<void>
-  /** Set a provider's budget percent (1–100), or clear it with null. Persists. */
-  setBudget: (providerId: string, percent: number | null) => void
+  /**
+   * Set the budget for a provider on one local day (1–100, defaults to today),
+   * snapshotting each meter's current usage so a same-day budget counts from now.
+   * Pass null to clear that day. `snapshot` maps metric keys (see `metricKey`)
+   * to used fractions. Persists.
+   */
+  setBudget: (
+    providerId: string,
+    percent: number | null,
+    snapshot?: Record<string, number>,
+    day?: string
+  ) => void
   resetState: () => void
 }
 
 const initialState = {
-  budgets: {} as BudgetMap,
+  budgets: {} as DailyBudgetMap,
   hydrated: false,
 }
 
-async function loadBudgets(): Promise<BudgetMap> {
+async function loadBudgets(): Promise<DailyBudgetMap> {
   return loadBudgetMap()
 }
 
-async function saveBudgets(budgets: BudgetMap): Promise<void> {
+async function saveBudgets(budgets: DailyBudgetMap): Promise<void> {
   return saveBudgetMap(budgets)
+}
+
+function sanitizeSnapshot(snapshot: Record<string, number> | undefined): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (!snapshot) return out
+  for (const [key, used] of Object.entries(snapshot)) {
+    if (typeof used === "number" && Number.isFinite(used) && used >= 0) {
+      out[key] = used
+    }
+  }
+  return out
 }
 
 export const useAppBudgetsStore = create<AppBudgetsStore>((set, get) => ({
@@ -37,11 +62,22 @@ export const useAppBudgetsStore = create<AppBudgetsStore>((set, get) => ({
       set({ hydrated: true })
     }
   },
-  setBudget: (providerId, percent) => {
+  setBudget: (providerId, percent, snapshot, day = localDayKey()) => {
     const clean = percent == null ? null : sanitizeBudgetPercent(percent)
     const next = { ...get().budgets }
-    if (clean == null) delete next[providerId]
-    else next[providerId] = clean
+    const days = { ...(next[providerId] ?? {}) }
+    if (clean == null) {
+      delete days[day]
+    } else {
+      days[day] = {
+        percent: clean,
+        day,
+        baselines: sanitizeSnapshot(snapshot),
+        setAt: Date.now(),
+      }
+    }
+    if (Object.keys(days).length === 0) delete next[providerId]
+    else next[providerId] = days
     set({ budgets: next })
     void saveBudgets(next).catch((error) => {
       console.error("Failed to save usage budgets:", error)

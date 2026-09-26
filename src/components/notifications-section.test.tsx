@@ -5,28 +5,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const state = vi.hoisted(() => ({
   invokeMock: vi.fn().mockResolvedValue(undefined),
   setToggleMock: vi.fn(),
-  store: {
-    settings: { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false, budgetExceeded: false },
-    setToggle: (...args: unknown[]) => state.setToggleMock(...args),
-    hydrate: vi.fn().mockResolvedValue(undefined),
-  },
-}))
-
-vi.mock("@/stores/app-budgets-store", () => ({
-  useAppBudgetsStore: (selector: (s: { budgets: Record<string, number> }) => unknown) =>
-    selector({ budgets: {} }),
-}))
-vi.mock("@/stores/app-plugin-store", () => ({
-  useAppPluginStore: (selector: (s: { pluginsMeta: unknown[]; pluginSettings: null }) => unknown) =>
-    selector({ pluginsMeta: [], pluginSettings: null }),
+  settings: { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false, budgetExceeded: false },
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: state.invokeMock }))
 vi.mock("@/stores/app-notifications-store", () => ({
-  useAppNotificationsStore: (selector: (s: typeof state.store) => unknown) => selector(state.store),
+  useAppNotificationsStore: (selector: (s: unknown) => unknown) =>
+    selector({
+      settings: state.settings,
+      setToggle: (...args: unknown[]) => state.setToggleMock(...args),
+      hydrate: vi.fn().mockResolvedValue(undefined),
+    }),
 }))
 
 import { NotificationsSection } from "./notifications-section"
+import { useAppUiStore } from "@/stores/app-ui-store"
 
 async function openNotificationsDialog() {
   await userEvent.click(screen.getByRole("button", { name: "Notifications" }))
@@ -37,6 +30,8 @@ describe("NotificationsSection", () => {
     state.invokeMock.mockReset()
     state.invokeMock.mockResolvedValue(undefined)
     state.setToggleMock.mockReset()
+    state.settings = { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false, budgetExceeded: false }
+    useAppUiStore.getState().resetState()
   })
 
   it("does not show the dialog or checkboxes just from rendering", () => {
@@ -95,5 +90,22 @@ describe("NotificationsSection", () => {
     await userEvent.keyboard("{Escape}")
 
     expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument()
+  })
+
+  it("hides the Set Budgets button unless Over Budget is on", async () => {
+    render(<NotificationsSection />)
+    await openNotificationsDialog()
+    expect(screen.queryByRole("button", { name: "Set Budgets" })).not.toBeInTheDocument()
+  })
+
+  it("jumps to the Budgets tab from Set Budgets and closes the dialog", async () => {
+    state.settings = { ...state.settings, budgetExceeded: true }
+    render(<NotificationsSection />)
+    await openNotificationsDialog()
+
+    await userEvent.click(screen.getByRole("button", { name: "Set Budgets" }))
+
+    expect(useAppUiStore.getState().activeView).toBe("budgets")
+    expect(screen.queryByRole("dialog", { name: "Notifications" })).not.toBeInTheDocument()
   })
 })

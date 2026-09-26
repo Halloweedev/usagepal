@@ -1,6 +1,6 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import type { PluginMeta } from "@/lib/plugin-types";
-import { sanitizeBudgetMap, type BudgetMap } from "@/lib/pace-notifications";
+import { sanitizeDailyBudgetMap, type DailyBudgetMap } from "@/lib/pace-notifications";
 
 // Refresh cooldown duration in milliseconds (5 minutes)
 export const REFRESH_COOLDOWN_MS = 300_000;
@@ -652,19 +652,20 @@ export async function savePaceNotificationSettings(
   await store.save();
 }
 
-/** Per-provider usage budgets as a percent of the limit (1–100). Providers without an entry have
- * no budget. Evaluated per reset window: crossing the budget fires one Over Budget alert. */
-export type { BudgetMap };
+/** Per-provider daily usage budgets. Each entry lives for one local day: setting a
+ * budget snapshots every meter, and the budget measures what you use from then.
+ * Entries from a previous day are expired and ignored. */
+export type { DailyBudgetMap };
 
 const BUDGETS_KEY = "budgets";
 
-export async function loadBudgetMap(): Promise<BudgetMap> {
+export async function loadBudgetMap(): Promise<DailyBudgetMap> {
   const stored = await store.get<unknown>(BUDGETS_KEY);
-  return sanitizeBudgetMap(stored);
+  return sanitizeDailyBudgetMap(stored);
 }
 
-export async function saveBudgetMap(budgets: BudgetMap): Promise<void> {
-  await store.set(BUDGETS_KEY, sanitizeBudgetMap(budgets));
+export async function saveBudgetMap(budgets: DailyBudgetMap): Promise<void> {
+  await store.set(BUDGETS_KEY, sanitizeDailyBudgetMap(budgets));
   await store.save();
 }
 

@@ -14,6 +14,7 @@ vi.mock("@/lib/settings", async () => {
   }
 })
 
+import { localDayKey } from "@/lib/pace-notifications"
 import { useAppBudgetsStore } from "@/stores/app-budgets-store"
 
 describe("app budgets store", () => {
@@ -31,11 +32,12 @@ describe("app budgets store", () => {
   })
 
   it("hydrates from persisted budgets", async () => {
-    loadBudgetMapMock.mockResolvedValue({ claude: 20 })
+    const entry = { percent: 20, day: localDayKey(), baselines: { "claude:Weekly": 0.1 }, setAt: 1 }
+    loadBudgetMapMock.mockResolvedValue({ claude: { [localDayKey()]: entry } })
 
     await useAppBudgetsStore.getState().hydrate()
 
-    expect(useAppBudgetsStore.getState().budgets).toEqual({ claude: 20 })
+    expect(useAppBudgetsStore.getState().budgets).toEqual({ claude: { [localDayKey()]: entry } })
     expect(useAppBudgetsStore.getState().hydrated).toBe(true)
   })
 
@@ -57,11 +59,45 @@ describe("app budgets store", () => {
     errorSpy.mockRestore()
   })
 
-  it("sets a provider budget and persists", () => {
-    useAppBudgetsStore.getState().setBudget("claude", 20)
+  it("sets today's budget with a snapshot and persists", () => {
+    const before = Date.now()
+    useAppBudgetsStore.getState().setBudget("claude", 20, { "claude:Weekly": 0.1 })
 
-    expect(useAppBudgetsStore.getState().budgets).toEqual({ claude: 20 })
-    expect(saveBudgetMapMock).toHaveBeenCalledWith({ claude: 20 })
+    const budgets = useAppBudgetsStore.getState().budgets
+    expect(budgets.claude?.[localDayKey()]).toMatchObject({
+      percent: 20,
+      day: localDayKey(),
+      baselines: { "claude:Weekly": 0.1 },
+    })
+    expect(budgets.claude?.[localDayKey()]?.setAt).toBeGreaterThanOrEqual(before)
+    expect(saveBudgetMapMock).toHaveBeenCalledWith(budgets)
+  })
+
+  it("sets a future day's budget without a snapshot", () => {
+    const tomorrow = localDayKey(new Date(Date.now() + 24 * 60 * 60 * 1000))
+    useAppBudgetsStore.getState().setBudget("claude", 10, undefined, tomorrow)
+
+    expect(useAppBudgetsStore.getState().budgets).toEqual({
+      claude: {
+        [tomorrow]: {
+          percent: 10,
+          day: tomorrow,
+          baselines: {},
+          setAt: expect.any(Number),
+        },
+      },
+    })
+  })
+
+  it("clears one day without touching the others", () => {
+    const tomorrow = localDayKey(new Date(Date.now() + 24 * 60 * 60 * 1000))
+    useAppBudgetsStore.getState().setBudget("claude", 20)
+    useAppBudgetsStore.getState().setBudget("claude", 10, undefined, tomorrow)
+    useAppBudgetsStore.getState().setBudget("claude", null)
+
+    const budgets = useAppBudgetsStore.getState().budgets
+    expect(budgets.claude?.[localDayKey()]).toBeUndefined()
+    expect(budgets.claude?.[tomorrow]?.percent).toBe(10)
   })
 
   it("clears a provider budget with null and persists", () => {

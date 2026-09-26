@@ -13,7 +13,7 @@ const state = vi.hoisted(() => ({
     sessionReset: true,
     budgetExceeded: true,
   },
-  budgets: {} as Record<string, number>,
+  budgets: {} as Record<string, Record<string, { percent: number; day: string; baselines: Record<string, number>; setAt: number }>>,
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: state.invokeMock }))
@@ -30,6 +30,7 @@ vi.mock("@/stores/app-budgets-store", () => ({
 }))
 
 import { deliverPaceNotification, usePaceNotifications } from "./use-pace-notifications"
+import { localDayKey } from "@/lib/pace-notifications"
 
 function pluginState(used: number): Record<string, PluginState> {
   return {
@@ -100,18 +101,22 @@ describe("usePaceNotifications", () => {
     expect(state.isPermissionGrantedMock).not.toHaveBeenCalled()
   })
 
-  it("sends an Over Budget alert with the budget and used percent when usage crosses the budget", async () => {
-    state.budgets = { claude: 20 }
+  it("sends an Over Budget alert with the budget and today's growth when usage crosses the budget", async () => {
+    state.budgets = {
+      claude: {
+        [localDayKey()]: { percent: 20, day: localDayKey(), baselines: { "claude:Session": 0.1 }, setAt: 1 },
+      },
+    }
     const { rerender } = renderHook(({ states }) => usePaceNotifications(states), {
       initialProps: { states: pluginState(10) },
     })
 
-    rerender({ states: pluginState(25) })
+    rerender({ states: pluginState(30) })
 
     await waitFor(() => {
       expect(state.invokeMock).toHaveBeenCalledWith("send_pace_notification", {
         title: "Over Budget",
-        body: "Claude Session — over your 20% budget (25% used).",
+        body: "Claude Session — over your 20% daily budget (20% used today).",
       })
     })
   })

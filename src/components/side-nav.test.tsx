@@ -24,6 +24,14 @@ describe("SideNav", () => {
     expect(onViewChange).toHaveBeenCalledWith("home")
   })
 
+  it("opens the Budgets tab from its sidebar button", async () => {
+    const onViewChange = vi.fn()
+    render(<SideNav activeView="home" onViewChange={onViewChange} plugins={[]} />)
+
+    await userEvent.click(screen.getByRole("button", { name: "Budgets" }))
+    expect(onViewChange).toHaveBeenCalledWith("budgets")
+  })
+
   it("renders plugin icon button and uses brand color when appropriate", () => {
     const onViewChange = vi.fn()
     render(

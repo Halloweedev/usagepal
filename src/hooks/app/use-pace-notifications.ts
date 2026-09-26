@@ -4,6 +4,7 @@ import type { PluginState } from "@/hooks/app/types"
 import {
   anyEnabled,
   evaluate,
+  localDayKey,
   MILESTONE_META,
   type FiredNotification,
   type NotificationState,
@@ -29,7 +30,7 @@ function notificationCopy(item: FiredNotification): PaceNotificationDelivery {
   ) {
     return {
       title: MILESTONE_META.budgetExceeded.title,
-      body: `${item.displayName} ${item.metricLabel} — over your ${item.budgetPercent}% budget (${item.usedPercent}% used).`,
+      body: `${item.displayName} ${item.metricLabel} — over your ${item.budgetPercent}% daily budget (${item.usedPercent}% used today).`,
     }
   }
   const meta = MILESTONE_META[item.milestone]
@@ -79,7 +80,14 @@ export function usePaceNotifications(pluginStates: Record<string, PluginState>) 
 
     if (providers.length === 0) return
 
-    const { fired, nextStates } = evaluate(providers, statesRef.current, settings, Date.now(), budgets)
+    const { fired, nextStates } = evaluate(
+      providers,
+      statesRef.current,
+      settings,
+      Date.now(),
+      budgets,
+      localDayKey()
+    )
     statesRef.current = nextStates
     if (fired.length === 0) return
 

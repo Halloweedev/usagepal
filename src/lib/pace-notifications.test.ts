@@ -4,9 +4,12 @@ import {
   deriveObservation,
   evaluate,
   initialNotificationState,
+  isBudgetCurrent,
+  localDayKey,
   metricKey,
-  sanitizeBudgetMap,
   sanitizeBudgetPercent,
+  sanitizeDailyBudgetMap,
+  sanitizeProviderBudget,
   transitions,
   type MetricObservation,
   type NotificationState,
@@ -302,18 +305,26 @@ describe("evaluate", () => {
 })
 
 describe("budgetExceeded", () => {
-  // Note: remainingFraction is fixed at a neutral 0.5 so the under-10% edge never
-  // interferes — each test drives the budget axis via usedFraction only.
+  const DAY_A = "2026-09-15"
+  const DAY_B = "2026-09-16"
+  // remainingFraction stays neutral so the under-10% edge never interferes — each
+  // test drives the budget axis via usedFraction against a snapshot baseline.
   const budgeted = (
     usedFraction: number,
-    budgetPercent: number | null | undefined = 20,
-    resetsAtMs: number | null = 1000
+    opts: {
+      percent?: number | null
+      day?: string | null
+      baseline?: number | null
+      resetsAtMs?: number | null
+    } = {}
   ): MetricObservation => ({
     bucket: "healthy",
     remainingFraction: 0.5,
     usedFraction,
-    resetsAtMs,
-    budgetPercent,
+    resetsAtMs: opts.resetsAtMs ?? 1000,
+    budgetPercent: opts.percent === undefined ? 20 : opts.percent,
+    budgetDay: opts.day === undefined ? DAY_A : opts.day,
+    budgetBaseline: opts.baseline === undefined ? 0 : opts.baseline,
   })
 
   it("primes the first observation without firing, even when already over budget", () => {
@@ -321,78 +332,116 @@ describe("budgetExceeded", () => {
     expect(fires[0]).toEqual([])
   })
 
-  it("fires Over Budget when usage crosses the budget percent", () => {
-    const { fires } = run([budgeted(0.1), budgeted(0.2), budgeted(0.35)])
+  it("fires when growth since the snapshot crosses the budget", () => {
+    const { fires } = run([
+      budgeted(0.15, { baseline: 0.1 }),
+      budgeted(0.35, { baseline: 0.1 }),
+    ])
     expect(fires[1]).toEqual(["budgetExceeded"])
-    expect(fires[2]).toEqual([])
   })
 
   it("does not fire without a budget set", () => {
-    const { fires } = run([budgeted(0.1, null), budgeted(0.5, null)])
+    const { fires } = run([
+      budgeted(0.1, { percent: null }),
+      budgeted(0.9, { percent: null }),
+      budgeted(0.9, { percent: 20, day: null }),
+    ])
     expect(fires.flat()).toEqual([])
   })
 
   it("does not fire when the trigger is off", () => {
     const OFF: PaceToggles = { ...ALL_ON, budgetExceeded: false }
-    const { fires } = run([budgeted(0.1), budgeted(0.5)], OFF)
+    const { fires } = run([budgeted(0.15, { baseline: 0.1 }), budgeted(0.5, { baseline: 0.1 })], OFF)
     expect(fires.flat()).toEqual([])
   })
 
-  it("re-fires after recovering below the budget and crossing again", () => {
+  it("re-fires after usage falls back below the budget and crosses again", () => {
     const { fires } = run([
-      budgeted(0.1),
-      budgeted(0.25), // fires
-      budgeted(0.15), // recovers, re-arms
-      budgeted(0.3), // fires again
+      budgeted(0.15, { baseline: 0.1 }),
+      budgeted(0.35, { baseline: 0.1 }), // fires
+      budgeted(0.2, { baseline: 0.1 }), // recovers, re-arms
+      budgeted(0.35, { baseline: 0.1 }), // fires again
     ])
     expect(fires[1]).toEqual(["budgetExceeded"])
     expect(fires[2]).toEqual([])
     expect(fires[3]).toEqual(["budgetExceeded"])
   })
 
-  it("re-fires in a new reset window", () => {
+  it("re-arms with a fresh baseline when the budget is re-set", () => {
     const { fires } = run([
-      budgeted(0.1, 20, 1000),
-      budgeted(0.25, 20, 1000), // fires
-      budgeted(0.3, 20, 2000), // new window re-arms and fires
+      budgeted(0.15, { baseline: 0.1 }),
+      budgeted(0.35, { baseline: 0.1 }), // fires
+      budgeted(0.35, { baseline: 0.3 }), // re-set at 0.3: delta 0.05, quiet
+      budgeted(0.55, { baseline: 0.3 }), // delta 0.25, fires again
     ])
     expect(fires[1]).toEqual(["budgetExceeded"])
-    expect(fires[2]).toEqual(["budgetExceeded"])
+    expect(fires[2]).toEqual([])
+    expect(fires[3]).toEqual(["budgetExceeded"])
+  })
+
+  it("captures a meter unseen at set time without firing, then tracks it", () => {
+    const { fires } = run([
+      budgeted(0.5, { baseline: null }), // primes, quiet
+      budgeted(0.55, { baseline: null }), // first tracked reading captures, quiet
+      budgeted(0.6, { baseline: null }), // delta 0.05, quiet
+      budgeted(0.8, { baseline: null }), // delta 0.25, fires
+    ])
+    expect(fires[0]).toEqual([])
+    expect(fires[1]).toEqual([])
+    expect(fires[2]).toEqual([])
+    expect(fires[3]).toEqual(["budgetExceeded"])
+  })
+
+  it("re-arms when the provider window restarts mid-day", () => {
+    const { fires } = run([
+      budgeted(0.15, { baseline: 0.1, resetsAtMs: 1000 }),
+      budgeted(0.35, { baseline: 0.1, resetsAtMs: 1000 }), // fires
+      budgeted(0.05, { baseline: 0.1, resetsAtMs: 2000 }), // new window drops below, re-arms
+      budgeted(0.35, { baseline: 0.1, resetsAtMs: 2000 }), // past snapshot + budget again, fires
+    ])
+    expect(fires[1]).toEqual(["budgetExceeded"])
+    expect(fires[2]).toEqual([])
+    expect(fires[3]).toEqual(["budgetExceeded"])
   })
 
   it("fires when usage jumps past the budget straight to exhaustion", () => {
-    const { fires } = run([budgeted(0.1, 90), budgeted(1, 90)])
+    const { fires } = run([budgeted(0.1, { percent: 90, baseline: 0 }), budgeted(1, { percent: 90, baseline: 0 })])
     expect(fires[1]).toEqual(["budgetExceeded"])
   })
 
   it("does not consume the edge when the trigger is off, so re-enabling fires", () => {
     const OFF: PaceToggles = { ...ALL_ON, budgetExceeded: false }
     let state: NotificationState = initialNotificationState()
-    ;({ newState: state } = transitions(budgeted(0.1), state, OFF))
-    const off = transitions(budgeted(0.3), state, OFF)
+    ;({ newState: state } = transitions(budgeted(0.15, { baseline: 0.1 }), state, OFF))
+    const off = transitions(budgeted(0.35, { baseline: 0.1 }), state, OFF)
     expect(off.fire).toEqual([])
-    const on = transitions(budgeted(0.3), off.newState, ALL_ON)
+    const on = transitions(budgeted(0.35, { baseline: 0.1 }), off.newState, ALL_ON)
     expect(on.fire).toEqual(["budgetExceeded"])
   })
 
-  it("evaluates budgets per provider from the budget map", () => {
+  it("evaluates daily budgets per provider and reports today's growth", () => {
+    const noon = new Date(2026, 8, 16, 12, 0, 0).getTime()
     const lines = (used: number) => [
       { type: "progress", label: "Weekly", used, limit: 100, format: { kind: "percent" } } as MetricLine,
     ]
     const providers = [
-      { providerId: "claude", displayName: "Claude", lines: lines(10) },
-      { providerId: "codex", displayName: "Codex", lines: lines(10) },
+      { providerId: "claude", displayName: "Claude", lines: lines(15) },
+      { providerId: "codex", displayName: "Codex", lines: lines(15) },
     ]
-    const budgets = { claude: 20 }
+    const budgets = {
+      claude: {
+        "2026-09-16": { percent: 20, day: "2026-09-16", baselines: { "claude:Weekly": 0.1 }, setAt: 1 },
+      },
+    }
 
-    const first = evaluate(providers, new Map(), ALL_ON, 1, budgets)
+    const first = evaluate(providers, new Map(), ALL_ON, noon, budgets, "2026-09-16")
     expect(first.fired).toEqual([])
 
     const over = [
-      { providerId: "claude", displayName: "Claude", lines: lines(25) },
-      { providerId: "codex", displayName: "Codex", lines: lines(25) },
+      { providerId: "claude", displayName: "Claude", lines: lines(40) },
+      { providerId: "codex", displayName: "Codex", lines: lines(40) },
     ]
-    const second = evaluate(over, first.nextStates, ALL_ON, 2, budgets)
+    const second = evaluate(over, first.nextStates, ALL_ON, noon + 1, budgets, "2026-09-16")
     expect(second.fired).toHaveLength(1)
     expect(second.fired[0]).toMatchObject({
       milestone: "budgetExceeded",
@@ -400,8 +449,25 @@ describe("budgetExceeded", () => {
       displayName: "Claude",
       metricLabel: "Weekly",
       budgetPercent: 20,
-      usedPercent: 25,
+      usedPercent: 30,
     })
+  })
+
+  it("ignores entries from a previous day", () => {
+    const lines = (used: number) => [
+      { type: "progress", label: "Weekly", used, limit: 100, format: { kind: "percent" } } as MetricLine,
+    ]
+    const providers = [{ providerId: "claude", displayName: "Claude", lines: lines(90) }]
+    const budgets = {
+      claude: {
+        "2026-09-15": { percent: 20, day: "2026-09-15", baselines: { "claude:Weekly": 0 }, setAt: 1 },
+      },
+    }
+
+    const first = evaluate(providers, new Map(), ALL_ON, 1, budgets, "2026-09-16")
+    expect(first.fired).toEqual([])
+    const second = evaluate(providers, first.nextStates, ALL_ON, 2, budgets, "2026-09-16")
+    expect(second.fired).toEqual([])
   })
 })
 
@@ -426,15 +492,64 @@ describe("sanitizeBudgetPercent", () => {
   })
 })
 
-describe("sanitizeBudgetMap", () => {
+describe("sanitizeProviderBudget", () => {
+  const day = "2026-09-16"
+
+  it("accepts a well-formed entry", () => {
+    expect(
+      sanitizeProviderBudget({ percent: 20, day, baselines: { "claude:Weekly": 0.1 }, setAt: 7 })
+    ).toEqual({ percent: 20, day, baselines: { "claude:Weekly": 0.1 }, setAt: 7 })
+  })
+
+  it("rejects malformed entries", () => {
+    expect(sanitizeProviderBudget(null)).toBeNull()
+    expect(sanitizeProviderBudget(20)).toBeNull()
+    expect(sanitizeProviderBudget({ percent: 0, day, baselines: {}, setAt: 1 })).toBeNull()
+    expect(sanitizeProviderBudget({ percent: 20, day: "yesterday", baselines: {}, setAt: 1 })).toBeNull()
+    expect(sanitizeProviderBudget({ percent: 20, baselines: {}, setAt: 1 })).toBeNull()
+    expect(sanitizeProviderBudget({ percent: 20, day, baselines: {} })).toBeNull()
+    expect(sanitizeProviderBudget({ percent: 20, day, baselines: {}, setAt: "now" })).toBeNull()
+  })
+
+  it("drops invalid baselines but keeps the entry", () => {
+    expect(
+      sanitizeProviderBudget({ percent: 20, day, baselines: { good: 0.1, bad: -1, nan: NaN, str: "x" }, setAt: 7 })
+    ).toEqual({ percent: 20, day, baselines: { good: 0.1 }, setAt: 7 })
+  })
+})
+
+describe("sanitizeDailyBudgetMap", () => {
   it("keeps valid entries and drops the rest", () => {
-    expect(sanitizeBudgetMap({ claude: 20, codex: 0, cursor: "50", grok: 150 })).toEqual({
-      claude: 20,
+    expect(
+      sanitizeDailyBudgetMap({
+        claude: {
+          [localDayKey()]: { percent: 20, day: localDayKey(), baselines: {}, setAt: 1 },
+          "2000-01-01": { percent: 20, day: "2000-01-01", baselines: {}, setAt: 1 },
+        },
+        codex: { "2000-01-01": { percent: 0, day: "2000-01-01", baselines: {}, setAt: 1 } },
+        cursor: 50,
+        grok: "nope",
+      })
+    ).toEqual({
+      claude: { [localDayKey()]: { percent: 20, day: localDayKey(), baselines: {}, setAt: 1 } },
     })
   })
 
   it("returns empty for non-objects", () => {
-    expect(sanitizeBudgetMap(null)).toEqual({})
-    expect(sanitizeBudgetMap("20")).toEqual({})
+    expect(sanitizeDailyBudgetMap(null)).toEqual({})
+    expect(sanitizeDailyBudgetMap("20")).toEqual({})
+  })
+})
+
+describe("budget day helpers", () => {
+  it("formats the local day key", () => {
+    expect(localDayKey(new Date(2026, 8, 16, 12))).toBe("2026-09-16")
+  })
+
+  it("matches entries only for their own day", () => {
+    const entry = { percent: 20, day: "2026-09-16", baselines: {}, setAt: 1 }
+    expect(isBudgetCurrent(entry, "2026-09-16")).toBe(true)
+    expect(isBudgetCurrent(entry, "2026-09-17")).toBe(false)
+    expect(isBudgetCurrent(undefined, "2026-09-16")).toBe(false)
   })
 })

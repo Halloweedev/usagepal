@@ -240,3 +240,14 @@ body,
   --tw-ring-offset-shadow: 0 0 #0000 !important;
   border-color: transparent !important;
 }
+
+/* Budget percent inputs use a custom stepper: hide the native spinners. */
+input.budget-percent-input::-webkit-outer-spin-button,
+input.budget-percent-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input.budget-percent-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
