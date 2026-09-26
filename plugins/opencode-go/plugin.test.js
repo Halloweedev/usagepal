@@ -36,9 +36,27 @@ function setSuccess(ctx) {
   ctx.host.http.request.mockReturnValue({ status: 200, bodyText: JSON.stringify(payload), headers: {} });
 }
 
-function setSqliteRows(ctx, rows) {
-  ctx.host.sqlite.query.mockReturnValue(JSON.stringify(rows));
+// The plugin probes sqlite_master for the V2 `session_message` table before it
+// reads history, so route each query by its SQL instead of a single canned reply.
+function mockSqlite(ctx, { schema = "v2", rows = [] } = {}) {
+  ctx.host.sqlite.query.mockImplementation((_dbPath, sql) => {
+    if (sql.includes("sqlite_master")) {
+      return JSON.stringify([{ present: schema === "v2" ? 1 : 0 }]);
+    }
+    return JSON.stringify(rows);
+  });
 }
+
+function setSqliteRows(ctx, rows) {
+  mockSqlite(ctx, { schema: "v1", rows });
+}
+
+// Every probe starts with a sqlite_master schema check, so the history SQL is
+// what the row-shape assertions should look at.
+const historySql = (ctx) => ctx.host.sqlite.query.mock.calls
+  .map((call) => call[1])
+  .filter((sql) => !sql.includes("sqlite_master"))
+  .join("\n");
 
 describe("opencode-go plugin", () => {
   beforeEach(() => {
@@ -82,11 +100,13 @@ describe("opencode-go plugin", () => {
       timeoutMs: 15000,
     });
     expect(result.plan).toBe("Go");
-    expect(result.lines).toEqual([
+    // The default sqlite mock returns an empty result set, which is "no local
+    // spend" and now renders as $0.00 rows rather than being dropped.
+    expect(result.lines).toEqual(expect.arrayContaining([
       expect.objectContaining({ label: "Session", used: 12, limit: 100, resetsAt: "2026-08-12T15:00:00.000Z" }),
       expect.objectContaining({ label: "Weekly", used: 8, limit: 100, resetsAt: "2026-08-17T00:00:00.000Z" }),
       expect.objectContaining({ label: "Monthly", used: 35, limit: 100, resetsAt: "2026-09-03T10:30:00.000Z" }),
-    ]);
+    ]));
   });
 
   it("prefers a UsagePal-managed key over OpenCode auth and the environment", async () => {
@@ -212,6 +232,108 @@ describe("opencode-go plugin", () => {
       }),
       expect.objectContaining({ label: "DeepSeek V4 Pro", value: "88.2% · 30d $0.75" }),
       expect.objectContaining({ label: "GPT-5.2", value: "11.8% · 30d $0.10" }),
+    ]);
+  });
+
+  it("reads V2 session_message rows when the V2 schema is present", async () => {
+    const ctx = makeCtx();
+    setAuth(ctx);
+    setSuccess(ctx);
+    mockSqlite(ctx, { schema: "v2", rows: localRows });
+
+    const result = (await loadPlugin()).probe(ctx);
+
+    const sql = historySql(ctx);
+    expect(sql).toContain("FROM session_message");
+    expect(sql).toContain("type = 'assistant'");
+    expect(sql).toContain("'$.model.providerID') = 'opencode-go'");
+    expect(sql).toContain("$.model.id");
+    // The V1 paths address fields V2 moved, so they must not be used here.
+    expect(sql).not.toContain("$.providerID");
+    expect(sql).not.toContain("$.modelID");
+    expect(result.lines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "Today", value: "$0.50 · 1K" }),
+      expect.objectContaining({ label: "Yesterday", value: "$0.25 · 500" }),
+      expect.objectContaining({ label: "Last 30 Days", value: "$0.85 · 1.7K" }),
+    ]));
+  });
+
+  it("sums V2 nested cache tokens and filters on the indexed time_created column", async () => {
+    const ctx = makeCtx();
+    setAuth(ctx);
+    setSuccess(ctx);
+    mockSqlite(ctx, { schema: "v2", rows: localRows });
+
+    (await loadPlugin()).probe(ctx);
+
+    const sql = historySql(ctx);
+    // V2 nests cache reads under tokens.cache; the flat V1 names read 0 here and
+    // cache reads are the bulk of the token count.
+    expect(sql).toContain("$.tokens.cache.read");
+    expect(sql).toContain("$.tokens.cache.write");
+    // Wrapping time_created in a function defeats session_message_time_created_idx
+    // and pushed the 30-day scan past the host's 15s sqlite deadline.
+    expect(sql).toMatch(/WHERE time_created >= \d+/);
+    expect(sql).not.toMatch(/CAST\(COALESCE\(json_extract\(data, '\$\.time\.created'\), time_created\) AS INTEGER\) >=/);
+  });
+
+  it("falls back to the V1 message table when session_message is absent", async () => {
+    const ctx = makeCtx();
+    setAuth(ctx);
+    setSuccess(ctx);
+    mockSqlite(ctx, { schema: "v1", rows: localRows });
+
+    const result = (await loadPlugin()).probe(ctx);
+
+    const sql = historySql(ctx);
+    expect(sql).toContain("FROM message");
+    expect(sql).toContain("$.providerID");
+    expect(sql).toContain("$.modelID");
+    expect(sql).not.toContain("session_message");
+    expect(result.lines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "Today", value: "$0.50 · 1K" }),
+      expect.objectContaining({ label: "Yesterday", value: "$0.25 · 500" }),
+      expect.objectContaining({ label: "Last 30 Days", value: "$0.85 · 1.7K" }),
+    ]));
+  });
+
+  it("renders zeroed day rows for days inside the window that have no usage", async () => {
+    const ctx = makeCtx();
+    setAuth(ctx);
+    setSuccess(ctx);
+    // 2026-01-10: inside the 30-day window, but neither today (02-02) nor
+    // yesterday (02-01).
+    mockSqlite(ctx, {
+      schema: "v2",
+      rows: [{ createdMs: 1768003200000, cost: 0.1, modelID: "gpt-5.2", tokensTotal: 200 }],
+    });
+
+    const result = (await loadPlugin()).probe(ctx);
+
+    expect(result.lines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "Today", value: "$0.00" }),
+      expect.objectContaining({ label: "Yesterday", value: "$0.00" }),
+      expect.objectContaining({ label: "Last 30 Days", value: "$0.10 · 200" }),
+    ]));
+  });
+
+  it("renders zeroed spend rows when the window has no history", async () => {
+    const ctx = makeCtx();
+    setAuth(ctx);
+    setSuccess(ctx);
+    mockSqlite(ctx, { schema: "v2", rows: [] });
+
+    const result = (await loadPlugin()).probe(ctx);
+
+    // An empty window means "no spend", not "no data" — dropping the rows is what
+    // let the V2 schema break hide for weeks.
+    expect(result.lines).toEqual([
+      expect.objectContaining({ label: "Session" }),
+      expect.objectContaining({ label: "Weekly" }),
+      expect.objectContaining({ label: "Monthly" }),
+      expect.objectContaining({ label: "Today", value: "$0.00" }),
+      expect.objectContaining({ label: "Yesterday", value: "$0.00" }),
+      expect.objectContaining({ label: "Last 30 Days", value: "$0.00" }),
     ]);
   });
 

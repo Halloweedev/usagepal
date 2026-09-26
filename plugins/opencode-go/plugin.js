@@ -15,7 +15,15 @@
   const NO_LOCAL_DATA_COLOR = "#a3a3a3";
   const NO_LOCAL_DATA_HINT = "No local OpenCode CLI usage for this account";
 
-  // OpenCode Go assistant rows only — never broaden to other providers.
+  // OpenCode V2 moved session messages out of `message` into `session_message`
+  // and reshaped the row JSON: role became the `type` column, provider and model
+  // moved under `$.model`, and cache tokens nested to `$.tokens.cache.*`. V1
+  // stopped being written the moment a CLI migrated, so the schema — not the
+  // date range — decides which shape to read.
+  const V2_TABLE_PROBE_SQL =
+    "SELECT COUNT(*) AS present FROM sqlite_master WHERE type = 'table' AND name = 'session_message'";
+
+  // V1 assistant rows only — never broaden to other providers.
   const OPENCODE_GO_ASSISTANT_FILTER = `
     json_valid(data)
       AND json_extract(data, '$.providerID') = 'opencode-go'
@@ -34,8 +42,35 @@
     )
   `;
 
-  // Rows carry the CLI's own stored cost, so no pricing table is needed.
-  function localRowsSql(cutoffMs) {
+  const OPENCODE_GO_V2_TOKEN_SUM = `
+    (
+      COALESCE(CAST(json_extract(data, '$.tokens.input') AS INTEGER), 0) +
+      COALESCE(CAST(json_extract(data, '$.tokens.output') AS INTEGER), 0) +
+      COALESCE(CAST(json_extract(data, '$.tokens.reasoning') AS INTEGER), 0) +
+      COALESCE(CAST(json_extract(data, '$.tokens.cache.read') AS INTEGER), 0) +
+      COALESCE(CAST(json_extract(data, '$.tokens.cache.write') AS INTEGER), 0)
+    )
+  `;
+
+  // Rows carry the CLI's own stored cost, so no pricing table is needed. The
+  // window filters on the indexed `time_created` column rather than the JSON
+  // timestamp: wrapping the column in a function defeats
+  // `session_message_time_created_idx` and the full scan ran past the host's
+  // 15s sqlite deadline on a multi-GB database, which reads as "no data".
+  function localRowsSql(cutoffMs, v2) {
+    if (v2) {
+      return (
+        "SELECT " +
+        "CAST(time_created AS INTEGER) AS createdMs, " +
+        "CAST(json_extract(data, '$.cost') AS REAL) AS cost, " +
+        "json_extract(data, '$.model.id') AS modelID, " +
+        OPENCODE_GO_V2_TOKEN_SUM + " AS tokensTotal " +
+        "FROM session_message " +
+        "WHERE time_created >= " + cutoffMs +
+        " AND type = 'assistant'" +
+        " AND json_extract(data, '$.model.providerID') = 'opencode-go'"
+      );
+    }
     return (
       "SELECT " +
       "CAST(COALESCE(json_extract(data, '$.time.created'), time_created) AS INTEGER) AS createdMs, " +
@@ -43,9 +78,22 @@
       "COALESCE(json_extract(data, '$.modelID'), json_extract(data, '$.model'), json_extract(data, '$.modelName')) AS modelID, " +
       OPENCODE_GO_TOKEN_SUM + " AS tokensTotal " +
       "FROM message " +
-      "WHERE " + OPENCODE_GO_ASSISTANT_FILTER +
-      "AND CAST(COALESCE(json_extract(data, '$.time.created'), time_created) AS INTEGER) >= " + cutoffMs
+      "WHERE time_created >= " + cutoffMs +
+      " AND " + OPENCODE_GO_ASSISTANT_FILTER
     );
+  }
+
+  // A missing or unreadable database is an expected state here (no CLI installed
+  // yet), not a fault worth logging — the history query that follows reports it.
+  function hasV2Schema(ctx) {
+    try {
+      const raw = ctx.host.sqlite.query(OPENCODE_DB_PATH, V2_TABLE_PROBE_SQL);
+      const rows = Array.isArray(raw) ? raw : ctx.util.tryParseJson(raw);
+      if (!Array.isArray(rows) || rows.length === 0) return false;
+      return Number(rows[0].present) > 0;
+    } catch (e) {
+      return false;
+    }
   }
 
   function keyFromObject(value) {
@@ -336,14 +384,16 @@
     };
   }
 
+  // A day or window with no rows is $0.00 of spend, not a missing row. Silently
+  // dropping those rows is what let the V2 schema break hide for weeks.
+  function spendLabel(tokens, costUSD) {
+    return costAndTokensLabel({ tokens: tokens, costUSD: costUSD }) || "$0.00";
+  }
+
   function pushDayUsageLine(lines, ctx, label, dayEntry) {
-    const tokens = dayEntry ? dayEntry.tokens : 0;
-    const cost = dayEntry && dayEntry.hasCost ? dayEntry.cost : null;
-    const value = costAndTokensLabel({ tokens: tokens, costUSD: cost });
-    if (!value) return;
     lines.push(ctx.line.text({
       label: label,
-      value: value,
+      value: spendLabel(dayEntry ? dayEntry.tokens : 0, dayEntry && dayEntry.hasCost ? dayEntry.cost : null),
     }));
   }
 
@@ -412,21 +462,21 @@
 
     const now = ctx.nowIso ? new Date(ctx.nowIso) : new Date();
     const cutoffMs = now.getTime() - 30 * DAY_MS;
-    const rows = queryLocalRows(ctx, localRowsSql(cutoffMs));
-    if (!rows || rows.length === 0) return; // transient failure or no history: quota lines stay
+    const rows = queryLocalRows(ctx, localRowsSql(cutoffMs, hasV2Schema(ctx)));
+    // A failed query is transient, so keep the quota lines and stay quiet about
+    // spend rather than claiming a $0.00 the database never confirmed.
+    if (!rows) return;
 
     const usage = collectLocalUsage(rows, now);
-    if (usage.today) pushDayUsageLine(lines, ctx, "Today", usage.today);
-    if (usage.yesterday) pushDayUsageLine(lines, ctx, "Yesterday", usage.yesterday);
-    if (usage.thirtyDay.tokens > 0) {
-      lines.push(ctx.line.text({
-        label: "Last 30 Days",
-        value: costAndTokensLabel({
-          tokens: usage.thirtyDay.tokens,
-          costUSD: usage.thirtyDay.hasCost ? usage.thirtyDay.cost : null,
-        }),
-      }));
-    }
+    pushDayUsageLine(lines, ctx, "Today", usage.today);
+    pushDayUsageLine(lines, ctx, "Yesterday", usage.yesterday);
+    lines.push(ctx.line.text({
+      label: "Last 30 Days",
+      value: spendLabel(
+        usage.thirtyDay.tokens,
+        usage.thirtyDay.hasCost ? usage.thirtyDay.cost : null,
+      ),
+    }));
     pushUsageChartLine(lines, ctx, usage.byDay);
     pushModelUsageLines(lines, ctx, usage.byModel, usage.thirtyDay.tokens);
   }

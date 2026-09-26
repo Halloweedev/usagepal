@@ -53,9 +53,11 @@ prices, or the local OpenCode database.
 
 On top of the web quota bars, UsagePal reads the local OpenCode history
 (`~/.local/share/opencode/opencode.db`, read-only) and shows spend lines for the account that is the
-current local CLI login:
+current local CLI login. Both the current OpenCode release and the previous one are supported, so
+upgrading the CLI keeps your history:
 
-- **Today / Yesterday:** tokens and cost for those days (for example, "$0.50 · 1K")
+- **Today / Yesterday:** tokens and cost for those days (for example, "$0.50 · 1K"). A day with no
+  spend shows "$0.00" rather than disappearing
 - **Last 30 Days:** the 31-day window total
 - **Usage Trend:** a daily token bar chart of the same window
 - **Per-model lines:** each model's share of the window (for example, "88.2% · 30d $0.75").
