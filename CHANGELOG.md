@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.7.77-beta.2
+
+### New Features
+- feat(budgets): dedicated Budgets tab with daily and per-day plan budgets by @Halloweedev
+
+### Bug Fixes
+- fix(opencode-go): read V2 session_message rows so costs reappear by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.77-beta.1...v0.7.77-beta.2](https://github.com/Halloweedev/usagepal/compare/v0.7.77-beta.1...v0.7.77-beta.2)
+
+- [f7aca29](https://github.com/Halloweedev/usagepal/commit/f7aca291abc6d813348e6f0fd770be268ce346b9) feat(budgets): dedicated Budgets tab with daily and per-day plan budgets by @Halloweedev
+- [5dbcdf2](https://github.com/Halloweedev/usagepal/commit/5dbcdf2b1366eee70e43a3273096806229e1c3f0) fix(opencode-go): read V2 session_message rows so costs reappear by @Halloweedev
+
 ## v0.7.77-beta.1
 
 ### New Features
