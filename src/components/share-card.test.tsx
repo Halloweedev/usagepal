@@ -124,7 +124,7 @@ describe("ShareCard", () => {
     expect(progressFill).not.toHaveStyle({ backgroundColor: "#ffffff" })
   })
 
-  it("splits cost · token values into aligned columns", () => {
+  it("shows text values as-is", () => {
     render(
       <ShareCard
         providerName="Codex"
@@ -135,26 +135,7 @@ describe("ShareCard", () => {
       />
     )
 
-    // No literal "·" separator — cost and tokens are separate aligned spans.
-    expect(screen.getByText("$114.66")).toBeInTheDocument()
-    expect(screen.getByText("137M")).toBeInTheDocument()
-    expect(screen.queryByText("$114.66 · 137M")).not.toBeInTheDocument()
-  })
-
-  it("hides the token column when showTokens is off", () => {
-    render(
-      <ShareCard
-        providerName="Codex"
-        providerIconUrl="/codex.svg"
-        lines={[{ type: "text", label: "Today", value: "$114.66 · 137M" }]}
-        theme="dark"
-        showWatermark={false}
-        showTokens={false}
-      />
-    )
-
-    expect(screen.getByText("$114.66")).toBeInTheDocument()
-    expect(screen.queryByText("137M")).not.toBeInTheDocument()
+    expect(screen.getByText("$114.66 · 137M")).toBeInTheDocument()
   })
 
   it("leaves text values without a token suffix untouched", () => {

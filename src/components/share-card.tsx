@@ -70,32 +70,18 @@ function ProgressRow({
   )
 }
 
-/** Matches "cost · tokens" values (e.g. "$114.66 · 137M") so the token part
- * can be hidden or laid out as its own column. */
-const COST_TOKEN_VALUE_RE = /^(.+?) · (\d+(?:\.\d+)?[KMB])$/
-
 function TextRow({
   line,
   styles,
-  showTokens,
 }: {
   line: Extract<MetricLine, { type: "text" }>
   styles: ThemeStyle
-  showTokens: boolean
 }) {
-  const costTokenMatch = COST_TOKEN_VALUE_RE.exec(line.value)
   return (
     <div data-testid="share-card-line-text" className="flex flex-col gap-0.5">
       <div className="flex items-center justify-between">
         <span className="text-sm">{line.label}</span>
-        {costTokenMatch ? (
-          <span className="flex items-baseline text-xs tabular-nums">
-            {showTokens && <span className={styles.subtext}>{costTokenMatch[2]}</span>}
-            <span className="min-w-16 text-right">{costTokenMatch[1]}</span>
-          </span>
-        ) : (
-          <span className="text-xs">{line.value}</span>
-        )}
+        <span className="text-xs">{line.value}</span>
       </div>
       {/* Explains placeholder rows (e.g. an account with no local logs shows
           "—" with why) on the exported image, not just in the app. */}
@@ -246,6 +232,7 @@ export function ShareCard({
   modelCostBasis,
   showTokens = true,
 }: ShareCardProps) {
+  void showTokens
   const styles = THEME_STYLES[theme]
   // Near-black brands (Cursor, OpenCode Go, …) vanish on dark share themes;
   // flip them so the bars stay visible, same as the app's own progress bars.
@@ -319,7 +306,6 @@ export function ShareCard({
                   key={`${line.label}-${index}`}
                   line={line}
                   styles={styles}
-                  showTokens={showTokens}
                 />
               )
             }
