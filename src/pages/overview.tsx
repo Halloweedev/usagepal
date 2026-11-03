@@ -1,7 +1,7 @@
 
 import { ADD_ACCOUNT_PROVIDERS } from "@/components/add-account-dialog"
-import { ModelsTodayStrip } from "@/components/models-today-strip"
 import { ProviderCard } from "@/components/provider-card"
+import { ProviderUsageStrip } from "@/components/provider-usage-strip"
 import {
   flattenAccountSources,
   type GroupedProviderView,
@@ -45,9 +45,7 @@ export function OverviewPage({
         </div>
       ) : (
         <>
-          <section className="mb-3 pt-2">
-            <ModelsTodayStrip plugins={flattenAccountSources(groupedPlugins)} />
-          </section>
+          <ProviderUsageStrip groupedPlugins={groupedPlugins} />
           {groupedPlugins.map((group, index) => (
             <ProviderCard
               key={group.meta.id}
