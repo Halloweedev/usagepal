@@ -339,15 +339,6 @@ describe("cline-pass plugin", () => {
     expect(limitsCall[0].method).toBe("GET")
   })
 
-  it("shows Balance as dollars converted from micro-USD", async () => {
-    const ctx = makeCtxWithNow()
-    mockConfigFile(ctx)
-    mockEndpoints(ctx, { balance: { balance: 750000, userId: "usr-abc123" } })
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-    expect(findLine(result, "Balance").value).toBe("$0.75")
-  })
-
   it("derives plan label from plan displayName", async () => {
     const ctx = makeCtxWithNow()
     mockConfigFile(ctx)
@@ -411,96 +402,5 @@ describe("cline-pass plugin", () => {
     expect(findLine(result, "Session").type).toBe("progress")
     expect(findLine(result, "Session").used).toBe(63)
     expect(result.plan).toBeNull()
-  })
-})
-
-describe("cline-pass share graph", () => {
-  beforeEach(() => {
-    delete globalThis.__usagepal_plugin
-    if (vi.resetModules) vi.resetModules()
-  })
-
-  const makeCtxWithNow = () => {
-    const ctx = makeCtx()
-    ctx.nowIso = NOW_ISO
-    return ctx
-  }
-
-  it("appends Today/Yesterday/Last 30 Days and per-model lines from usages API", async () => {
-    const ctx = makeCtxWithNow()
-    mockConfigFile(ctx)
-    mockEndpoints(ctx)
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-    const labels = result.lines.map((line) => line.label)
-
-    expect(labels).toEqual(
-      expect.arrayContaining([
-        "Today",
-        "Yesterday",
-        "Last 30 Days",
-        "Usage Trend",
-        "Claude Sonnet 4.6",
-        "GPT 5.4",
-      ]),
-    )
-    expect(findLine(result, "Today").value).toContain("$1.50")
-    expect(findLine(result, "Yesterday").value).toContain("$2.00")
-  })
-
-  it("prettifies provider/model slugs for display", async () => {
-    const plugin = await loadPlugin()
-    expect(plugin.__test.prettifyModelName("anthropic", "claude-sonnet-4-6")).toBe(
-      "Claude Sonnet 4.6",
-    )
-    expect(plugin.__test.prettifyModelName("zai", "glm-5.2")).toBe("GLM 5.2")
-    expect(plugin.__test.prettifyModelName("openai", "gpt-5.4")).toBe("GPT 5.4")
-  })
-
-  it("aggregates usage transactions into daily buckets", async () => {
-    const plugin = await loadPlugin()
-    const ctx = makeCtxWithNow()
-    const rows = plugin.__test.normalizeUsageTransactions(ctx, USAGES_RESPONSE)
-    const daily = plugin.__test.aggregateDailyFromRows(rows, Date.parse(NOW_ISO))
-
-    expect(daily).toHaveLength(2)
-    expect(daily.find((d) => d.date === "2026-07-04").costUSD).toBeCloseTo(1.5)
-    expect(daily.find((d) => d.date === "2026-07-03").costUSD).toBeCloseTo(2)
-  })
-
-  it("omits share-graph lines when usages endpoint fails", async () => {
-    const ctx = makeCtxWithNow()
-    mockConfigFile(ctx)
-    mockEndpoints(ctx, { usages: null })
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-
-    expect(findLine(result, "Today")).toBeUndefined()
-    expect(findLine(result, "Session")).toBeDefined()
-  })
-
-  it("converts usage transaction costUsd from micro-USD to dollars", async () => {
-    const ctx = makeCtxWithNow()
-    mockConfigFile(ctx)
-    // 51,822,951 micro-USD = $51.82 — without conversion this would display as $51,822,951.
-    const microUsdBugPayload = {
-      items: [
-        {
-          id: "tx-bug",
-          createdAt: "2026-07-04T10:00:00.000Z",
-          aiInferenceProviderName: "zai",
-          aiModelName: "glm-5.2",
-          costUsd: 51_822_951,
-          totalTokens: 5_000_000,
-        },
-      ],
-    }
-    mockEndpoints(ctx, { usages: microUsdBugPayload })
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-
-    expect(findLine(result, "Today").value).toContain("$51.82")
-    expect(findLine(result, "Today").value).not.toContain("$51,822,951")
-    expect(findLine(result, "GLM 5.2").value).toContain("$51.82")
   })
 })

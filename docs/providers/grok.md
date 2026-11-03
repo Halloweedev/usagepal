@@ -23,12 +23,10 @@ SuperGrok subscribers use the **same data path** as pay-as-you-go Grok Build use
 | Auth | `~/.grok/auth.json` (created by `grok login`) |
 | Billing credits | `GET https://cli-chat-proxy.grok.com/v1/billing` |
 | Plan label | `GET https://cli-chat-proxy.grok.com/v1/settings` → `subscription_tier_display` (e.g. `Free`, `X Premium+`, `SuperGrok`, `SuperGrok Plus`, and `SuperGrok Heavy`) |
-| Share graph / model breakdown | `~/.grok/logs/unified.jsonl` (or `$GROK_HOME/logs/unified.jsonl`), plus OpenCode xAI history from `~/.local/share/opencode/opencode.db` when present |
 
 A web-only SuperGrok subscription does **not** populate UsagePal by itself. Run `grok login` once so the CLI auth file exists, then enable the Grok plugin. After that:
 
 - **Provider card & overview** show your subscription tier and included-credit usage from the billing API.
-- **Share graph** estimates spend from Grok session turns, CLI logs, and/or OpenCode xAI history (Today, Yesterday, Last 30 Days, per-model lines). Usage on grok.com that never goes through the CLI, sessions, or OpenCode is not included.
 
 X Premium+ subscribers with bundled Grok Build access follow the same flow.
 
@@ -87,11 +85,11 @@ Returns remote CLI settings. UsagePal reads `subscription_tier_display` from thi
 Used fields:
 
 - `used.val` — current billing period usage
-- `monthlyLimit.val` — included credit limit. `0` is valid for accounts without a Grok Build credit pool (observed on lapsed/`Free` accounts); some tiers may omit `used`/`monthlyLimit` entirely, in which case UsagePal likewise omits the Credits used bar and still shows plan plus local spend. SuperGrok Plus/Heavy pool shapes are handled defensively and await confirmation against live payloads.
+- `monthlyLimit.val` — included credit limit. `0` is valid for accounts without a Grok Build credit pool (observed on lapsed/`Free` accounts); some tiers may omit `used`/`monthlyLimit` entirely, in which case UsagePal likewise omits the Credits used bar and still shows the plan. SuperGrok Plus/Heavy pool shapes are handled defensively and await confirmation against live payloads.
 - `onDemandCap.val` — pay-as-you-go cap; `0` or omitted means disabled (typical for subscription-only accounts)
 - `billingPeriodEnd` — current billing period reset time
 
-Linux uses the same `~/.grok/auth.json` and `~/.grok/logs/unified.jsonl` paths as macOS.
+Linux uses the same `~/.grok/auth.json` path as macOS.
 
 ## Displayed Lines
 
@@ -99,30 +97,6 @@ Linux uses the same `~/.grok/auth.json` and `~/.grok/logs/unified.jsonl` paths a
 |------|-------------|
 | Credits used | Percent of included monthly credits used |
 | Pay as you go | Disabled, or the configured pay-as-you-go cap |
-
-## Share Graph
-
-UsagePal estimates local spend for the Share graph from three sources on the **Grok** provider only:
-
-1. **Grok session turns** — `turn_completed` usage in `~/.grok/sessions/**/updates.jsonl` (includes `grok-4.5-build` / `grok-4.6-build` and survives `unified.jsonl` truncation)
-2. **Grok CLI logs** — `~/.grok/logs/unified.jsonl` (or `$GROK_HOME/logs/unified.jsonl`)
-3. **OpenCode xAI history** — assistant messages in `~/.local/share/opencode/opencode.db` with `providerID = 'xai'` (OpenCode OAuth / xAI usage). Estimated USD when OpenCode stores cost or when tokens can be priced from embedded `GROK_PRICING` rates (including grok-4.6 at $2 input / $0.50 cached / $6 output per 1M tokens, the published below-200k list price).
-
-OpenCode Go (`providerID = 'opencode-go'`) stays on its own provider card and does **not** include xAI rows.
-
-### Merge rule
-
-When more than one source has data for the same UTC day, UsagePal uses session turns for that entire day if any exist; otherwise the CLI log; otherwise OpenCode xAI. Days are never summed across sources, so overlapping spend is not double-counted. `grok-4.5-build` is shown as Grok 4.5.
-
-Displayed lines:
-
-- **Today / Yesterday / Last 30 Days** — dollar and token totals (unknown models count toward tokens at $0)
-- **Usage Trend** — daily token bar chart for the last 31 days
-- **Per-model breakdown** — one text line per model with 30-day share and Today/Yesterday/7d/30d spend (spend segments omitted when $0)
-
-CLI token rows come from `shell.turn.inference_done` events; model attribution uses per-process (`pid`) timelines from the CLI's model-change events. Model IDs from both sources are prettified the same way (for example `grok-4.5` → `Grok 4.5`) so they merge on one line when they share a day source.
-
-If both sources are missing or unreadable, billing lines still render and share-graph lines are omitted. Credits used / billing API path is unchanged.
 
 ## Errors
 
@@ -135,4 +109,4 @@ If both sources are missing or unreadable, billing lines still render and share-
 | HTTP error | "Grok billing request failed (HTTP {status}). Try again later." |
 | Network error | "Grok billing request failed. Check your connection." |
 | Invalid response | "Grok billing response changed." |
-| Included credit limit is `0` | Not an error. Credits used is omitted; plan and local spend still show. |
+| Included credit limit is `0` | Not an error. Credits used is omitted; plan still shows. |

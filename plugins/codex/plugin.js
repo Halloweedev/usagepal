@@ -479,199 +479,19 @@
 
   // This account isn't the one signed in to the local Codex CLI, so its spend
   // logs live under another login we can't read — the host flags it here.
-  function localLogsUnavailable(ctx) {
-    return readEnvString(ctx, "USAGEPAL_LOCAL_LOGS_UNAVAILABLE") === "1"
-  }
 
   // Where ccusage reads session logs: the real local home for the matched
   // account (CODEX_CCUSAGE_HOME), else the auth home (default/unregistered case).
-  function readCcusageHome(ctx) {
-    return readEnvString(ctx, "CODEX_CCUSAGE_HOME") || readCodexHome(ctx)
-  }
 
-  function queryTokenUsage(ctx) {
-    if (localLogsUnavailable(ctx)) {
-      return { status: "no_local_data", data: null }
-    }
-    if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
-      return { status: "no_runner", data: null }
-    }
 
-    const since = new Date()
-    // Inclusive range: today + previous 30 days = 31 calendar days.
-    since.setDate(since.getDate() - 30)
-    const y = since.getFullYear()
-    const m = since.getMonth() + 1
-    const d = since.getDate()
-    const sinceStr = "" + y + (m < 10 ? "0" : "") + m + (d < 10 ? "0" : "") + d
-    const queryOpts = { provider: "codex", since: sinceStr }
-    const codexHome = readCcusageHome(ctx)
-    if (codexHome) {
-      queryOpts.homePath = codexHome
-    }
 
-    const result = ctx.host.ccusage.query(queryOpts)
-    if (!result || typeof result !== "object" || typeof result.status !== "string") {
-      return { status: "runner_failed", data: null }
-    }
-    if (result.status !== "ok") {
-      return { status: result.status, data: null }
-    }
-    if (!result.data || !Array.isArray(result.data.daily)) {
-      return { status: "runner_failed", data: null }
-    }
-    return { status: "ok", data: result.data }
-  }
 
-  function fmtTokens(n) {
-    const abs = Math.abs(n)
-    const sign = n < 0 ? "-" : ""
-    const units = [
-      { threshold: 1e9, divisor: 1e9, suffix: "B" },
-      { threshold: 1e6, divisor: 1e6, suffix: "M" },
-      { threshold: 1e3, divisor: 1e3, suffix: "K" },
-    ]
-    for (let i = 0; i < units.length; i++) {
-      const unit = units[i]
-      if (abs >= unit.threshold) {
-        const scaled = abs / unit.divisor
-        const formatted = scaled >= 10
-          ? Math.round(scaled).toString()
-          : scaled.toFixed(1).replace(/\.0$/, "")
-        return sign + formatted + unit.suffix
-      }
-    }
-    return sign + Math.round(abs).toString()
-  }
 
-  function dayKeyFromDate(date) {
-    const year = date.getFullYear()
-    const month = date.getMonth() + 1
-    const day = date.getDate()
-    return year + "-" + (month < 10 ? "0" : "") + month + "-" + (day < 10 ? "0" : "") + day
-  }
 
-  function dayKeyFromUsageDate(rawDate) {
-    if (typeof rawDate !== "string") return null
-    const value = rawDate.trim()
-    if (!value) return null
 
-    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-    if (isoMatch) {
-      return isoMatch[1] + "-" + isoMatch[2] + "-" + isoMatch[3]
-    }
 
-    const isoDatePrefixMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[Tt\s]|$)/)
-    if (isoDatePrefixMatch) {
-      return isoDatePrefixMatch[1] + "-" + isoDatePrefixMatch[2] + "-" + isoDatePrefixMatch[3]
-    }
 
-    const compactMatch = value.match(/^(\d{4})(\d{2})(\d{2})$/)
-    if (compactMatch) {
-      return compactMatch[1] + "-" + compactMatch[2] + "-" + compactMatch[3]
-    }
 
-    const ms = Date.parse(value)
-    if (!Number.isFinite(ms)) return null
-    return dayKeyFromDate(new Date(ms))
-  }
-
-  function usageCostUsd(day) {
-    if (!day || typeof day !== "object") return null
-
-    if (day.totalCost != null) {
-      const totalCost = Number(day.totalCost)
-      if (Number.isFinite(totalCost)) return totalCost
-    }
-
-    if (day.costUSD != null) {
-      const costUSD = Number(day.costUSD)
-      if (Number.isFinite(costUSD)) return costUSD
-    }
-
-    return null
-  }
-
-  function costAndTokensLabel(data, opts) {
-    const includeZeroTokens = !!(opts && opts.includeZeroTokens)
-    const parts = []
-    if (data.costUSD != null) parts.push("$" + data.costUSD.toFixed(2))
-    if (data.tokens > 0 || (includeZeroTokens && data.tokens === 0)) {
-      parts.push(fmtTokens(data.tokens))
-    }
-    return parts.join(" · ")
-  }
-
-  function modelTokenCount(modelUsage) {
-    if (!modelUsage || typeof modelUsage !== "object") return 0
-    const total = Number(modelUsage.totalTokens)
-    if (Number.isFinite(total) && total > 0) return total
-
-    const fields = [
-      "inputTokens",
-      "cachedInputTokens",
-      "cacheCreationTokens",
-      "cacheReadTokens",
-      "outputTokens",
-      "reasoningOutputTokens",
-    ]
-    let sum = 0
-    for (let i = 0; i < fields.length; i++) {
-      const n = Number(modelUsage[fields[i]])
-      if (Number.isFinite(n) && n > 0) sum += n
-    }
-    return sum
-  }
-
-  function collectModelUsage(daily) {
-    const totals = {}
-    let totalTokens = 0
-    for (let i = 0; i < daily.length; i++) {
-      const day = daily[i]
-      const models = day && day.models
-      if (models && typeof models === "object") {
-        const names = Object.keys(models)
-        for (let j = 0; j < names.length; j++) {
-          const name = names[j]
-          const tokens = modelTokenCount(models[name])
-          if (tokens <= 0) continue
-          totals[name] = (totals[name] || 0) + tokens
-          totalTokens += tokens
-        }
-      }
-
-      const breakdowns = day && day.modelBreakdowns
-      if (Array.isArray(breakdowns)) {
-        for (let j = 0; j < breakdowns.length; j++) {
-          const breakdown = breakdowns[j]
-          const name = String(
-            (breakdown && (breakdown.modelName || breakdown.name || breakdown.model)) || ""
-          ).trim()
-          if (!name) continue
-          const tokens = modelTokenCount(breakdown)
-          if (tokens <= 0) continue
-          totals[name] = (totals[name] || 0) + tokens
-          totalTokens += tokens
-        }
-      }
-    }
-
-    if (totalTokens <= 0) return []
-    return Object.keys(totals)
-      .map((name) => ({ name, tokens: totals[name], percent: (totals[name] / totalTokens) * 100 }))
-      .sort((a, b) => b.tokens - a.tokens || a.name.localeCompare(b.name))
-  }
-
-  function percentLabel(value) {
-    if (value > 0 && value < 0.1) return "<0.1%"
-    const rounded = Math.round(value * 10) / 10
-    return (rounded % 1 === 0 ? String(Math.round(rounded)) : String(rounded)) + "%"
-  }
-
-  function fmtModelCost(amount) {
-    if (amount < 1000) return "$" + amount.toFixed(2)
-    return "$" + Math.round(amount).toLocaleString("en-US")
-  }
 
   // Models with no published price are costed at $0 by ccusage and must be
   // held out of the day-cost split below — otherwise they siphon dollars off
@@ -679,22 +499,8 @@
   // reviewer's own model; `gpt-reserve` is the backend identifier for turns
   // that ran on the user-facing Luna Reserve fallback allowance (a separate
   // quota pool once regular quota is exhausted).
-  const ZERO_COST_MODELS = { "codex-auto-review": "Codex Auto Review", "gpt-reserve": "Luna Reserve" }
 
-  function isZeroCostModel(name) {
-    return Object.prototype.hasOwnProperty.call(ZERO_COST_MODELS, name)
-  }
 
-  function prettifyModelName(rawId) {
-    if (typeof rawId !== "string") return rawId
-    if (isZeroCostModel(rawId)) return ZERO_COST_MODELS[rawId]
-    if (!rawId.startsWith("gpt-")) return rawId
-    const parts = rawId.slice("gpt-".length).split("-")
-    const version = parts[0]
-    if (!/^\d+(\.\d+)?$/.test(version)) return rawId
-    const suffixWords = parts.slice(1).map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    return ["GPT-" + version].concat(suffixWords).join(" ")
-  }
 
   // `gpt-reserve` is the backend identifier for the user-facing Luna Reserve
   // fallback allowance (separate pool once regular quota is exhausted).
@@ -705,203 +511,29 @@
     return shortName
   }
 
-  function pushModelUsageLines(lines, ctx, daily, now) {
-    const models = collectModelUsage(daily)
-    const todayKey = dayKeyFromDate(now)
-    const recentKeys = recentDayKeys(now, 7)
-    const costTotals = collectModelCosts(daily, todayKey, recentKeys)
-    for (let i = 0; i < models.length; i++) {
-      const model = models[i]
-      let value = percentLabel(model.percent)
-      const segments = []
-      // `!= null` rather than truthiness: a zero-cost model's $0.00 is a real
-      // value to render, not a missing one.
-      if (costTotals.Today[model.name] != null) segments.push("Today " + fmtModelCost(costTotals.Today[model.name]))
-      if (costTotals["7d"][model.name] != null) segments.push("7d " + fmtModelCost(costTotals["7d"][model.name]))
-      if (costTotals["30d"][model.name] != null) segments.push("30d " + fmtModelCost(costTotals["30d"][model.name]))
-      if (segments.length > 0) value += " · " + segments.join(" · ")
-      lines.push(ctx.line.text({
-        label: prettifyModelName(model.name),
-        value: value,
-      }))
-    }
-  }
 
-  function recentDayKeys(now, count) {
-    const keys = []
-    for (let i = 0; i < count; i++) {
-      const d = new Date(now.getTime())
-      d.setDate(d.getDate() - i)
-      keys.push(dayKeyFromDate(d))
-    }
-    return keys
-  }
 
-  function addModelCost(totals, name, cost, inToday, in7d) {
-    if (!Number.isFinite(cost) || cost <= 0) return
-    totals["30d"][name] = (totals["30d"][name] || 0) + cost
-    if (in7d) totals["7d"][name] = (totals["7d"][name] || 0) + cost
-    if (inToday) totals.Today[name] = (totals.Today[name] || 0) + cost
-  }
 
   // Records a $0 entry for a period the model was actually used in, so the line
   // renders "$0.00" instead of dropping the segment — a missing segment reads as
   // "unknown" downstream and gets back-filled from the provider total × percent.
-  function markZeroCost(totals, name, inToday, in7d) {
-    totals["30d"][name] = totals["30d"][name] || 0
-    if (in7d) totals["7d"][name] = totals["7d"][name] || 0
-    if (inToday) totals.Today[name] = totals.Today[name] || 0
-  }
 
   // Marks every zero-price model on a day with a $0 presence, before the
   // dollar split below. Days whose total is $0 (or missing) are skipped by
   // the split, but without this their lines would render percent-only and
   // downstream would back-fill them with borrowed dollars.
-  function markZeroCostModels(totals, models, inToday, in7d) {
-    if (!models || typeof models !== "object") return
-    const names = Object.keys(models)
-    for (let j = 0; j < names.length; j++) {
-      const name = names[j]
-      if (!isZeroCostModel(name)) continue
-      if (modelTokenCount(models[name]) <= 0) continue
-      markZeroCost(totals, name, inToday, in7d)
-    }
-  }
 
   // Per-model $ for Today/7d/30d. Prefers Claude-style modelBreakdowns[].cost;
   // Codex days only expose costUSD + a models token map, so split the day total
   // by that day's token share when breakdowns are absent.
-  function collectModelCosts(daily, todayKey, recentKeys) {
-    const recentSet = new Set(recentKeys)
-    const totals = { Today: {}, "7d": {}, "30d": {} }
-    for (let i = 0; i < daily.length; i++) {
-      const day = daily[i]
-      const dayKey = dayKeyFromUsageDate(day.date)
-      const inToday = dayKey === todayKey
-      const in7d = recentSet.has(dayKey)
-      const breakdowns = day && day.modelBreakdowns
-      const models = day && day.models
-      markZeroCostModels(totals, models, inToday, in7d)
-      let usedBreakdownCosts = false
-      if (Array.isArray(breakdowns)) {
-        for (let j = 0; j < breakdowns.length; j++) {
-          const breakdown = breakdowns[j]
-          const name = String(
-            (breakdown && (breakdown.modelName || breakdown.name || breakdown.model)) || ""
-          ).trim()
-          if (!name) continue
-          const cost = Number(breakdown && breakdown.cost)
-          if (!Number.isFinite(cost) || cost <= 0) continue
-          usedBreakdownCosts = true
-          addModelCost(totals, name, cost, inToday, in7d)
-        }
-      }
-      if (usedBreakdownCosts) continue
 
-      const dayCost = usageCostUsd(day)
-      if (dayCost == null || dayCost <= 0) continue
-      if (!models || typeof models !== "object") continue
-      const names = Object.keys(models)
-      let dayTokens = 0
-      const tokenByName = {}
-      for (let j = 0; j < names.length; j++) {
-        const name = names[j]
-        const tokens = modelTokenCount(models[name])
-        if (tokens <= 0) continue
-        if (isZeroCostModel(name)) {
-          markZeroCost(totals, name, inToday, in7d)
-          continue
-        }
-        tokenByName[name] = tokens
-        dayTokens += tokens
-      }
-      if (dayTokens <= 0) continue
-      const modelNames = Object.keys(tokenByName)
-      for (let j = 0; j < modelNames.length; j++) {
-        const name = modelNames[j]
-        addModelCost(totals, name, dayCost * (tokenByName[name] / dayTokens), inToday, in7d)
-      }
-    }
-    return totals
-  }
 
-  function usageDayLabel(rawDate) {
-    const key = dayKeyFromUsageDate(rawDate)
-    if (!key) return String(rawDate || "").slice(0, 10) || "Usage"
-    const month = Number(key.slice(5, 7))
-    const day = Number(key.slice(8, 10))
-    return month + "/" + day
-  }
 
-  function collectUsageChartPoints(daily) {
-    const points = []
-    for (let i = 0; i < daily.length; i++) {
-      const day = daily[i]
-      const tokens = Number(day && day.totalTokens)
-      if (!Number.isFinite(tokens) || tokens < 0) continue
-      const key = dayKeyFromUsageDate(day.date)
-      if (!key) continue
-      points.push({
-        key: key,
-        label: usageDayLabel(day.date),
-        value: tokens,
-        valueLabel: fmtTokens(tokens),
-      })
-    }
-    return points
-      .sort((a, b) => a.key.localeCompare(b.key))
-      .slice(-31)
-      .map((point) => ({
-        label: point.label,
-        value: point.value,
-        valueLabel: point.valueLabel,
-      }))
-  }
 
-  function pushUsageChartLine(lines, ctx, daily) {
-    const points = collectUsageChartPoints(daily)
-    if (points.length === 0) return
-    lines.push(ctx.line.barChart({
-      label: "Usage Trend",
-      points: points,
-      note: "Estimated from local Codex logs for the selected account.",
-      color: "#74AA9C",
-    }))
-  }
-
-  var NO_LOCAL_DATA_COLOR = "#a3a3a3"
-  var NO_LOCAL_DATA_HINT = "No local Codex CLI usage for this account"
 
   // Spend rows for an account that isn't the local CLI login: show a clear
   // "no local data" state instead of a misleading $0 or another login's spend.
-  function pushNoLocalDataLines(lines, ctx) {
-    var labels = ["Today", "Yesterday", "Last 30 Days"]
-    for (var i = 0; i < labels.length; i++) {
-      lines.push(ctx.line.text({
-        label: labels[i],
-        value: "—",
-        color: NO_LOCAL_DATA_COLOR,
-        subtitle: i === 0 ? NO_LOCAL_DATA_HINT : null
-      }))
-    }
-  }
 
-  function pushDayUsageLine(lines, ctx, label, dayEntry) {
-    const tokens = Number(dayEntry && dayEntry.totalTokens) || 0
-    const cost = usageCostUsd(dayEntry)
-    if (tokens > 0) {
-      lines.push(ctx.line.text({
-        label: label,
-        value: costAndTokensLabel({ tokens: tokens, costUSD: cost })
-      }))
-      return
-    }
-
-    lines.push(ctx.line.text({
-      label: label,
-      value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
-    }))
-  }
 
   function probeWithAuthState(ctx, initialAuthState) {
     let authState = initialAuthState
@@ -1159,61 +791,6 @@
         if (planLabel) {
           plan = planLabel
         }
-      }
-
-      const tokenUsageResult = queryTokenUsage(ctx)
-      if (tokenUsageResult.status === "ok") {
-        const tokenUsage = tokenUsageResult.data
-        const now = new Date()
-        const todayKey = dayKeyFromDate(now)
-        const yesterday = new Date(now.getTime())
-        yesterday.setDate(yesterday.getDate() - 1)
-        const yesterdayKey = dayKeyFromDate(yesterday)
-
-        let todayEntry = null
-        let yesterdayEntry = null
-        for (let i = 0; i < tokenUsage.daily.length; i++) {
-          const usageDayKey = dayKeyFromUsageDate(tokenUsage.daily[i].date)
-          if (usageDayKey === todayKey) {
-            todayEntry = tokenUsage.daily[i]
-            continue
-          }
-          if (usageDayKey === yesterdayKey) {
-            yesterdayEntry = tokenUsage.daily[i]
-          }
-        }
-
-        pushDayUsageLine(lines, ctx, "Today", todayEntry)
-        pushDayUsageLine(lines, ctx, "Yesterday", yesterdayEntry)
-
-        let totalTokens = 0
-        let totalCostNanos = 0
-        let hasCost = false
-        for (let i = 0; i < tokenUsage.daily.length; i++) {
-          const day = tokenUsage.daily[i]
-          const dayTokens = Number(day.totalTokens)
-          if (Number.isFinite(dayTokens)) {
-            totalTokens += dayTokens
-          }
-
-          const dayCost = usageCostUsd(day)
-          if (dayCost != null) {
-            totalCostNanos += Math.round(dayCost * 1e9)
-            hasCost = true
-          }
-        }
-
-        if (totalTokens > 0) {
-          lines.push(ctx.line.text({
-            label: "Last 30 Days",
-            value: costAndTokensLabel({ tokens: totalTokens, costUSD: hasCost ? totalCostNanos / 1e9 : null })
-          }))
-        }
-
-        pushUsageChartLine(lines, ctx, tokenUsage.daily)
-        pushModelUsageLines(lines, ctx, tokenUsage.daily, now)
-      } else if (tokenUsageResult.status === "no_local_data") {
-        pushNoLocalDataLines(lines, ctx)
       }
 
       if (lines.length === 0) {

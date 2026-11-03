@@ -779,18 +779,10 @@
   function probe(ctx) {
     var token = resolveToken(ctx)
 
-    // Fetch user ID first (needed for balance and usages).
+    // Fetch user ID (also validates the auth token).
     var userId = fetchUserId(ctx, token)
     if (!userId) {
       throw "Couldn't determine your Cline user ID."
-    }
-
-    // Fetch balance (best-effort).
-    var balanceMicro = null
-    try {
-      balanceMicro = fetchBalance(ctx, userId, token)
-    } catch (e) {
-      ctx.host.log.warn("cline-pass balance fetch failed: " + String(e))
     }
 
     // Fetch plan (for display name).
@@ -848,26 +840,6 @@
         format: { kind: "percent" },
         resetsAt: monthlyLimit.resetsAt,
       }))
-    }
-
-    // Balance: prepaid credits remaining.
-    if (balanceMicro !== null) {
-      lines.push(ctx.line.text({
-        label: "Balance",
-        value: formatDollars(Math.max(0, microToUsd(balanceMicro))),
-      }))
-    }
-
-    // Share-graph spend history from usage transactions (best-effort).
-    try {
-      var usages = fetchUsages(ctx, userId, token)
-      if (usages) {
-        var nowMs = readNowMs(ctx)
-        var usageRows = normalizeUsageTransactions(ctx, usages)
-        appendSpendHistory(ctx, lines, usageRows, nowMs)
-      }
-    } catch (e) {
-      ctx.host.log.warn("cline-pass share-graph history failed: " + String(e))
     }
 
     if (lines.length === 0) {
