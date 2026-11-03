@@ -35,10 +35,8 @@ export function ProviderUsageStrip({ groupedPlugins }: { groupedPlugins: Grouped
 
   return (
     <section className="mb-3 rounded-xl border p-1.5" aria-label="Usage at a glance">
-      <div className="flex items-center justify-between gap-2 rounded-full bg-muted/50 py-1 pl-1 pr-2.5">
-        <span className="text-xs font-medium text-foreground">Usage at a Glance</span>
-      </div>
-      <div className="flex items-center gap-4 px-1.5 pb-1.5 pt-3">
+      <h3 className="text-lg font-semibold mb-2 px-1.5 pt-1.5">Usage at a Glance</h3>
+      <div className="flex items-center gap-4 px-1.5 pb-1.5">
         <Donut
           size={96}
           radius={36}
