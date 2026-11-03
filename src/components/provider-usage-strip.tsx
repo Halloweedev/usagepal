@@ -32,23 +32,33 @@ export function ProviderUsageStrip({ groupedPlugins }: { groupedPlugins: Grouped
   if (entries.length === 0) return null
 
   return (
-    <section className="mb-3 pt-2" aria-label="Usage at a glance">
-      <h3 className="text-lg font-semibold mb-2">Usage at a Glance</h3>
-      <div className="space-y-1.5">
-        {entries.map((entry) => (
-          <div key={entry.id} className="flex items-center gap-2 text-xs">
-            <span className="w-24 truncate text-muted-foreground">{entry.name}</span>
-            <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-muted">
-              <div
-                className="absolute inset-y-0 left-0 rounded-full"
-                style={{ width: `${entry.percent}%`, backgroundColor: entry.brandColor ?? "currentColor" }}
-              />
+    <section className="mb-3 rounded-xl border p-1.5" aria-label="Usage at a glance">
+      <div className="flex items-center justify-between gap-2 rounded-full bg-muted/50 py-1 pl-1 pr-2.5">
+        <span className="text-xs font-medium text-foreground">Usage at a Glance</span>
+      </div>
+      <div className="px-1.5 pb-1.5 pt-3">
+        <div className="flex h-2 gap-[2px] overflow-hidden rounded-full">
+          {entries.map((entry) => (
+            <div
+              key={entry.id}
+              className="h-full transition-[filter] hover:brightness-125 first:rounded-l-full last:rounded-r-full"
+              style={{
+                width: `${Math.max(2, entry.percent)}%`,
+                backgroundColor: entry.brandColor ?? "currentColor",
+              }}
+              title={`${entry.name}: ${Math.round(entry.percent)}%`}
+            />
+          ))}
+        </div>
+        <div className="mt-2.5 grid grid-cols-2 gap-x-4">
+          {entries.map((entry) => (
+            <div key={entry.id} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="size-[7px] rounded-[2px]" style={{ backgroundColor: entry.brandColor ?? "currentColor" }} />
+              <span className="truncate">{entry.name}</span>
+              <span className="ml-auto tabular-nums">{Math.round(entry.percent)}%</span>
             </div>
-            <span className="w-10 text-right tabular-nums text-muted-foreground">
-              {Math.round(entry.percent)}%
-            </span>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </section>
   )
