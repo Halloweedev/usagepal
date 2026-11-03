@@ -3,6 +3,7 @@ import { ChartBarHorizontal, ChartPie, SquaresFour, TreeView } from "@phosphor-i
 import { ExportIcon } from "@/components/export-icon"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Donut, DonutCenterTotal } from "@/components/donut"
+import { isTauri } from "@tauri-apps/api/core"
 import { useDarkMode } from "@/hooks/use-dark-mode"
 import { assignGraphEntryColors } from "@/lib/graph-colors"
 import { cn } from "@/lib/utils"
@@ -283,6 +284,7 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
   const entries = useMemo(() => buildStripEntries(usage, groupBy, metric), [usage, groupBy, metric])
 
   useEffect(() => {
+    if (!isTauri() && !import.meta.env?.VITEST) return
     let active = true
     void Promise.all([loadOverviewGraphStyle(), loadOverviewGraphGroupBy(), loadOverviewStripMetric()]).then(
       ([storedStyle, storedGroupBy, storedMetric]) => {
@@ -291,7 +293,7 @@ export function ModelsTodayStrip({ plugins }: { plugins: TodayModelsSource[] }) 
         setGroupBy(storedGroupBy)
         setMetric(storedMetric)
       }
-    )
+    ).catch(() => {})
     return () => {
       active = false
     }
