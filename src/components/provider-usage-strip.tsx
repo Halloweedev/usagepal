@@ -34,9 +34,10 @@ export function ProviderUsageStrip({ groupedPlugins }: { groupedPlugins: Grouped
   const avg = Math.round(entries.reduce((s, e) => s + e.percent, 0) / entries.length)
 
   return (
-    <section className="mb-3 rounded-xl border p-1.5" aria-label="Usage at a glance">
-      <h3 className="text-lg font-semibold mb-2 px-1.5 pt-1.5">Usage at a Glance</h3>
-      <div className="flex items-center gap-4 px-1.5 pb-1.5">
+    <section className="mb-3 pt-2" aria-label="Usage at a glance">
+      <h3 className="text-lg font-semibold mb-2">Usage at a Glance</h3>
+      <div className="rounded-xl border p-1.5">
+        <div className="flex items-center gap-4 px-1.5 pb-1.5 pt-3">
         <Donut
           size={96}
           radius={36}
@@ -71,6 +72,7 @@ export function ProviderUsageStrip({ groupedPlugins }: { groupedPlugins: Grouped
             </div>
           ))}
         </div>
+      </div>
       </div>
     </section>
   )
