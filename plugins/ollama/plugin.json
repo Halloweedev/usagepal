@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "ollama",
+  "name": "Ollama",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#000000",
+  "detect": [
+    { "env": "OLLAMA_API_KEY" }
+  ],
+  "lines": [
+    { "type": "progress", "label": "Included Credits", "scope": "overview" },
+    { "type": "progress", "label": "Session", "scope": "overview" },
+    { "type": "progress", "label": "Weekly", "scope": "overview", "period": "weekly" },
+    { "type": "text", "label": "Purchased Credits", "scope": "detail" }
+  ]
+}

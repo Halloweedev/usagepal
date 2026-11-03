@@ -51,6 +51,7 @@ UsagePal lives in your menu bar and shows you how much of your AI coding subscri
 - [**Kiro**](docs/providers/kiro.md) / credits, bonus credits, overages
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
+- [**Ollama**](docs/providers/ollama.md) / included credits, purchased credits, session/weekly limits
 - [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
 - [**OpenRouter**](docs/providers/openrouter.md) / credits, balance, daily/weekly/monthly spend, key limit
 - [**Devin**](docs/providers/devin.md) / weekly quota, daily quota, ACU, extra usage, on-demand credits
