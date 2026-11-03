@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-
+import { Donut } from "@/components/donut"
 import type { GroupedProviderView } from "@/hooks/app/group-provider-views"
 
 type Entry = {
@@ -31,29 +31,43 @@ export function ProviderUsageStrip({ groupedPlugins }: { groupedPlugins: Grouped
 
   if (entries.length === 0) return null
 
+  const avg = Math.round(entries.reduce((s, e) => s + e.percent, 0) / entries.length)
+
   return (
     <section className="mb-3 rounded-xl border p-1.5" aria-label="Usage at a glance">
       <div className="flex items-center justify-between gap-2 rounded-full bg-muted/50 py-1 pl-1 pr-2.5">
         <span className="text-xs font-medium text-foreground">Usage at a Glance</span>
       </div>
-      <div className="px-1.5 pb-1.5 pt-3">
-        <div className="flex h-2 gap-[2px] overflow-hidden rounded-full">
-          {entries.map((entry) => (
-            <div
-              key={entry.id}
-              className="h-full transition-[filter] hover:brightness-125 first:rounded-l-full last:rounded-r-full"
-              style={{
-                width: `${Math.max(2, entry.percent)}%`,
-                backgroundColor: entry.brandColor ?? "currentColor",
-              }}
-              title={`${entry.name}: ${Math.round(entry.percent)}%`}
-            />
-          ))}
-        </div>
-        <div className="mt-2.5 grid grid-cols-2 gap-x-4">
+      <div className="flex items-center gap-4 px-1.5 pb-1.5 pt-3">
+        <Donut
+          size={96}
+          radius={36}
+          stroke={13}
+          gap={0.8}
+          testId="usage-donut"
+          sliceTestId="usage-donut-segment"
+          slices={entries.map((entry) => ({
+            key: entry.id,
+            share: Math.max(entry.percent, 1),
+            color: entry.brandColor ?? "currentColor",
+          }))}
+        >
+          <text
+            x={48}
+            y={48}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="currentColor"
+            fontSize={18}
+            fontWeight={600}
+          >
+            {avg}%
+          </text>
+        </Donut>
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           {entries.map((entry) => (
             <div key={entry.id} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <span className="size-[7px] rounded-[2px]" style={{ backgroundColor: entry.brandColor ?? "currentColor" }} />
+              <span className="size-[7px] shrink-0 rounded-[2px]" style={{ backgroundColor: entry.brandColor ?? "currentColor" }} />
               <span className="truncate">{entry.name}</span>
               <span className="ml-auto tabular-nums">{Math.round(entry.percent)}%</span>
             </div>
