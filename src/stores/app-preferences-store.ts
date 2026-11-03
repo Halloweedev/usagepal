@@ -8,7 +8,6 @@ import {
   DEFAULT_MENUBAR_METRIC,
   DEFAULT_MULTI_TRAY_DISPLAY_MODE,
   DEFAULT_MULTI_TRAY_PROVIDER_COUNT,
-  DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
@@ -38,7 +37,7 @@ type AppPreferencesStore = {
   menubarMetric: MenubarMetric
   multiTrayProviderCount: MultiTrayProviderCount
   multiTrayDisplayMode: MultiTrayDisplayMode
-  overviewSpendStripEnabled: boolean
+
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setBetaUpdatesEnabled: (value: boolean) => void
   setThemeMode: (value: ThemeMode) => void
@@ -51,7 +50,7 @@ type AppPreferencesStore = {
   setMenubarMetric: (value: MenubarMetric) => void
   setMultiTrayProviderCount: (value: MultiTrayProviderCount) => void
   setMultiTrayDisplayMode: (value: MultiTrayDisplayMode) => void
-  setOverviewSpendStripEnabled: (value: boolean) => void
+
   resetState: () => void
 }
 
@@ -68,7 +67,7 @@ const initialState = {
   menubarMetric: DEFAULT_MENUBAR_METRIC,
   multiTrayProviderCount: DEFAULT_MULTI_TRAY_PROVIDER_COUNT,
   multiTrayDisplayMode: DEFAULT_MULTI_TRAY_DISPLAY_MODE,
-  overviewSpendStripEnabled: DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED,
+
 }
 
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
@@ -85,6 +84,6 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setMenubarMetric: (value) => set({ menubarMetric: value }),
   setMultiTrayProviderCount: (value) => set({ multiTrayProviderCount: value }),
   setMultiTrayDisplayMode: (value) => set({ multiTrayDisplayMode: value }),
-  setOverviewSpendStripEnabled: (value) => set({ overviewSpendStripEnabled: value }),
+
   resetState: () => set(initialState),
 }))

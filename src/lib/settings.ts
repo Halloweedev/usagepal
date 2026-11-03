@@ -147,7 +147,7 @@ const SHARE_SETTINGS_KEY = "shareSettings";
 const OVERVIEW_GRAPH_STYLE_KEY = "overviewGraphStyle";
 const OVERVIEW_GRAPH_GROUP_BY_KEY = "overviewGraphGroupBy";
 const OVERVIEW_STRIP_METRIC_KEY = "overviewStripMetric";
-const OVERVIEW_SPEND_STRIP_ENABLED_KEY = "overviewSpendStripEnabled";
+
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_BETA_UPDATES_ENABLED = false;
@@ -164,7 +164,7 @@ export const DEFAULT_START_ON_LOGIN = false;
 export const DEFAULT_OVERVIEW_GRAPH_STYLE: OverviewGraphStyle = "donut";
 export const DEFAULT_OVERVIEW_GRAPH_GROUP_BY: OverviewGraphGroupBy = "provider";
 export const DEFAULT_OVERVIEW_STRIP_METRIC: OverviewStripMetric = "price";
-export const DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED = true;
+
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -797,17 +797,6 @@ export async function loadOverviewStripMetric(): Promise<OverviewStripMetric> {
 
 export async function saveOverviewStripMetric(metric: OverviewStripMetric): Promise<void> {
   await store.set(OVERVIEW_STRIP_METRIC_KEY, metric);
-  await store.save();
-}
-
-export async function loadOverviewSpendStripEnabled(): Promise<boolean> {
-  const stored = await store.get<unknown>(OVERVIEW_SPEND_STRIP_ENABLED_KEY);
-  if (typeof stored === "boolean") return stored;
-  return DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED;
-}
-
-export async function saveOverviewSpendStripEnabled(value: boolean): Promise<void> {
-  await store.set(OVERVIEW_SPEND_STRIP_ENABLED_KEY, value);
   await store.save();
 }
 

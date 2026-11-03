@@ -69,7 +69,6 @@ export function MainApp() {
     setMultiTrayDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
-    setOverviewSpendStripEnabled,
     setTimeFormatMode,
     setGlobalShortcut,
     setStartOnLogin,
@@ -93,7 +92,6 @@ export function MainApp() {
       setMultiTrayDisplayMode: state.setMultiTrayDisplayMode,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
-      setOverviewSpendStripEnabled: state.setOverviewSpendStripEnabled,
       setTimeFormatMode: state.setTimeFormatMode,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
@@ -178,7 +176,6 @@ export function MainApp() {
     setMultiTrayProviderCount,
     setMultiTrayDisplayMode,
     setResetTimerDisplayMode,
-    setOverviewSpendStripEnabled,
     setTimeFormatMode,
     setGlobalShortcut,
     setStartOnLogin,
@@ -200,7 +197,6 @@ export function MainApp() {
     handleMultiMenubarClick,
     handleMultiTrayDisplayModeChange,
     handleMenubarMetricChange,
-    handleOverviewSpendStripEnabledChange,
   } = useSettingsDisplayActions({
     menubarIconStyle,
     multiTrayProviderCount,
@@ -214,7 +210,6 @@ export function MainApp() {
     setMenubarMetric,
     setMultiTrayProviderCount,
     setMultiTrayDisplayMode,
-    setOverviewSpendStripEnabled,
     scheduleTrayIconUpdate,
   })
 
@@ -343,7 +338,6 @@ export function MainApp() {
         onMultiMenubarClick: handleMultiMenubarClick,
         onMultiTrayDisplayModeChange: handleMultiTrayDisplayModeChange,
         onMenubarMetricChange: handleMenubarMetricChange,
-        onOverviewSpendStripEnabledChange: handleOverviewSpendStripEnabledChange,
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,

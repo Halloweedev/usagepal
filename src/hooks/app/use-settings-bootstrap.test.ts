@@ -17,7 +17,6 @@ const {
   loadMenubarMetricMock,
   loadMultiTrayDisplayModeMock,
   loadMultiTrayProviderCountMock,
-  loadOverviewSpendStripEnabledMock,
   loadPluginSettingsMock,
   loadResetTimerDisplayModeMock,
   loadStartOnLoginMock,
@@ -43,7 +42,6 @@ const {
   loadMenubarMetricMock: vi.fn(),
   loadMultiTrayDisplayModeMock: vi.fn(),
   loadMultiTrayProviderCountMock: vi.fn(),
-  loadOverviewSpendStripEnabledMock: vi.fn(),
   loadPluginSettingsMock: vi.fn(),
   loadResetTimerDisplayModeMock: vi.fn(),
   loadStartOnLoginMock: vi.fn(),
@@ -90,7 +88,6 @@ vi.mock("@/lib/settings", () => ({
   loadMenubarMetric: loadMenubarMetricMock,
   loadMultiTrayDisplayMode: loadMultiTrayDisplayModeMock,
   loadMultiTrayProviderCount: loadMultiTrayProviderCountMock,
-  loadOverviewSpendStripEnabled: loadOverviewSpendStripEnabledMock,
   loadPluginSettings: loadPluginSettingsMock,
   loadResetTimerDisplayMode: loadResetTimerDisplayModeMock,
   loadStartOnLogin: loadStartOnLoginMock,
@@ -120,7 +117,6 @@ function createArgs() {
     setMenubarMetric: vi.fn(),
     setMultiTrayProviderCount: vi.fn(),
     setMultiTrayDisplayMode: vi.fn(),
-    setOverviewSpendStripEnabled: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -148,7 +144,6 @@ describe("useSettingsBootstrap", () => {
     loadMenubarMetricMock.mockReset()
     loadMultiTrayDisplayModeMock.mockReset()
     loadMultiTrayProviderCountMock.mockReset()
-    loadOverviewSpendStripEnabledMock.mockReset()
     loadPluginSettingsMock.mockReset()
     loadResetTimerDisplayModeMock.mockReset()
     loadStartOnLoginMock.mockReset()
@@ -185,7 +180,6 @@ describe("useSettingsBootstrap", () => {
     loadMenubarMetricMock.mockResolvedValue("default")
     loadMultiTrayDisplayModeMock.mockResolvedValue("percent")
     loadMultiTrayProviderCountMock.mockResolvedValue(3)
-    loadOverviewSpendStripEnabledMock.mockResolvedValue(true)
     loadStartOnLoginMock.mockResolvedValue(true)
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     migrateWindsurfToDevinMock.mockImplementation((settings) => settings)

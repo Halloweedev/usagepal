@@ -1,6 +1,5 @@
-import { useMemo } from "react"
+
 import { ADD_ACCOUNT_PROVIDERS } from "@/components/add-account-dialog"
-import { ModelsTodayStrip } from "@/components/models-today-strip"
 import { ProviderCard } from "@/components/provider-card"
 import {
   flattenAccountSources,
@@ -20,7 +19,6 @@ interface OverviewPageProps {
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   timeFormatMode?: TimeFormatMode
-  overviewSpendStripEnabled?: boolean
   onResetTimerDisplayModeToggle?: () => void
   onUsageValueToggle?: () => void
 }
@@ -35,12 +33,9 @@ export function OverviewPage({
   displayMode,
   resetTimerDisplayMode,
   timeFormatMode = "auto",
-  overviewSpendStripEnabled = true,
   onResetTimerDisplayModeToggle,
   onUsageValueToggle,
 }: OverviewPageProps) {
-  const stripSources = useMemo(() => flattenAccountSources(groupedPlugins), [groupedPlugins])
-
   return (
     <div className="pb-3">
       {groupedPlugins.length === 0 ? (
@@ -49,12 +44,6 @@ export function OverviewPage({
         </div>
       ) : (
         <>
-          {overviewSpendStripEnabled && (
-            <section className="mb-3 pt-2">
-              <h3 className="text-lg font-semibold mb-2">Quick Usage Overview</h3>
-              <ModelsTodayStrip plugins={stripSources} />
-            </section>
-          )}
           {groupedPlugins.map((group, index) => (
             <ProviderCard
               key={group.meta.id}

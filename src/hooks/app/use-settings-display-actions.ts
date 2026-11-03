@@ -6,7 +6,6 @@ import {
   saveMenubarMetric,
   saveMultiTrayDisplayMode,
   saveMultiTrayProviderCount,
-  saveOverviewSpendStripEnabled,
   saveResetTimerDisplayMode,
   saveThemeMode,
   saveTimeFormatMode,
@@ -35,7 +34,6 @@ type UseSettingsDisplayActionsArgs = {
   setMenubarMetric: (value: MenubarMetric) => void
   setMultiTrayProviderCount: (value: MultiTrayProviderCount) => void
   setMultiTrayDisplayMode: (value: MultiTrayDisplayMode) => void
-  setOverviewSpendStripEnabled: (value: boolean) => void
   scheduleTrayIconUpdate: ScheduleTrayIconUpdate
 }
 
@@ -52,7 +50,6 @@ export function useSettingsDisplayActions({
   setMenubarMetric,
   setMultiTrayProviderCount,
   setMultiTrayDisplayMode,
-  setOverviewSpendStripEnabled,
   scheduleTrayIconUpdate,
 }: UseSettingsDisplayActionsArgs) {
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
@@ -142,13 +139,6 @@ export function useSettingsDisplayActions({
     })
   }, [scheduleTrayIconUpdate, setMenubarMetric])
 
-  const handleOverviewSpendStripEnabledChange = useCallback((enabled: boolean) => {
-    setOverviewSpendStripEnabled(enabled)
-    void saveOverviewSpendStripEnabled(enabled).catch((error) => {
-      console.error("Failed to save overview spend strip setting:", error)
-    })
-  }, [setOverviewSpendStripEnabled])
-
   return {
     handleThemeModeChange,
     handleDisplayModeChange,
@@ -160,6 +150,5 @@ export function useSettingsDisplayActions({
     handleMultiMenubarClick,
     handleMultiTrayDisplayModeChange,
     handleMenubarMetricChange,
-    handleOverviewSpendStripEnabledChange,
   }
 }

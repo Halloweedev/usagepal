@@ -46,7 +46,6 @@ describe("OverviewPage multi-account", () => {
         groupedPlugins={[view()]}
         displayMode="used"
         resetTimerDisplayMode="relative"
-        overviewSpendStripEnabled={false}
       />
     )
     // One card with the provider and active account names in the header, plus
@@ -63,7 +62,6 @@ describe("OverviewPage multi-account", () => {
         onSelectAccount={onSelectAccount}
         displayMode="used"
         resetTimerDisplayMode="relative"
-        overviewSpendStripEnabled={false}
       />
     )
     await userEvent.click(screen.getAllByRole("tab")[1])
@@ -86,7 +84,6 @@ describe("OverviewPage multi-account", () => {
         onSelectAccount={onSelectAccount}
         displayMode="used"
         resetTimerDisplayMode="relative"
-        overviewSpendStripEnabled={false}
       />
     )
     await userEvent.click(screen.getAllByRole("tab")[0])
@@ -101,7 +98,6 @@ describe("OverviewPage multi-account", () => {
         groupedPlugins={[single]}
         displayMode="used"
         resetTimerDisplayMode="relative"
-        overviewSpendStripEnabled={false}
       />
     )
     expect(screen.getByText("Claude")).toBeInTheDocument()

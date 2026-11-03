@@ -33,7 +33,6 @@ import {
   loadOnboardingCompleted,
   loadOverviewGraphGroupBy,
   loadOverviewGraphStyle,
-  loadOverviewSpendStripEnabled,
   loadOverviewStripMetric,
   loadPaceNotificationSettings,
   loadPluginSettings,
@@ -59,7 +58,6 @@ import {
   saveMultiTrayProviderCount,
   saveOnboardingCompleted,
   saveOverviewGraphGroupBy,
-  saveOverviewSpendStripEnabled,
   saveOverviewStripMetric,
   saveOverviewGraphStyle,
   savePaceNotificationSettings,
@@ -504,25 +502,6 @@ describe("settings", () => {
   it("falls back to default for invalid overview graph group by", async () => {
     storeState.set("overviewGraphGroupBy", "team");
     await expect(loadOverviewGraphGroupBy()).resolves.toBe(DEFAULT_OVERVIEW_GRAPH_GROUP_BY);
-  });
-
-  it("loads default overview spend strip enabled when missing", async () => {
-    await expect(loadOverviewSpendStripEnabled()).resolves.toBe(DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED);
-  });
-
-  it("loads stored overview spend strip enabled", async () => {
-    storeState.set("overviewSpendStripEnabled", false);
-    await expect(loadOverviewSpendStripEnabled()).resolves.toBe(false);
-  });
-
-  it("saves overview spend strip enabled", async () => {
-    await saveOverviewSpendStripEnabled(false);
-    await expect(loadOverviewSpendStripEnabled()).resolves.toBe(false);
-  });
-
-  it("falls back to default for invalid overview spend strip enabled", async () => {
-    storeState.set("overviewSpendStripEnabled", "invalid");
-    await expect(loadOverviewSpendStripEnabled()).resolves.toBe(DEFAULT_OVERVIEW_SPEND_STRIP_ENABLED);
   });
 
   it("loads default pace notification settings when missing", async () => {
