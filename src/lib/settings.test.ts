@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { localDayKey } from "@/lib/pace-notifications"
 import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_BETA_UPDATES_ENABLED,
@@ -25,7 +24,6 @@ import {
   getEnabledPluginIds,
   loadAutoUpdateInterval,
   loadBetaUpdatesEnabled,
-  loadBudgetMap,
   loadDisplayMode,
   loadGlobalShortcut,
   loadMenubarIconStyle,
@@ -53,7 +51,6 @@ import {
   resetOnboardingCompleted,
   saveAutoUpdateInterval,
   saveBetaUpdatesEnabled,
-  saveBudgetMap,
   saveDisplayMode,
   saveGlobalShortcut,
   saveMenubarIconStyle,
@@ -544,7 +541,6 @@ describe("settings", () => {
       healthyToClose: false,
       closeToRunningOut: true,
       sessionReset: false,
-      budgetExceeded: false,
     })
   })
 
@@ -554,7 +550,6 @@ describe("settings", () => {
       healthyToClose: false,
       closeToRunningOut: false,
       sessionReset: true,
-      budgetExceeded: false,
     }
 
     await savePaceNotificationSettings(settings)
@@ -680,30 +675,6 @@ describe("settings", () => {
       healthyToClose: false,
       closeToRunningOut: true,
       sessionReset: true,
-      budgetExceeded: false,
-    })
-  })
-
-  it("loads empty budgets when missing", async () => {
-    await expect(loadBudgetMap()).resolves.toEqual({})
-  })
-
-  it("saves and loads daily budgets, sanitizing invalid entries", async () => {
-    const day = localDayKey()
-    await saveBudgetMap({
-      claude: {
-        [day]: { percent: 20, day, baselines: { "claude:Weekly": 0.1 }, setAt: 1 },
-        "2000-01-01": { percent: 20, day: "2000-01-01", baselines: {}, setAt: 1 },
-      },
-      codex: {
-        [day]: { percent: 150, day, baselines: {}, setAt: 1 },
-      },
-    })
-
-    await expect(loadBudgetMap()).resolves.toEqual({
-      claude: {
-        [day]: { percent: 20, day, baselines: { "claude:Weekly": 0.1 }, setAt: 1 },
-      },
     })
   })
 

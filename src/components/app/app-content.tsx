@@ -1,7 +1,6 @@
 import { useMemo } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { OverviewPage } from "@/pages/overview"
-import { BudgetsPage } from "@/pages/budgets"
 import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
 import { SharePage } from "@/pages/share"
@@ -195,10 +194,6 @@ export function AppContent({
         onSelectAccount={onSelectAccount}
       />
     )
-  }
-
-  if (activeView === "budgets") {
-    return <BudgetsPage plugins={displayPlugins} />
   }
 
   const handleRetry = selectedPlugin

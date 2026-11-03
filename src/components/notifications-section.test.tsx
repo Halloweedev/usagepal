@@ -5,21 +5,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const state = vi.hoisted(() => ({
   invokeMock: vi.fn().mockResolvedValue(undefined),
   setToggleMock: vi.fn(),
-  settings: { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false, budgetExceeded: false },
+  store: {
+    settings: { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false },
+    setToggle: (...args: unknown[]) => state.setToggleMock(...args),
+    hydrate: vi.fn().mockResolvedValue(undefined),
+  },
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: state.invokeMock }))
 vi.mock("@/stores/app-notifications-store", () => ({
-  useAppNotificationsStore: (selector: (s: unknown) => unknown) =>
-    selector({
-      settings: state.settings,
-      setToggle: (...args: unknown[]) => state.setToggleMock(...args),
-      hydrate: vi.fn().mockResolvedValue(undefined),
-    }),
+  useAppNotificationsStore: (selector: (s: typeof state.store) => unknown) => selector(state.store),
 }))
 
 import { NotificationsSection } from "./notifications-section"
-import { useAppUiStore } from "@/stores/app-ui-store"
 
 async function openNotificationsDialog() {
   await userEvent.click(screen.getByRole("button", { name: "Notifications" }))
@@ -30,8 +28,6 @@ describe("NotificationsSection", () => {
     state.invokeMock.mockReset()
     state.invokeMock.mockResolvedValue(undefined)
     state.setToggleMock.mockReset()
-    state.settings = { underTenPercent: false, healthyToClose: false, closeToRunningOut: false, sessionReset: false, budgetExceeded: false }
-    useAppUiStore.getState().resetState()
   })
 
   it("does not show the dialog or checkboxes just from rendering", () => {
@@ -40,12 +36,12 @@ describe("NotificationsSection", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
   })
 
-  it("opens a modal with the 5 alert checkboxes on button click", async () => {
+  it("opens a modal with the 4 alert checkboxes on button click", async () => {
     render(<NotificationsSection />)
     await openNotificationsDialog()
 
     expect(screen.getByRole("dialog", { name: "Notifications" })).toHaveAttribute("aria-modal", "true")
-    expect(screen.getAllByRole("checkbox")).toHaveLength(5)
+    expect(screen.getAllByRole("checkbox")).toHaveLength(4)
   })
 
   it("closes the notifications dialog on Escape", async () => {
@@ -90,22 +86,5 @@ describe("NotificationsSection", () => {
     await userEvent.keyboard("{Escape}")
 
     expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument()
-  })
-
-  it("hides the Set Budgets button unless Over Budget is on", async () => {
-    render(<NotificationsSection />)
-    await openNotificationsDialog()
-    expect(screen.queryByRole("button", { name: "Set Budgets" })).not.toBeInTheDocument()
-  })
-
-  it("jumps to the Budgets tab from Set Budgets and closes the dialog", async () => {
-    state.settings = { ...state.settings, budgetExceeded: true }
-    render(<NotificationsSection />)
-    await openNotificationsDialog()
-
-    await userEvent.click(screen.getByRole("button", { name: "Set Budgets" }))
-
-    expect(useAppUiStore.getState().activeView).toBe("budgets")
-    expect(screen.queryByRole("dialog", { name: "Notifications" })).not.toBeInTheDocument()
   })
 })

@@ -13,30 +13,8 @@ Notifications** before the first alert needs to fire.
 | **Cutting It Close** | A limit's projected end-of-period usage moves into "close to the limit". |
 | **Will Run Out** | A limit is projected to finish before the window resets. |
 | **Session Reset** | A session meter returns to 0% used after previous usage. |
-| **Over Budget** | Usage crosses the budget percent you set for that provider. |
 
 Each trigger is independent — enable any combination. Turning all triggers off silences alerts entirely.
-
-## Usage Budgets
-
-Over Budget works differently from the pace triggers: instead of projecting against the provider's
-limit, it watches a personal allowance you set per day. Open the **Budgets** tab in the sidebar
-(the gauge icon above Share) and pick a day — today plus the next six — then set a percent per
-provider. Plan the week ahead on Sunday night: 20% Monday, 10% Tuesday.
-
-Today's budget counts from the moment you set it; future days start tracking at midnight and wait
-quietly until then. Past days fall away on their own. Each provider shows its live meters against
-the selected day's budget, with plain text like "12% of 20% today" turning into "Over budget — 24%
-of 20% today" once crossed. The master switch at the top turns the alerts on or off without losing
-your budgets.
-
-- **Once per meter per window.** Crossing the budget sends one alert per meter (e.g. Claude
-  Weekly). It re-arms when the window resets, or if usage drops back below the budget and crosses
-  again.
-- **Crossing straight to exhaustion still alerts.** Jumping past the budget to 99-100% used sends
-  the Over Budget alert even though the pace triggers stay quiet there.
-- **No budget, no alert.** Providers without a budget never fire Over Budget, even with the trigger
-  on.
 
 ## How It Behaves
 

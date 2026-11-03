@@ -11,9 +11,7 @@ const state = vi.hoisted(() => ({
     healthyToClose: true,
     closeToRunningOut: true,
     sessionReset: true,
-    budgetExceeded: true,
   },
-  budgets: {} as Record<string, Record<string, { percent: number; day: string; baselines: Record<string, number>; setAt: number }>>,
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: state.invokeMock }))
@@ -23,14 +21,8 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 vi.mock("@/stores/app-notifications-store", () => ({
   useAppNotificationsStore: vi.fn((selector) => selector({ settings: state.settings, hydrate: state.hydrateMock })),
 }))
-vi.mock("@/stores/app-budgets-store", () => ({
-  useAppBudgetsStore: vi.fn((selector) =>
-    selector({ budgets: state.budgets, hydrate: state.hydrateMock })
-  ),
-}))
 
 import { deliverPaceNotification, usePaceNotifications } from "./use-pace-notifications"
-import { localDayKey } from "@/lib/pace-notifications"
 
 function pluginState(used: number): Record<string, PluginState> {
   return {
@@ -68,7 +60,6 @@ describe("usePaceNotifications", () => {
     state.isPermissionGrantedMock.mockClear()
     state.isPermissionGrantedMock.mockResolvedValue(false)
     state.hydrateMock.mockClear()
-    state.budgets = {}
   })
 
   it("delivers pace alerts through the native command that applies the bundled macOS app icon", async () => {
@@ -99,40 +90,5 @@ describe("usePaceNotifications", () => {
       })
     })
     expect(state.isPermissionGrantedMock).not.toHaveBeenCalled()
-  })
-
-  it("sends an Over Budget alert with the budget and today's growth when usage crosses the budget", async () => {
-    state.budgets = {
-      claude: {
-        [localDayKey()]: { percent: 20, day: localDayKey(), baselines: { "claude:Session": 0.1 }, setAt: 1 },
-      },
-    }
-    const { rerender } = renderHook(({ states }) => usePaceNotifications(states), {
-      initialProps: { states: pluginState(10) },
-    })
-
-    rerender({ states: pluginState(30) })
-
-    await waitFor(() => {
-      expect(state.invokeMock).toHaveBeenCalledWith("send_pace_notification", {
-        title: "Over Budget",
-        body: "Claude Session — over your 20% daily budget (20% used today).",
-      })
-    })
-  })
-
-  it("sends no Over Budget alert when the provider has no budget set", async () => {
-    const { rerender } = renderHook(({ states }) => usePaceNotifications(states), {
-      initialProps: { states: pluginState(10) },
-    })
-
-    rerender({ states: pluginState(25) })
-
-    await waitFor(() => {
-      expect(state.invokeMock).not.toHaveBeenCalledWith(
-        "send_pace_notification",
-        expect.objectContaining({ title: "Over Budget" })
-      )
-    })
   })
 })

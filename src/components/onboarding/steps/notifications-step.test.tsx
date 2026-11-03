@@ -52,7 +52,6 @@ describe("NotificationsStep", () => {
       healthyToClose: false,
       closeToRunningOut: true,
       sessionReset: false,
-      budgetExceeded: false,
     })
   })
 

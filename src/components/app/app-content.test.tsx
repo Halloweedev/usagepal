@@ -1,12 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { overviewPageMock, providerDetailPageMock, settingsPageMock, sharePageMock, budgetsPageMock, isTauriMock } = vi.hoisted(() => ({
+const { overviewPageMock, providerDetailPageMock, settingsPageMock, sharePageMock, isTauriMock } = vi.hoisted(() => ({
   overviewPageMock: vi.fn(),
   settingsPageMock: vi.fn(),
   providerDetailPageMock: vi.fn(),
   sharePageMock: vi.fn(),
-  budgetsPageMock: vi.fn(),
   isTauriMock: vi.fn(() => false),
 }))
 
@@ -32,13 +31,6 @@ vi.mock("@/pages/share", () => ({
   SharePage: (props: unknown) => {
     sharePageMock(props)
     return <div data-testid="share-page" />
-  },
-}))
-
-vi.mock("@/pages/budgets", () => ({
-  BudgetsPage: (props: unknown) => {
-    budgetsPageMock(props)
-    return <div data-testid="budgets-page" />
   },
 }))
 
@@ -97,7 +89,6 @@ describe("AppContent", () => {
     settingsPageMock.mockReset()
     providerDetailPageMock.mockReset()
     sharePageMock.mockReset()
-    budgetsPageMock.mockReset()
     isTauriMock.mockReset()
     isTauriMock.mockReturnValue(false)
     useAppUiStore.getState().resetState()
@@ -137,17 +128,6 @@ describe("AppContent", () => {
 
     expect(screen.getByTestId("share-page")).toBeInTheDocument()
     expect(sharePageMock).toHaveBeenCalledWith(expect.objectContaining({ plugins: [] }))
-  })
-
-  it("renders the budgets page inside the panel for the budgets view", () => {
-    useAppUiStore.getState().setActiveView("budgets")
-    const props = createProps()
-    render(<AppContent {...props} />)
-
-    expect(screen.getByTestId("budgets-page")).toBeInTheDocument()
-    expect(budgetsPageMock).toHaveBeenCalledWith(
-      expect.objectContaining({ plugins: props.displayPlugins })
-    )
   })
 
   it("renders the share page under Tauri too (no separate pop-out window)", () => {
