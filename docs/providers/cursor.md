@@ -27,15 +27,11 @@
 
 **Team detection**: an account is treated as "team" when `planName` is `"Team"`, or `spendLimitUsage.limitType` is `"team"`, or `spendLimitUsage.pooledLimit` is greater than `0`. Team accounts display Total usage in dollars; individual accounts display it as a percentage.
 
-## Per-model breakdown
+## Local spend / token tracking
 
-Cursor's per-model lines come from the usage-events CSV — the same export that powers Today, Yesterday, and Last 30 Days (`GET /api/dashboard/export-usage-events-csv` on `cursor.com`).
+Cursor no longer performs local spend or token tracking. Estimated "Today / Yesterday / Last 30 Days" text rows, the "Usage Trend" chart, and per-model breakdown lines have been removed.
 
-The CSV lists models and token counts only. UsagePal imputes dollar cost locally from embedded pricing tables synced with Cursor's published model rates.
-
-CSV slugs are matched with a few normalizations: leading `cursor-` is stripped, case is ignored, and reasoning-effort suffixes like `high` / `high-fast` map onto the base Grok (or Fast) rates. Auto mode uses the published Auto Cost rates. If a model is still not in the pricing table, its tokens still count toward usage percentages but cost shows as $0 until the table is updated. Each unknown model is logged once per refresh.
-
-These model lines are generated at runtime (not declared in the plugin manifest). They appear in Overview's model breakdown and in Share when Cursor is enabled. Each line carries Today, Yesterday, 7d, and 30d cost segments when pricing resolves.
+Only real-USD on-demand/extra usage dollars (Credits, On-demand) and quota/limit progress lines (Total usage, Auto usage, API usage, Requests) remain, sourced from Cursor's API.
 
 ## Endpoints
 
