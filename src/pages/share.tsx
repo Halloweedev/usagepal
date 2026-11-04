@@ -104,7 +104,7 @@ export function SharePage({ plugins, sources, groupedPlugins, onSelectAccount }:
   const [checkedLabels, setCheckedLabels] = useState<Set<string>>(new Set(shareSnapshot.checkedLabels))
   const [theme, setTheme] = useState<ShareCardTheme>(shareSnapshot.theme)
   const [showPlan, setShowPlan] = useState(shareSnapshot.showPlan)
-  const [showTokens, setShowTokens] = useState(shareSnapshot.showTokens)
+  const [showTokens] = useState(false)
   const [customizeOpen, setCustomizeOpen] = useState(false)
   const [modelDisplay, setModelDisplay] = useState<ModelDisplayOptions>(shareSnapshot.modelDisplay)
   const [graphStyle, setGraphStyle] = useState<GraphStyle>(shareSnapshot.graphStyle)
@@ -875,15 +875,6 @@ export function SharePage({ plugins, sources, groupedPlugins, onSelectAccount }:
                         Plan
                       </label>
                     )}
-                    <label className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs">
-                      <Checkbox
-                        aria-label="Tokens"
-                        checked={showTokens}
-                        onCheckedChange={(checked) => setShowTokens(checked === true)}
-                        disabled={copying}
-                      />
-                      Tokens
-                    </label>
                   </div>
                 </div>
               </div>

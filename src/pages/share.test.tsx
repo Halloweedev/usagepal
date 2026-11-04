@@ -354,19 +354,6 @@ describe("SharePage", () => {
     expect(lastCardProps<{ plan?: string }>().plan).toBeUndefined()
   })
 
-  it("toggles the token column via the Tokens checkbox and persists it", async () => {
-    const user = userEvent.setup()
-    render(<SharePage plugins={[makePlugin()]} />)
-
-    expect(lastCardProps<{ showTokens?: boolean }>().showTokens).toBe(true)
-
-    await user.click(screen.getByRole("button", { name: "Customize" }))
-    await user.click(screen.getByRole("checkbox", { name: "Tokens" }))
-
-    expect(lastCardProps<{ showTokens?: boolean }>().showTokens).toBe(false)
-    expect(useAppShareStore.getState().settings.showTokens).toBe(false)
-  })
-
   it("hides the plan toggle when the provider has no plan", async () => {
     const user = userEvent.setup()
     render(<SharePage plugins={[makePlugin()]} />)
