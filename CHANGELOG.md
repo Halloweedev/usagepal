@@ -1,5 +1,54 @@
 # Changelog
 
+## v0.7.77
+
+### New Features
+- Add Ollama provider plugin (cloud credits + legacy limits) by @Halloweedev
+- Add provider usage-at-a-glance strip on overview by @Halloweedev
+
+### Bug Fixes
+- Fix swallow store errors in ModelsTodayStrip for non-tauri envs by @Halloweedev
+
+### Refactor
+- Remove local spend/token tracking from codex, grok, cline-pass, opencode-go by @Halloweedev
+- Remove local spend/token tracking from claude and cursor plugins by @Halloweedev
+- Remove budget section and budget-related notifications by @Halloweedev
+- Remove overview spend strip (phase A of spend-tracking removal) by @Halloweedev
+- Simplify share card text rows (drop cost·tokens split) by @Halloweedev
+- Remove Tokens toggle from Share page (limits only) by @Halloweedev
+
+### Chores
+- Clean spend-only manifest lines from pruned plugins by @Halloweedev
+- Remove usage-at-a-glance strip by @Halloweedev
+- Style: provider usage strip uses donut (circle) style by @Halloweedev
+- Style: fix title size in usage strip by @Halloweedev
+- Style: move usage strip title outside card by @Halloweedev
+- Style: restyle usage-at-a-glance strip to match old graph card by @Halloweedev
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.7.77-beta.2...v0.7.77](https://github.com/Halloweedev/usagepal/compare/v0.7.77-beta.2...v0.7.77)
+
+- [cbdcacf](https://github.com/Halloweedev/usagepal/commit/cbdcacfe6b93f048d949574aa957948d72ffa0e3) chore: clean spend-only manifest lines from pruned plugins by @Halloweedev
+- [5c11cd6](https://github.com/Halloweedev/usagepal/commit/5c11cd6ec725b219aa19b7e07976146ead20304f) feat: remove local spend/token tracking from claude and cursor plugins by @Halloweedev
+- [4a1f4c9](https://github.com/Halloweedev/usagepal/commit/4a1f4c9f0b01e825c53bc595f2782b4f4e8333ef) chore: remove usage-at-a-glance strip by @Halloweedev
+- [1edc3af](https://github.com/Halloweedev/usagepal/commit/1edc3af008d7ded75bdf8a434bb1f8a2a593dd15) feat: remove Tokens toggle from Share page (limits only) by @Halloweedev
+- [d1f04cd](https://github.com/Halloweedev/usagepal/commit/d1f04cddeea5398fd6954a8512a98fc5496ad0a3) style: move usage strip title outside card by @Halloweedev
+- [af5d363](https://github.com/Halloweedev/usagepal/commit/af5d363020e429a0a0675dfc05f42c05cc714b0a) style: fix title size in usage strip by @Halloweedev
+- [399bf5f](https://github.com/Halloweedev/usagepal/commit/399bf5fc4f07a994bf0b67f8a5b0c2435dfe79bc) style: provider usage strip uses donut (circle) style by @Halloweedev
+- [20c1d08](https://github.com/Halloweedev/usagepal/commit/20c1d086f242bbf564c446072731d6233ef55c93) feat: overview uses provider-only usage % strip by @Halloweedev
+- [c6471b6](https://github.com/Halloweedev/usagepal/commit/c6471b6a15db7d9a89a7c0a602d221e9d6105933) fix: swallow store errors in ModelsTodayStrip for non-tauri envs by @Halloweedev
+- [3fc0117](https://github.com/Halloweedev/usagepal/commit/3fc0117d02be1f65035703e628f908003cb7fcd7) style: restyle usage-at-a-glance strip to match old graph card by @Halloweedev
+- [d5316da](https://github.com/Halloweedev/usagepal/commit/d5316dabdd4812b06e2fae09c75e69f78d1ebc6c) feat: add provider usage-at-a-glance strip on overview by @Halloweedev
+- [4c905d4](https://github.com/Halloweedev/usagepal/commit/4c905d4700d96a11cfa07387b4bc20eada00ba52) feat: remove local spend/token tracking from codex, grok, cline-pass, opencode-go by @Halloweedev
+- [a97f15b](https://github.com/Halloweedev/usagepal/commit/a97f15b18d93abb59c23665b67a567b3013e93f8) feat: add Ollama provider plugin (cloud credits + legacy limits) by @Halloweedev
+- [eb3c519](https://github.com/Halloweedev/usagepal/commit/eb3c51992215b9069c4729d4bca22b8c19c396d3) feat: simplify share card text rows (drop cost·tokens split) by @Halloweedev
+- [e30c91d](https://github.com/Halloweedev/usagepal/commit/e30c91de35574b90e9106372a87b412808cb5afb) feat: remove overview spend strip (phase A of spend-tracking removal) by @Halloweedev
+- [b8842b2](https://github.com/Halloweedev/usagepal/commit/b8842b2a1821498cd5df4d0a4d5eef38fcf702a4) chore: remove budget section and budget-related notifications by @Halloweedev
+
+
 ## v0.7.77-beta.2
 
 ### New Features
