@@ -1,7 +1,6 @@
 
 import { ADD_ACCOUNT_PROVIDERS } from "@/components/add-account-dialog"
 import { ProviderCard } from "@/components/provider-card"
-import { ProviderUsageStrip } from "@/components/provider-usage-strip"
 import {
   flattenAccountSources,
   type GroupedProviderView,
@@ -45,7 +44,6 @@ export function OverviewPage({
         </div>
       ) : (
         <>
-          <ProviderUsageStrip groupedPlugins={groupedPlugins} />
           {groupedPlugins.map((group, index) => (
             <ProviderCard
               key={group.meta.id}
